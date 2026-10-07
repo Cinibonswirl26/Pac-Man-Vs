@@ -1,0 +1,7 @@
+{
+  "name": "pacvs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "start": "node server/server.js", "test": "node test/sim.test.js && node test/match.test.js && node test/server.test.js" },
+  "dependencies": { "ws": "^8.18.0" }
+}

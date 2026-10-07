@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pac-Man Vs. Online</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #07080f; --panel: #12142a; --line: #2a2f6b; --ink: #f2f3ff; --dim: #8f94c7;
+    --pac: #ffd400; --red: #ff3b30; --pink: #ff8fd0; --cyan: #35e0ff; --orange: #ffa133; --good: #5dff9a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; align-items: center; padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom); }
+  .hidden { display: none !important; }
+  h1 { font-size: clamp(22px, 5vw, 40px); margin: 0; letter-spacing: .04em; color: var(--pac); text-shadow: 3px 3px 0 #b03a00; }
+  #logo { max-width: min(520px, 90vw); image-rendering: auto; }
+  button, input { font: inherit; color: var(--ink); }
+  button { background: var(--panel); border: 2px solid var(--line); border-radius: 6px; padding: 10px 16px; cursor: pointer; min-height: 44px; }
+  button:hover:not(:disabled) { border-color: var(--pac); }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+  button.primary { background: var(--pac); color: #1a1500; border-color: var(--pac); font-weight: 700; }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type=text] { background: #0b0d20; border: 2px solid var(--line); border-radius: 6px; padding: 10px 12px; min-height: 44px; width: 100%; }
+  #menu, #lobby { width: min(560px, 100%); display: flex; flex-direction: column; gap: 16px; padding-block: 24px; }
+  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .card h2 { margin: 0; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > * { flex: 1 1 140px; min-width: 0; }
+  .note { color: var(--dim); font-size: 13px; margin: 0; }
+  .ok { color: var(--good); }
+  .err { color: #ff8a80; min-height: 1.4em; margin: 0; }
+  #seats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .seat { border: 2px solid var(--line); border-radius: 6px; padding: 10px; display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .seat b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .seat.me { border-color: var(--pac); }
+  .dot { width: 18px; height: 18px; border-radius: 50% 50% 3px 3px; flex: none; }
+  .code { font-size: 44px; letter-spacing: .3em; color: var(--pac); text-align: center; }
+  #game { width: 100%; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 6px; }
+  #hud { width: 100%; max-width: 900px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .pl { border: 2px solid var(--line); border-radius: 6px; padding: 4px 8px; min-width: 0; font-size: 13px; }
+  .pl.me { border-color: var(--pac); }
+  .pl.pacrole { background: #2a2400; }
+  .pl .n { display: flex; gap: 6px; align-items: center; overflow: hidden; white-space: nowrap; }
+  .pl .s { font-size: 18px; font-variant-numeric: tabular-nums; }
+  #status { width: 100%; max-width: 900px; display: flex; justify-content: space-between; gap: 8px; color: var(--dim); font-size: 13px; }
+  #stage { position: relative; flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; max-width: 100%; max-height: 100%; background: #000; border-radius: 6px; touch-action: none; }
+  #banner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; pointer-events: none; text-shadow: 0 2px 8px #000; padding: 16px; }
+  #banner .big { font-size: clamp(28px, 7vw, 64px); color: var(--pac); }
+  #banner .sm { font-size: clamp(14px, 3vw, 20px); }
+  #banner button { pointer-events: auto; }
+  #pad { display: none; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); gap: 6px; padding: 8px; }
+  #pad button { padding: 0; font-size: 22px; }
+  @media (pointer: coarse) { #pad { display: grid; } }
+  @media (max-width: 520px) { #hud { grid-template-columns: repeat(2, 1fr); } #seats { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<section id="menu">
+  <div style="text-align:center"><img id="logo" class="hidden" alt="Pac-Man Vs."><h1 id="title">PAC-MAN VS. ONLINE</h1>
+    <p class="note">One Pac-Man sees the whole maze. Three ghosts see only what is close to them.</p></div>
+
+  <div class="card">
+    <h2>Your name</h2>
+    <input id="name" type="text" maxlength="12" placeholder="Player" autocomplete="nickname" aria-label="Your name">
+  </div>
+
+  <div class="card">
+    <h2>Play</h2>
+    <button id="solo" class="primary">Play offline against CPUs</button>
+    <div class="row">
+      <button id="host">Host an online room</button>
+      <input id="code" type="text" maxlength="4" placeholder="Room code" style="text-transform:uppercase" aria-label="Room code">
+      <button id="join">Join</button>
+    </div>
+    <p id="menuErr" class="err" role="alert"></p>
+  </div>
+
+  <div class="card">
+    <h2>Game assets (optional)</h2>
+    <p class="note">Pick your own copy of the Pac-Man Vs. disc image (.ciso, .iso or .gcm) to use the original logo, Pac-Man sprites and music. It is read in your browser and never uploaded.</p>
+    <div class="row"><input id="disc" type="file" accept=".ciso,.iso,.gcm" aria-label="Disc image"></div>
+    <p id="discStatus" class="note" aria-live="polite">No disc loaded. The game uses its built-in graphics and sounds.</p>
+  </div>
+  <p class="note">Move with arrow keys or WASD, swipe on touch screens, or use a gamepad. M toggles music.</p>
+</section>
+
+<section id="lobby" class="hidden">
+  <div class="card">
+    <h2>Room code</h2>
+    <div id="roomCode" class="code">----</div>
+    <div class="row"><button id="copyLink">Copy invite link</button><button id="leave">Leave</button></div>
+  </div>
+  <div class="card"><h2>Seats</h2><div id="seats"></div>
+    <p class="note">Empty seats are played by the computer. Anyone who joins later takes the next free seat.</p></div>
+  <button id="start" class="primary">Start match</button>
+  <p id="lobbyNote" class="note"></p>
+</section>
+
+<section id="game" class="hidden">
+  <div id="hud"></div>
+  <div id="status"><span id="roleTxt"></span><span id="timeTxt"></span></div>
+  <div id="stage"><canvas id="cv" aria-label="Game board"></canvas><div id="banner"></div></div>
+  <div id="pad"><span></span><button data-d="0" aria-label="Up">▲</button><span></span><button data-d="3" aria-label="Left">◀</button><button data-d="2" aria-label="Down">▼</button><button data-d="1" aria-label="Right">▶</button></div>
+</section>
+
+<script src="/shared/sim.js"></script>
+<script src="/shared/match.js"></script>
+<script src="/client/disc.js"></script>
+<script src="/client/game.js"></script>
+</body>
+</html>
