@@ -72,7 +72,7 @@
     const ghost = R.model(assets.ghost, J3D.pose(assets.ghost, J3D.animate(assets.ghostAnim, 0)));
     const pac = R.model(assets.pac, J3D.pose(assets.pac, J3D.animate(assets.pacAnim, 0)));
     const cherry = R.model(assets.cherry, J3D.pose(assets.cherry));
-    const tex = t => R.texture(Object.assign({}, t, { wrapS: 1, wrapT: 1 }));
+    const tex = t => R.texture(t);
     const skins = {}; for (const k in assets.skins) skins[k] = tex(assets.skins[k]);
     const dot = tex(assets.dot);
     // the ghosts' blink: the five eye textures, swapped by the disc's pattern animation
@@ -122,7 +122,7 @@
         R.ribbon(pts, 780, v.trailColor);
       }
       if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), fl, wz(v.fruit.y), 0, 0.75));
-      if (v.pac) R.draw(pac, m4.trs(wx(v.pac.x), fl + 380, wz(v.pac.y), YAW[v.pac.d] || 0, 1));
+      if (v.pac) R.draw(pac, m4.trs(wx(v.pac.x), fl + 380, wz(v.pac.y), v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0, 1));
       // Ghosts last: their bodies are blended.
       const blink = J3D.animatePattern(assets.ghostBlink, f).e || 0;
       for (const g of v.ghosts) {

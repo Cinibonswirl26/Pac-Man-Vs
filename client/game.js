@@ -11,7 +11,7 @@
   let ws = null, room = null, you = 0;
   let snap = null, offline = null, lastPhase = null, lastCount = -1;
   let names = ['You', 'CPU', 'CPU', 'CPU'];
-  const sm = { pac: null, ghosts: [null, null, null], yaw: [0, 0, 0], sight: [null, null, null] };
+  const sm = { pac: null, pacAng: null, ghosts: [null, null, null], yaw: [0, 0, 0], sight: [null, null, null] };
   // The circle's reach changes with an animation: in the original, picking up the fruit pulls the camera back by
   // about 1.6x over a little more than a second, easing out. The sim changes the radius in one step; this tweens it.
   const ZOOM_TIME = 1.1;
@@ -400,10 +400,11 @@
       const cyc = art.pac.length * 2 - 2 || 1, i = Math.floor(now / 90) % cyc;
       const f = art.pac[i < art.pac.length ? i : cyc - i];
       g.save(); g.translate(x, y);
-      if (p.d === 3) g.scale(-1, 1); else g.rotate([-Math.PI / 2, 0, Math.PI / 2, 0][p.d]);
+      const a = sm.pacAng === null ? [-Math.PI / 2, 0, Math.PI / 2, Math.PI][p.d] : sm.pacAng;
+      if (Math.cos(a) < -0.01) { g.scale(-1, 1); g.rotate(Math.PI - a); } else g.rotate(a);   // turned past vertical: mirror, so he stays the right way up
       g.drawImage(f, -r * 1.15, -r * 1.15, r * 2.3, r * 2.3); g.restore(); return;
     }
-    const open = (Math.sin(now / 70) + 1) / 2 * 0.65 + 0.05, a = [-Math.PI / 2, 0, Math.PI / 2, Math.PI][p.d];
+    const open = (Math.sin(now / 70) + 1) / 2 * 0.65 + 0.05, a = sm.pacAng === null ? [-Math.PI / 2, 0, Math.PI / 2, Math.PI][p.d] : sm.pacAng;
     g.fillStyle = '#ffd400'; g.beginPath(); g.moveTo(x, y); g.arc(x, y, r, a + open, a + Math.PI * 2 - open); g.closePath(); g.fill();
   }
   // Pac-Man's trail on the flat board: a ribbon in his player's colour that fades towards the tail.
@@ -451,6 +452,12 @@
     pollPad();
     if (!snap) return;
     sm.pac = approach(sm.pac, snap.respawning ? null : snap.pac, dt);
+    // Pac-Man turns round smoothly instead of snapping to his new heading
+    if (sm.pac) {
+      const want = [-Math.PI / 2, 0, Math.PI / 2, Math.PI][sm.pac.d];
+      if (sm.pacAng === null) sm.pacAng = want;
+      sm.pacAng += Math.atan2(Math.sin(want - sm.pacAng), Math.cos(want - sm.pacAng)) * Math.min(1, dt * 16);
+    } else sm.pacAng = null;
     snap.ghosts.forEach((gh, i) => { sm.ghosts[i] = approach(sm.ghosts[i], gh, dt); });
     // Ghost players with the disc get the original shared screen; Pac-Man keeps the full maze.
     // Everyone sees the exchange and results screens.
@@ -502,13 +509,14 @@
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
     try {
-      img = v3.render({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, size: 2 * R, me, zoom: R / u3() / CFG.ghostSight, ghosts, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000 });
+      img = v3.render({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, size: 2 * R, me, zoom: R / u3() / CFG.ghostSight, ghosts, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000 });
     } catch (e) { console.warn('3D view', e); view3 = false; return; }
     g.save(); g.beginPath(); g.arc(me.x * u3(), me.y * u3(), R, 0, 7); g.clip();
     g.drawImage(img, me.x * u3() - R, me.y * u3() - R, 2 * R, 2 * R);
     g.restore();
   }
   const u3 = () => cell * dpr;
+  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng) });
   function fitScreen(scr) {
     const st = $('stage'), cw = Math.max(200, Math.min(st.clientWidth, st.clientHeight * 4 / 3));
     scr.canvas.style.width = cw + 'px'; scr.canvas.style.height = cw * 3 / 4 + 'px';
@@ -541,7 +549,7 @@
     ghosts.sort((a, b) => a.seat - b.seat);
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
-    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash }));
+    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash }));
     try {
       scr.render({ time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }

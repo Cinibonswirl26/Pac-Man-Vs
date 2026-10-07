@@ -125,7 +125,11 @@
       if (p.kind === 'picture') drawPicture(mats, p, b, st);
       else if (p.kind === 'window') drawWindow(mats, p, b);
       else if (p.kind === 'text') { const s = st.text && st.text[p.name]; if (s !== undefined) drawText(mats[p.material], s, b, p); }
-      for (const c of p.children) walk(mats, c, b.x, b.y, st);
+      // a centred pane inside a window sits relative to the window's middle, not its corner (the fruit icon)
+      for (const c of p.children) {
+        const mid = p.kind === 'window' && c.anchor === 4;
+        walk(mats, c, b.x + (mid ? b.w / 2 : 0), b.y + (mid ? b.h / 2 : 0), st);
+      }
     }
     const drawLayout = (L, st) => walk(L.materials, L.root, 0, 0, st);
     // Free-standing picture centred at (x, y) in screen pixels.

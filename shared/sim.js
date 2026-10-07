@@ -32,6 +32,7 @@
     // Pac-Man leaves a trail in his player's colour that ghosts can follow. Look (wide flat ribbon, paler by Pac-Man) is from the original; the length is a guess.
     trailTime: 2, trailEvery: 0.1,
     ghostSight: 4.6,
+    catchDist: 0.55,                     // how close a ghost and Pac-Man must be (cell centres) to touch; their bodies are about 0.65 wide
     // Fruit: appears in the middle of the maze once enough pellets are gone (documented: both sides may take it,
     // ghosts get 400 points and a wider view for a while). The numbers below are guesses.
     fruitPts: 400, fruitFirst: 6, fruitEvery: 70, fruitStay: 10, fruitSightMult: 1.6, fruitSightTime: 10,
@@ -212,7 +213,7 @@
         s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; g.sightLeft = CFG.fruitSightTime; s.events.push('fruitghost');
         award(s, playerOfGhost(s, i), CFG.fruitPts); if (s.over) return;
       }
-      if (dist(g, s.pac) < 0.8) {
+      if (dist(g, s.pac) < CFG.catchDist) {
         if (g.mode === 'fright') {
           g.mode = 'eyes'; s.events.push('eatghost');
           award(s, s.pacPlayer, CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)]); s.chain++;
