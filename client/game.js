@@ -2,9 +2,10 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const S = PacSim, W = S.W, H = S.H, CFG = S.CFG;
-  const SEAT_COLORS = ['#ff3b30', '#ff8fd0', '#35e0ff', '#ffa133'];
-  const SEAT_NAMES = ['Red', 'Pink', 'Cyan', 'Orange'];
+  let S = PacSim, W = S.W, H = S.H;
+  const CFG = S.CFG;
+  // Player colours as in the original: P1 red, P2 blue, P3 pink, P4 green (the disc ships ghost_r/b/p/g skins).
+  const SEAT_COLORS = ['#ff2a2a', '#35c8ff', '#ff5ccf', '#2bd94a'];
 
   let mode = null;                 // 'offline' | 'online'
   let ws = null, room = null, you = 0;
@@ -68,7 +69,14 @@
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
 
   // ------------------------------------------------------------------ disc assets
-  const art = { pac: [], logo: null, press: null };
+  const art = { pac: [], logo: null, press: null, maze: null };
+  /** Switch the board to another maze (or back to the built-in one). */
+  function setMaze(m) {
+    const next = m ? PacSim.create(m) : PacSim;
+    if (next === S) return;
+    S = next; W = S.W; H = S.H; cell = 0; sm.pac = null; sm.ghosts = [null, null, null];
+  }
+  const mazeOf = () => ($('mazeSel').value === 'disc' && art.maze) ? art.maze : null;
   function toCanvas(t) { const c = document.createElement('canvas'); c.width = t.w; c.height = t.h; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h), 0, 0); return c; }
   async function loadDisc(blob, remember) {
     const st = $('discStatus'); st.className = 'note';
@@ -82,6 +90,10 @@
       art.logo = tex('pactitle_06.bti'); art.press = tex('press_start.bti');
       if (art.logo) { $('logo').src = art.logo.toDataURL(); $('logo').classList.remove('hidden'); $('title').classList.add('hidden'); }
       music.disc = d; music.bufs.clear();
+      try {   // the original stage 1 maze, read from the GBA program on the disc
+        art.maze = Gbamap.stage1(await d.read('PROOT/gbademo/packman.bin'), PacSim.makeMaze);
+        $('mazeSel').querySelector('[value=disc]').disabled = false; $('mazeSel').value = store.get('pacvs.maze') === 'builtin' ? 'builtin' : 'disc';
+      } catch (e) { console.warn('maze', e); art.maze = null; }
       st.className = 'note ok'; st.textContent = `Loaded ${d.title} (${d.id}). Original logo, sprites and music are on.`;
       if (remember) { try { await idbSet('disc', blob); } catch { /* storage unavailable */ } }
       if (!mode) playMusic('Pac_Op_loop73_LR', true);
@@ -104,7 +116,7 @@
   function onMsg(m) {
     if (m.t === 'err') { $('menuErr').textContent = m.msg; return; }
     if (m.t === 'room') {
-      mode = 'online'; room = m; you = m.you; names = m.players.map((p, i) => p.cpu ? 'CPU ' + (i + 1) : p.name);
+      mode = 'online'; room = m; you = m.you; setMaze(m.maze); names = m.players.map((p, i) => p.cpu ? 'CPU ' + (i + 1) : p.name);
       if (m.phase === 'lobby') { screen('lobby'); renderLobby(); } else showGame();
       return;
     }
@@ -115,7 +127,7 @@
   function playerName() { const n = $('name').value.trim() || 'Player'; store.set('pacvs.name', n); return n; }
   function toMenu(msg) {
     if (ws) { try { send({ t: 'leave' }); ws.close(); } catch { /* closing */ } }
-    mode = null; room = null; offline = null; snap = null; stopMusic(); screen('menu');
+    mode = null; room = null; offline = null; snap = null; stopMusic(); screen('menu'); setMaze(null);
     $('menuErr').textContent = msg || '';
     if (music.disc) playMusic('Pac_Op_loop73_LR', true);
   }
@@ -128,8 +140,11 @@
   }
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  $('solo').onclick = () => { audio(); startOffline(); };
-  $('host').onclick = () => { audio(); $('menuErr').textContent = ''; connect(() => send({ t: 'create', name: playerName() })); };
+  $('solo').onclick = () => {
+    audio(); const opts = { start: $('soloRole').value, level: +$('soloLevel').value, target: +$('target').value, maze: mazeOf() };
+    store.set('pacvs.solo', JSON.stringify({ start: opts.start, level: opts.level, target: opts.target })); store.set('pacvs.maze', $('mazeSel').value); startOffline(opts);
+  };
+  $('host').onclick = () => { audio(); $('menuErr').textContent = ''; store.set('pacvs.maze', $('mazeSel').value); connect(() => send({ t: 'create', name: playerName(), maze: mazeOf(), target: +$('target').value })); };
   $('join').onclick = () => {
     audio(); const c = $('code').value.trim().toUpperCase();
     if (c.length !== 4) { $('menuErr').textContent = 'Room codes have 4 letters.'; return; }
@@ -145,9 +160,12 @@
   $('disc').onchange = e => { const f = e.target.files[0]; if (f) { audio(); loadDisc(f, true); } };
 
   // ------------------------------------------------------------------ offline play
-  function startOffline() {
+  let soloOpts = { start: 'ghost', level: 1, target: 7000, maze: null };
+  function startOffline(opts) {
+    if (opts) soloOpts = opts;
+    setMaze(soloOpts.maze);
     mode = 'offline'; you = 0; names = [playerName(), 'CPU 1', 'CPU 2', 'CPU 3']; room = null;
-    offline = { match: new PacMatch.Match(i => i === 0), inputs: [null, null, null, null], acc: 0, last: performance.now() };
+    offline = { match: new PacMatch.Match(i => i === 0, undefined, soloOpts), inputs: [null, null, null, null], acc: 0, last: performance.now() };
     offline.match.start(); snap = offline.match.view(0); showGame();
   }
   function offlineFrame(now) {
@@ -210,37 +228,40 @@
     if (snap.phase !== lastPhase || force) {
       if (snap.phase === 'countdown' && snap.phase !== lastPhase) lastDir = -1;
       lastPhase = snap.phase;
-      if (snap.phase === 'countdown' || snap.phase === 'play') playMusic(GAME_TRACKS[snap.round % 4], true); else stopMusic();
+      if (snap.phase === 'countdown' || snap.phase === 'play') playMusic(GAME_TRACKS[(snap.round || 0) % 4], true); else stopMusic();
     }
     if (snap.phase === 'countdown') { const c = Math.ceil(snap.left_t); if (c !== lastCount) { lastCount = c; tone(c > 0 ? 520 : 880, 0.12, 'square', 0.1); } }
     renderHud(); renderBanner();
   }
-  function totals() { return snap.scores.map((s, i) => s + (snap.over ? 0 : snap.rs[i])); }
+  const fmt = n => n.toLocaleString('en-US');
   function renderHud() {
-    const t = totals();
-    const key = JSON.stringify([t, snap.pacPlayer, names, snap.lives, Math.ceil(snap.time), snap.round, snap.over]);
+    const key = JSON.stringify([snap.scores, snap.pacPlayer, names, snap.target, snap.left, snap.round, snap.phase]);
     if (key === hudKey) return; hudKey = key;
-    $('hud').innerHTML = [0, 1, 2, 3].map(i => `<div class="pl ${i === you ? 'me' : ''} ${i === snap.pacPlayer ? 'pacrole' : ''}"><div class="n"><span class="dot" style="background:${i === snap.pacPlayer ? '#ffd400' : SEAT_COLORS[i]};border-radius:50%"></span>${esc(names[i])}</div><div class="s">${t[i]}</div></div>`).join('');
+    $('hud').innerHTML = [0, 1, 2, 3].map(i => {
+      const pac = i === snap.pacPlayer;
+      return `<div class="pl ${i === you ? 'me' : ''} ${pac ? 'pacrole' : ''}"><div class="n"><span class="dot" style="background:${SEAT_COLORS[i]};border-radius:${pac ? '50% 50% 50% 50%' : '50% 50% 3px 3px'}"></span>${esc(names[i])}${pac ? ' <span class="note">Pac-Man</span>' : ''}</div><div class="s">${fmt(snap.scores[i])}</div></div>`;
+    }).join('');
     const pacMe = snap.me < 0;
-    $('roleTxt').textContent = `Round ${snap.round + 1}/${CFG.rounds} · ` + (pacMe ? 'You are Pac-Man' : 'You are a ghost') + (pacMe ? ` · ${'♥'.repeat(Math.max(0, snap.lives))}` : '');
-    $('timeTxt').textContent = `${Math.floor(snap.time / 60)}:${String(Math.floor(snap.time % 60)).padStart(2, '0')} · ${snap.left} pellets left`;
+    $('roleTxt').textContent = (pacMe ? 'You are Pac-Man' : 'You are a ghost') + ` · first to ${fmt(snap.target)} wins`;
+    $('timeTxt').textContent = `${snap.left} pellets left`;
   }
   function renderBanner() {
     const b = $('banner'); let html = '';
-    const pacMe = snap.me < 0;
+    const pacMe = snap.me < 0, pn = names[snap.pacPlayer];
     if (snap.phase === 'countdown') {
-      html = `<div class="big">${Math.max(1, Math.ceil(snap.left_t))}</div><div class="sm">${pacMe ? 'You are Pac-Man. Eat every pellet. You can see the whole maze.' : 'You are a ghost. Hunt Pac-Man. You only see what is close.'}</div>`;
+      html = `<div class="big">${Math.max(1, Math.ceil(snap.left_t))}</div><div class="sm">${pacMe ? `You are Pac-Man with ${fmt(snap.scores[snap.pacPlayer])} points. Eat pellets. If a ghost catches you it steals 1,600.` : `${esc(pn)} is Pac-Man. Catch Pac-Man to steal 1,600 points and become Pac-Man yourself.`}</div>`;
     } else if (snap.phase === 'roundover') {
-      const why = snap.why === 'cleared' ? 'Pac-Man cleared the maze' : snap.why === 'caught' ? 'The ghosts got Pac-Man' : 'Time is up';
-      html = `<div class="big">${why}</div><div class="sm">${[0, 1, 2, 3].map(i => `${esc(names[i])} +${snap.rs[i]}`).join(' · ')}</div>`;
+      if (snap.why === 'caught') html = `<div class="big">${esc(names[snap.catcher])} caught Pac-Man</div><div class="sm">${esc(names[snap.catcher])} takes ${fmt(snap.steal)} points from ${esc(pn)} and is Pac-Man next round.</div>`;
+      else if (snap.why === 'cleared') html = `<div class="big">Maze cleared</div><div class="sm">${esc(pn)} keeps ${fmt(snap.scores[snap.pacPlayer])} points.</div>`;
+      else html = `<div class="big">${esc(names[snap.winner])} reaches ${fmt(snap.target)}</div>`;
     } else if (snap.phase === 'final') {
-      const t = totals(), order = [0, 1, 2, 3].sort((a, b) => t[b] - t[a]);
+      const order = [0, 1, 2, 3].sort((a, b) => snap.scores[b] - snap.scores[a]);
       const canAgain = mode === 'offline' || (room && room.host === you);
-      html = `<div class="big">${esc(names[order[0]])} wins</div><div class="sm">${order.map((i, k) => `${k + 1}. ${esc(names[i])} ${t[i]}`).join('<br>')}</div>` +
+      html = `<div class="big">${esc(names[snap.winner >= 0 ? snap.winner : order[0]])} wins</div><div class="sm">${order.map((i, k) => `${k + 1}. ${esc(names[i])} ${fmt(snap.scores[i])}`).join('<br>')}</div>` +
         `<div class="row" style="justify-content:center;flex:none">${canAgain ? '<button class="primary" id="again">Play again</button>' : '<span class="sm">Waiting for the host…</span>'}<button id="quit">Back to menu</button></div>`;
-    } else if (snap.respawning) html = '<div class="sm">Pac-Man was caught…</div>';
+    }
     if (b.dataset.h !== html) {
-      b.dataset.h = html; b.innerHTML = html;
+      b.dataset.h = html; b.innerHTML = html; b.style.background = html ? 'rgba(5,6,15,0.62)' : 'transparent';
       const a = $('again'); if (a) a.onclick = () => { if (mode === 'online') send({ t: 'start' }); else startOffline(); };
       const q = $('quit'); if (q) q.onclick = () => toMenu();
     }
@@ -304,7 +325,7 @@
       for (const s of [-1, 1]) { g.fillStyle = '#fff'; g.beginPath(); g.ellipse(x + s * r * 0.38, y - r * 0.2, r * 0.26, r * 0.32, 0, 0, 7); g.fill(); g.fillStyle = '#1a2cff'; g.beginPath(); g.arc(x + s * r * 0.38 + ox, y - r * 0.2 + oy, r * 0.13, 0, 7); g.fill(); }
     };
     if (gh.m === 'e') { eyes(); return; }
-    const fright = gh.m === 'f', flash = fright && snap.frightLeft < 2 && Math.floor(now / 160) % 2;
+    const fright = gh.m === 'f', flash = fright && snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2;
     g.fillStyle = fright ? (flash ? '#ffffff' : '#2a3cff') : color;
     g.beginPath(); g.arc(x, y - r * 0.1, r, Math.PI, 0); g.lineTo(x + r, y + r * 0.9);
     const n = 3, w = (2 * r) / n, ph = Math.floor(now / 140) % 2;
@@ -333,22 +354,37 @@
     snap.ghosts.forEach((gh, i) => { sm.ghosts[i] = approach(sm.ghosts[i], gh, dt); });
     sm.ghosts.forEach((gh, i) => { if (gh && snap.ghosts[i] && snap.ghosts[i].m !== 'r') drawGhost(gh, SEAT_COLORS[S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i)], u, now, snap.me === i); });
     if (sm.pac) drawPac(sm.pac, u, now, snap.me < 0);
-    // fog of war for ghost players
+    // Ghost players see a circular window around themselves, a minimap of the ghosts, and the pellet count.
     if (snap.me >= 0 && sm.ghosts[snap.me]) {
-      const f = fogCv.getContext('2d'), me = sm.ghosts[snap.me];
+      const f = fogCv.getContext('2d'), me = sm.ghosts[snap.me], col = SEAT_COLORS[you];
       f.globalCompositeOperation = 'source-over'; f.clearRect(0, 0, fogCv.width, fogCv.height);
-      f.fillStyle = 'rgba(2,3,12,0.94)'; f.fillRect(0, 0, fogCv.width, fogCv.height);
+      f.fillStyle = 'rgba(1,2,8,0.965)'; f.fillRect(0, 0, fogCv.width, fogCv.height);
       f.globalCompositeOperation = 'destination-out';
-      const R = CFG.ghostSight * u, gr = f.createRadialGradient(me.x * u, me.y * u, R * 0.55, me.x * u, me.y * u, R);
-      gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-      f.fillStyle = gr; f.beginPath(); f.arc(me.x * u, me.y * u, R, 0, 7); f.fill();
+      const R = CFG.ghostSight * u;
+      f.fillStyle = '#000'; f.beginPath(); f.arc(me.x * u, me.y * u, R, 0, 7); f.fill();
       g.drawImage(fogCv, 0, 0);
-      drawGhost(me, SEAT_COLORS[you], u, now, true);
+      g.strokeStyle = col; g.lineWidth = Math.max(3, u * 0.16); g.beginPath(); g.arc(me.x * u, me.y * u, R, 0, 7); g.stroke();
+      drawGhost(me, col, u, now, true);
+      drawMinimap(u);
     }
+  }
+  function drawMinimap(u) {
+    const w = 5.6 * u, h = 5.2 * u, x0 = W * u - w - 0.5 * u, y0 = H * u - h - 0.5 * u;
+    g.fillStyle = 'rgba(255,190,0,0.95)'; g.fillRect(x0 - 0.15 * u, y0 - 1.65 * u, w + 0.3 * u, h + 1.8 * u);
+    g.fillStyle = '#0a1a8a'; g.fillRect(x0, y0, w, h);
+    g.fillStyle = '#ffd400'; g.font = `bold ${Math.round(u * 1.0)}px ui-monospace, monospace`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(snap.left), x0 + w / 2, y0 - 0.82 * u);
+    snap.ghosts.forEach((gh, i) => {
+      if (!gh) return;
+      g.fillStyle = SEAT_COLORS[S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i)];
+      g.fillRect(x0 + (gh.x / W) * w - 0.28 * u, y0 + (gh.y / H) * h - 0.28 * u, 0.56 * u, 0.56 * u);
+    });
+    g.textAlign = 'start'; g.textBaseline = 'alphabetic';
   }
 
   // ------------------------------------------------------------------ boot
   $('name').value = store.get('pacvs.name') || '';
+  try { const o = JSON.parse(store.get('pacvs.solo') || 'null'); if (o) { $('soloRole').value = o.start; $('soloLevel').value = String(o.level); $('target').value = String(o.target); } } catch { /* defaults */ }
   const qr = new URLSearchParams(location.search).get('room');
   if (qr) { $('code').value = qr.toUpperCase().slice(0, 4); $('menuErr').textContent = 'Enter your name and press Join to enter room ' + $('code').value + '.'; }
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });

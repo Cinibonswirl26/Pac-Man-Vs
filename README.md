@@ -1,12 +1,13 @@
 # Pac-Man Vs. Online
 
-A browser game in the style of Pac-Man Vs.: one Pac-Man sees the whole maze, three ghosts
-see only what is near them. Play offline against CPUs, or host a room and play with
-friends over the internet. Any seat nobody takes (or anyone who drops) is played by the computer.
+A browser game that follows the rules of Pac-Man Vs.: one Pac-Man sees the whole maze, three ghosts
+see only what is near them, and whoever catches Pac-Man steals his points. Play alone against CPUs
+or host a room for friends over the internet. Empty or dropped seats are played by the computer.
 
 This is an original reimplementation. It contains no code or assets from the original game.
-If you own the game you can point the browser at your own disc image to use the original
-logo, Pac-Man sprites and music.
+If you own the game, point the browser at your own disc image to use the original maze, logo,
+Pac-Man sprites and music. [FIDELITY.md](FIDELITY.md) lists which rules were measured from the real
+game and which are still guesses.
 
 ## Run it
 
@@ -14,19 +15,32 @@ logo, Pac-Man sprites and music.
 cd pacvs
 npm install
 npm start            # http://localhost:8080  (PORT=3000 npm start to change)
-npm test
+npm test             # simulation, match flow, server (no disc needed)
+DISC=/path/to/Pac-Man_Vs.ciso npm run test:disc   # checks the disc reader (optional)
+npm run bench        # CPU skill benchmark
 ```
 
-Open the page, enter a name, then:
-- **Play offline** starts a match against three CPUs, no server connection needed.
-- **Host an online room** gives a 4-letter code and an invite link (`/?room=ABCD`).
-- Friends open the link (or the page and the code) and press Join. The host presses Start.
+## How a match works
 
-A match is four rounds. Each round a different player is Pac-Man, so everybody plays both roles.
-Score by eating pellets, power pellets and frightened ghosts (Pac-Man), or by catching Pac-Man (ghosts).
+1. Choose the points needed to win: 7,000, 10,000 or 15,000.
+2. A roulette picks the first Pac-Man. He starts with 1,600 points. Everyone else has 0.
+3. Pac-Man eats pellets (10 points) and power pellets (110 points). A power pellet frightens the ghosts for
+   10 seconds. They slow down and he can eat them for points.
+4. If a ghost catches Pac-Man the round ends. That ghost **steals 1,600 points** from Pac-Man and
+   **becomes Pac-Man** in the next round. The maze is reset each round.
+5. The first player to reach the target score wins.
 
-Controls: arrow keys or WASD, swipe on touch screens, on-screen arrows on phones, or a gamepad.
-`M` toggles music, `Esc` leaves the match.
+Ghost players only see a circle around themselves. A minimap shows where the other ghosts are, and a
+counter shows how many pellets are left. Pac-Man sees the whole maze.
+
+## Playing
+
+- **Single player**: choose whether you start as a ghost (against a CPU Pac-Man), as Pac-Man, or at random,
+  plus a CPU skill and the points to win.
+- **Online**: Host an online room gives a 4-letter code and an invite link (`/?room=ABCD`). Friends open the
+  link and press Join. The host presses Start.
+- Controls: arrow keys or WASD, swipe on touch screens, on-screen arrows on phones, or a gamepad.
+  `M` toggles music, `Esc` leaves the match.
 
 ## Playing with friends
 
@@ -42,22 +56,26 @@ Rooms live in memory and disappear when everyone leaves.
 
 ## Using your own disc image
 
-On the menu, pick the Pac-Man Vs. image (`.ciso`, `.iso` or `.gcm`, US release `PRJE01` tested).
+On the menu, pick the Pac-Man Vs. image (`.ciso`, `.iso` or `.gcm`; the US release `PRJE01` was used).
 The browser reads it locally and nothing is uploaded. It uses:
-- the logo and the Pac-Man chomp frames from `PAC_title.szs`
-- music streams from `AudioRes/Stream` (AFC ADPCM decoded in the browser)
+- the maze from the GBA program (`PROOT/gbademo/packman.bin`): exact walls, 172 pellets and 4 power pellets
+- the logo and Pac-Man animation from `PAC_title.szs`
+- music from `AudioRes/Stream` (AFC ADPCM decoded in the browser)
 
-The file is remembered in this browser's IndexedDB so you only pick it once. Do not commit game files to this repo.
+The file is remembered in this browser's IndexedDB so you only pick it once.
+When you host a room with the original maze selected, the host's browser sends the maze layout
+(a 21 x 21 grid of characters, no graphics) to the server so everyone in the room plays the same board.
+Do not commit game files to this repo.
 
 ## How it is built
 
 | Path | What |
 | --- | --- |
-| `shared/sim.js` | Maze, movement, ghost/Pac-Man rules, fog-of-war views, CPU players. Used by server and browser. |
-| `shared/match.js` | Countdown, four rounds, role rotation, scoring. Used by server and browser. |
-| `server/server.js` | HTTP static host plus WebSocket rooms. The server is authoritative (30 Hz) and sends each player only what they may see, so ghosts cannot cheat by reading Pac-Man's position. |
-| `client/` | UI, canvas renderer, input, sound, and `disc.js` (CISO/GCM reader, Yaz0, RARC, BTI textures, AST audio). |
-| `test/` | Simulation, fog, match flow, WebSocket end-to-end, and a disc reader check (`node test/disc.test.js <image>`). |
+| `shared/sim.js` | Maze, movement, rules, fog-of-war views, CPU players. Used by server and browser. |
+| `shared/match.js` | Roulette, rounds, point stealing, the target score. Used by server and browser. |
+| `server/server.js` | HTTP static host plus WebSocket rooms. The server is authoritative (30 Hz) and sends each player only what they may see, so ghosts cannot read Pac-Man's position. |
+| `client/` | UI, canvas renderer, input, sound, `disc.js` (CISO/GCM, Yaz0, RARC, BTI, AST audio) and `gbamap.js` (maze from the GBA program). |
+| `test/` | Simulation, match flow, WebSocket end-to-end, maze validation, disc reader checks, AI benchmark. |
+| `tools/` | How the rules were measured against the original (see FIDELITY.md). |
 
-Not implemented yet: the original 3D maps and characters (the original uses 3D models), the
-original's other maze layouts, and its item/exchange mini-features. The maze here is a single original layout.
+Not implemented: the other 12 stages, the 3D look, fruit, and the original's computer players.

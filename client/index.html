@@ -8,12 +8,13 @@
 <style>
   :root {
     --bg: #07080f; --panel: #12142a; --line: #2a2f6b; --ink: #f2f3ff; --dim: #8f94c7;
-    --pac: #ffd400; --red: #ff3b30; --pink: #ff8fd0; --cyan: #35e0ff; --orange: #ffa133; --good: #5dff9a;
+    --pac: #ffd400; --red: #ff2a2a; --pink: #ff5ccf; --cyan: #35c8ff; --green: #2bd94a; --good: #5dff9a;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; overscroll-behavior: none; }
   body { display: flex; flex-direction: column; align-items: center; padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom); }
   .hidden { display: none !important; }
+  select { font: inherit; color: var(--ink); background: #0b0d20; border: 2px solid var(--line); border-radius: 6px; padding: 10px 12px; min-height: 44px; width: 100%; margin-top: 4px; }
   h1 { font-size: clamp(22px, 5vw, 40px); margin: 0; letter-spacing: .04em; color: var(--pac); text-shadow: 3px 3px 0 #b03a00; }
   #logo { max-width: min(520px, 90vw); image-rendering: auto; }
   button, input { font: inherit; color: var(--ink); }
@@ -71,7 +72,17 @@
 
   <div class="card">
     <h2>Play</h2>
-    <button id="solo" class="primary">Play offline against CPUs</button>
+    <div class="row">
+      <label class="note" for="soloRole">You start as
+        <select id="soloRole"><option value="ghost" selected>A ghost, hunting a CPU Pac-Man</option><option value="pac">Pac-Man</option><option value="random">Random, like the original</option></select></label>
+      <label class="note" for="soloLevel">CPU skill
+        <select id="soloLevel"><option value="0">Easy</option><option value="1" selected>Normal</option><option value="2">Hard</option></select></label>
+      <label class="note" for="target">Points to win
+        <select id="target"><option value="7000" selected>7,000</option><option value="10000">10,000</option><option value="15000">15,000</option></select></label>
+    </div>
+    <label class="note" for="mazeSel">Maze
+      <select id="mazeSel"><option value="builtin">Built-in maze</option><option value="disc" disabled>Original stage 1 (from your disc)</option></select></label>
+    <button id="solo" class="primary">Start single player</button>
     <div class="row">
       <button id="host">Host an online room</button>
       <input id="code" type="text" maxlength="4" placeholder="Room code" style="text-transform:uppercase" aria-label="Room code">
@@ -111,6 +122,7 @@
 <script src="/shared/sim.js"></script>
 <script src="/shared/match.js"></script>
 <script src="/client/disc.js"></script>
+<script src="/client/gbamap.js"></script>
 <script src="/client/game.js"></script>
 </body>
 </html>

@@ -30,13 +30,13 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 2048 });
 const rooms = new Map();
 
 class Room {
-  constructor(code) {
-    this.code = code;
+  constructor(code, maze, target) {
+    this.code = code; this.maze = maze || null; this.target = target;
     this.slots = [null, null, null, null];      // ws or null (CPU)
     this.names = ['CPU', 'CPU', 'CPU', 'CPU'];
     this.host = -1;
     this.inputs = [null, null, null, null];
-    this.match = new Match(i => !!this.slots[i]);
+    this.match = new Match(i => !!this.slots[i], undefined, { maze: this.maze, target: this.target });
     this.timer = null;
   }
   humans() { return this.slots.filter(Boolean).length; }
@@ -58,8 +58,8 @@ class Room {
   send(i, obj) { const w = this.slots[i]; if (w && w.readyState === 1) w.send(JSON.stringify(obj)); }
   roomInfo(i) {
     const m = this.match;
-    return { t: 'room', code: this.code, you: i, host: this.host, phase: m.phase,
-      players: this.names.map((n, k) => ({ name: n, cpu: !this.slots[k] })), scores: m.scores, round: m.round };
+    return { t: 'room', code: this.code, maze: this.maze ? { rows: this.maze.rows, pac: this.maze.pac, ghosts: this.maze.ghosts, door: this.maze.door, exit: this.maze.exit, house: this.maze.house } : null, you: i, host: this.host, phase: m.phase,
+      players: this.names.map((n, k) => ({ name: n, cpu: !this.slots[k] })), scores: m.scores, round: m.round, target: m.target, pac: m.pac, winner: m.winner };
   }
   broadcastRoom() { for (let i = 0; i < 4; i++) this.send(i, this.roomInfo(i)); }
   start() {
@@ -81,6 +81,21 @@ function code() {
   const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   for (;;) { let c = ''; for (let i = 0; i < 4; i++) c += A[Math.floor(Math.random() * A.length)]; if (!rooms.has(c)) return c; }
 }
+/** A host may supply a maze read from their own disc. Validate shape and content before trusting it. */
+function sanitizeMaze(m) {
+  try {
+    if (!m || !Array.isArray(m.rows) || m.rows.length < 9 || m.rows.length > 41) return null;
+    const W = String(m.rows[0]).length;
+    if (W < 9 || W > 41 || m.rows.some(r => typeof r !== 'string' || r.length !== W || !/^[#=D._ o]+$/.test(r))) return null;
+    const H = m.rows.length, pt = a => Array.isArray(a) && a.length === 2 && Number.isInteger(a[0]) && Number.isInteger(a[1]) && a[0] >= 0 && a[0] < W && a[1] >= 0 && a[1] < H;
+    const h = m.house;
+    if (!pt(m.pac) || !pt(m.door) || !pt(m.exit) || !Array.isArray(m.ghosts) || m.ghosts.length !== 3 || !m.ghosts.every(pt)) return null;
+    if (!h || !['x0', 'x1', 'y0', 'y1'].every(k => Number.isInteger(h[k])) || h.x0 > h.x1 || h.y0 > h.y1 || !pt([h.x0, h.y0]) || !pt([h.x1, h.y1])) return null;
+    const open = a => !'#='.includes(m.rows[a[1]][a[0]]);
+    if (![m.pac, m.exit, ...m.ghosts].every(open) || m.rows[m.door[1]][m.door[0]] !== 'D') return null;
+    return Sim.makeMaze(m.rows.slice(), { name: 'custom', pac: m.pac, ghosts: m.ghosts, door: m.door, exit: m.exit, house: { x0: h.x0, x1: h.x1, y0: h.y0, y1: h.y1 } });
+  } catch { return null; }
+}
 const clean = s => String(s || 'Player').replace(/[^\w \-.]/g, '').slice(0, 12) || 'Player';
 
 wss.on('connection', ws => {
@@ -95,7 +110,7 @@ wss.on('connection', ws => {
     switch (m.t) {
       case 'create': {
         if (r) return;
-        const room = new Room(code()); rooms.set(room.code, room);
+        const room = new Room(code(), m.maze ? sanitizeMaze(m.maze) : null, Sim.CFG.targets.includes(m.target) ? m.target : Sim.CFG.defaultTarget); rooms.set(room.code, room);
         room.add(ws, clean(m.name)); room.broadcastRoom(); break;
       }
       case 'join': {
@@ -116,4 +131,4 @@ wss.on('connection', ws => {
 setInterval(() => wss.clients.forEach(w => { if (!w.isAlive) return w.terminate(); w.isAlive = false; w.ping(); }), 15000);
 
 if (require.main === module) server.listen(PORT, () => console.log(`Pac-Man Vs. server on http://localhost:${PORT}`));
-module.exports = { server, wss, rooms };
+module.exports = { server, wss, rooms, sanitizeMaze };

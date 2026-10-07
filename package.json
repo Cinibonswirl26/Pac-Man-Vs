@@ -2,6 +2,13 @@
   "name": "pacvs",
   "version": "0.1.0",
   "private": true,
-  "scripts": { "start": "node server/server.js", "test": "node test/sim.test.js && node test/match.test.js && node test/server.test.js" },
-  "dependencies": { "ws": "^8.18.0" }
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node test/sim.test.js && node test/match.test.js && node test/server.test.js && node test/mazeroom.test.js",
+    "test:disc": "node test/disc.test.js \"$DISC\" && node test/gbamap.test.js \"$DISC\"",
+    "bench": "node test/ai.bench.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
 }
