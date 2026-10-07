@@ -315,10 +315,11 @@
       gl.colorMask(true, true, true, true);
     }
     /** Darken or colour everything drawn so far: a blended full-viewport rectangle. */
-    function tint(color) {
+    function screenPoly(points, color) {   // points in the viewport's own -1..1 square
       const keep = frame.proj; frame.proj = mat4.ident();
-      poly([[-1, -1], [1, -1], [1, 1], [-1, 1]], color); frame.proj = keep;
+      poly(points, color); frame.proj = keep;
     }
+    function tint(color) { screenPoly([[-1, -1], [1, -1], [1, 1], [-1, 1]], color); }
     // Set a material's state and draw one batch of triangles.
     function submit(d, mv, nm, texFor, opts) {
       const mat = d.mat, p = d.prog, u = p.u;
@@ -350,7 +351,7 @@
       gl.depthMask(true);
     }
     return {
-      gl, texture, model, mat4, sprites, white, poly, ribbon, tint,
+      gl, texture, model, mat4, sprites, white, poly, ribbon, tint, screenPoly,
       /** Set camera and light for the following draws. light.dir points from surfaces towards the light, in world
        * space; light.dirA, if given, is used for the alpha lighting channels instead. */
       begin(view, proj, light) {

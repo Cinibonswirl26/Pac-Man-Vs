@@ -292,15 +292,47 @@
     screen('game'); lastPhase = null; lastCount = -1; sm.pac = null; sm.ghosts = [null, null, null];
     if (!raf) raf = requestAnimationFrame(frame);
   }
+  // Effects on the shared screen: points floating over whoever scored, stars when the fruit goes, the catch impact.
+  const fx = { pops: [], sparkle: -1, burst: null }, FX_POP = 1.3, FX_BURST = 1.1, FX_SPARK = 0.8;
+  let fxPrev = null;
+  function fxDetect(cur) {
+    const prev = fxPrev; fxPrev = cur;
+    const now = performance.now();
+    if (!prev || (cur.phase === 'countdown' && prev.phase !== 'countdown')) { fx.pops.length = 0; fx.sparkle = -1; fx.burst = null; return; }
+    const near = (a, b, d) => a && b && Math.hypot(a.x - b.x, a.y - b.y) < d;
+    if (prev.fruitUp && !cur.fruitUp && cur.phase === 'play') {
+      fx.sparkle = now;
+      const f = prev.fruit, gi = f ? cur.ghosts.findIndex(g => g.m !== 'e' && near(g, f, 1.2)) : -1;
+      if (gi >= 0) fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(CFG.fruitPts), t0: now });
+      else if (f && near(cur.pac, f, 1.2)) fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.fruitPts), t0: now });
+    }
+    cur.ghosts.forEach((g, i) => {
+      const p = prev.ghosts[i];
+      if (p && p.m === 'f' && g.m === 'e') fx.pops.push({ x: g.x, y: g.y, text: String(Math.max(0, cur.scores[cur.pacPlayer] - prev.scores[cur.pacPlayer])), t0: now });
+    });
+    if (prev.phase === 'play' && cur.phase === 'roundover' && cur.why === 'caught') {
+      const p = cur.pac || prev.pac;
+      if (p) { fx.burst = { x: p.x, y: p.y, t0: now }; fx.pops.push({ x: p.x, y: p.y, text: String(cur.steal), t0: now }); }
+    }
+  }
+  function fxViews(now) {
+    fx.pops = fx.pops.filter(p => now - p.t0 < FX_POP * 1000);
+    return {
+      pops: fx.pops.map(p => ({ x: p.x, y: p.y, text: p.text, age: (now - p.t0) / 1000, life: FX_POP })),
+      burst: fx.burst && now - fx.burst.t0 < FX_BURST * 1000 ? { x: fx.burst.x, y: fx.burst.y, age: (now - fx.burst.t0) / 1000 } : null
+    };
+  }
+  const isCaught = () => snap && snap.phase === 'roundover' && snap.why === 'caught';
   let hudKey = '', phaseT0 = 0, exchangeT0 = 0;
   // Screens drawn from the disc between rounds: the exchange after a catch (through the hand-over) and the final results.
   const discScreen = () => (snap && (((snap.phase === 'roundover' || snap.phase === 'handoff') && snap.why === 'caught') || snap.phase === 'final') && art.screens) ? sharedScreen() : null;
   function onSnap(force) {
     if (!snap) return;
+    fxDetect(snap);
     if (snap.phase !== lastPhase || force) {
       if (snap.phase !== lastPhase) {
         phaseT0 = performance.now();
-        if (snap.phase === 'roundover') exchangeT0 = phaseT0;
+        if (snap.phase === 'roundover') exchangeT0 = phaseT0 + (snap.why === 'caught' ? PacMatch.CAUGHT * 1000 : 0);
         if (snap.phase === 'handoff' && snap.next === you) { tone(660, 0.1, 'square', 0.12); setTimeout(() => tone(990, 0.18, 'square', 0.12), 110); }
       }
       if (snap.phase === 'countdown' && snap.phase !== lastPhase) lastDir = -1;
@@ -464,7 +496,7 @@
     const between = discScreen(), scr = between || (snap.me >= 0 ? sharedScreen() : null);
     cv.style.display = scr ? 'none' : '';
     if (screenView) screenView.canvas.style.display = scr ? '' : 'none';
-    if (between) { drawBetween(between, now); return; }
+    if (between) { drawBetween(between, now, dt); return; }
     if (scr) { drawShared(scr, now, dt); return; }
     layout(); const u = cell * dpr;
     g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(mazeCv, 0, 0);
@@ -509,21 +541,22 @@
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
     try {
-      img = v3.render({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, size: 2 * R, me, zoom: R / u3() / CFG.ghostSight, ghosts, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000 });
+      img = v3.render({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, size: 2 * R, me, zoom: R / u3() / CFG.ghostSight, ghosts, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000, burst: fxViews(now).burst });
     } catch (e) { console.warn('3D view', e); view3 = false; return; }
     g.save(); g.beginPath(); g.arc(me.x * u3(), me.y * u3(), R, 0, 7); g.clip();
     g.drawImage(img, me.x * u3() - R, me.y * u3() - R, 2 * R, 2 * R);
     g.restore();
   }
   const u3 = () => cell * dpr;
-  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng) });
+  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), hit: isCaught() });
   function fitScreen(scr) {
     const st = $('stage'), cw = Math.max(200, Math.min(st.clientWidth, st.clientHeight * 4 / 3));
     scr.canvas.style.width = cw + 'px'; scr.canvas.style.height = cw * 3 / 4 + 'px';
     return cw * Math.min(2, window.devicePixelRatio || 1);
   }
-  function drawBetween(scr, now) {
+  function drawBetween(scr, now, dt) {
     const w = fitScreen(scr), t = (now - phaseT0) / 1000;
+    if (isCaught() && t < PacMatch.CAUGHT) { drawShared(scr, now, dt, { t, total: PacMatch.CAUGHT, seat: snap.catcher }); return; }
     try {
       if (snap.phase === 'final') {
         const order = [0, 1, 2, 3].sort((a, b) => snap.scores[b] - snap.scores[a]);
@@ -536,7 +569,7 @@
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; }
   }
   // The shared screen: every ghost's circle (ghosts ordered by player number), panels, radar and counters.
-  function drawShared(scr, now, dt) {
+  function drawShared(scr, now, dt, caught) {
     const cw = fitScreen(scr);
     const pacs = { pacPlayer: snap.pacPlayer };
     const ghosts = [];
@@ -549,9 +582,10 @@
     ghosts.sort((a, b) => a.seat - b.seat);
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
-    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash }));
+    const efx = fxViews(now);
+    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst }));
     try {
-      scr.render({ time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
+      scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }
   }
   function drawMinimap(u) {

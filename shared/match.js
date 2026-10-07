@@ -12,6 +12,7 @@
 })(typeof self !== 'undefined' ? self : this, function (Sim) {
   'use strict';
   const COUNTDOWN = 3.5, ROUND_END = 5, HANDOFF = 15;
+  const CAUGHT = 7;       // after a catch: the impact, the amber message, then the exchange screen (measured, see FIDELITY.md)
 
   class Match {
     /** isHuman(i) -> true when seat i is controlled by a person; otherwise a CPU plays it.
@@ -60,7 +61,7 @@
           inp.ghosts.push(this.isHuman(p) ? inputs[p] : this.Sim.cpuGhost(s, gi, this.rng, this.level));
         }
         this.Sim.update(s, inp, dt);
-        if (s.over) { this.phase = 'roundover'; this.phaseLeft = ROUND_END; }
+        if (s.over) { this.phase = 'roundover'; this.phaseLeft = ROUND_END + (s.overReason === 'caught' ? CAUGHT : 0); }
       } else if (this.phase === 'roundover') {
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) {
@@ -94,5 +95,5 @@
       return v;
     }
   }
-  return { Match, COUNTDOWN, ROUND_END, HANDOFF };
+  return { Match, COUNTDOWN, ROUND_END, HANDOFF, CAUGHT };
 });

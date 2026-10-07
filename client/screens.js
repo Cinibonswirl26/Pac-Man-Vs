@@ -20,6 +20,7 @@
     const btk = [...arcs.PAC_game].find(([k]) => /\.btk$/i.test(k));
     return {
       game: J2D.parseBLO(arcs.PAC_game.get('scrn/pac_game.blo')),
+      mes: J2D.parseBLO(arcs.PAC_game.get('scrn/pac_game_mes.blo')),
       exchange: J2D.parseBLO(arcs.PAC_exchange.get('scrn/pac_exchange_time.blo')),
       results: J2D.parseBLO(arcs.PAC_results.get('scrn/pac_results.blo')),
       font: J2D.parseBFN(arcs.PAC_game.get('font/lowdy.bfn')),
@@ -125,11 +126,10 @@
       if (p.kind === 'picture') drawPicture(mats, p, b, st);
       else if (p.kind === 'window') drawWindow(mats, p, b);
       else if (p.kind === 'text') { const s = st.text && st.text[p.name]; if (s !== undefined) drawText(mats[p.material], s, b, p); }
-      // a centred pane inside a window sits relative to the window's middle, not its corner (the fruit icon)
-      for (const c of p.children) {
-        const mid = p.kind === 'window' && c.anchor === 4;
-        walk(mats, c, b.x + (mid ? b.w / 2 : 0), b.y + (mid ? b.h / 2 : 0), st);
-      }
+      // children sit relative to their parent's anchor point; for the small null panes that is the same place
+      // as the corner within a pixel or two, so only parents big enough to matter (the fruit window, the message backdrop) move it
+      const big = p.anchor !== 0 && Math.max(b.w, b.h) > 16, ox2 = b.x + (big ? (p.anchor % 3) * b.w / 2 : 0), oy2 = b.y + (big ? Math.floor(p.anchor / 3) * b.h / 2 : 0);
+      for (const c of p.children) walk(mats, c, ox2, oy2, st);
     }
     const drawLayout = (L, st) => walk(L.materials, L.root, 0, 0, st);
     // Free-standing picture centred at (x, y) in screen pixels.
@@ -175,10 +175,18 @@
         const k2 = canvas.width / TVW, size = Math.round(2 * R_RING * k2);
         gl.viewport(Math.round((s.x - R_RING) * k2), Math.round(canvas.height - (s.y + R_RING) * k2), size, size);
         gl.clearColor(0, 0, 0, 1);
-        scene.draw(Object.assign({ aspect: 1, time }, v));
+        const info = scene.draw(Object.assign({ aspect: 1, time }, v));
         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.disable(gl.STENCIL_TEST);
         R.begin(M.ident(), M.screen(TVW, TVH));
+        // points floating up from where they were scored, like the originals' grey numbers
+        if (info && v.pops) for (const p of v.pops) {
+          const k = Math.min(1, p.age / p.life), [nx, ny] = info.project(p.x, p.y, 650 + 700 * k);
+          const px = s.x + nx * R_RING, py = s.y - ny * R_RING;
+          if (Math.hypot(px - s.x, py - s.y) > R_VIEW - 14) continue;
+          const a = k < 0.7 ? 0.8 : 0.8 * (1 - k) / 0.3;
+          say(p.text, px, py, 22, [0.86, 0.86, 0.92, a]);
+        }
       }
       // the ring and badge from maruwaku_05, tinted with the player's colour; mirrored or turned per slot
       const ring = texture('maruwaku_05.bti'), rot = slot === 2 ? Math.PI / 4 : 0, flip = slot === 1;
@@ -204,6 +212,32 @@
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
       R.begin(M.ident(), M.screen(TVW, TVH));
+    }
+    // White stars thrown out of the fruit window when the fruit goes (taken or expired), over the whole picture.
+    function sparkles(t) {
+      const life = 0.8; if (t < 0 || t > life) return;
+      const fw = scr.byName.furit_wk; if (!fw) return;
+      const b = box(fw, 0, 0), cx = tvx(b.x + b.w / 2), cy = tvy(b.y + b.h / 2), k = t / life;
+      for (let i = 0; i < 30; i++) {
+        const ang = i * 2.39996 + 0.4, sp = 90 + ((i * 53) % 100) * 3.1, r = 20 + sp * t * (1 - 0.3 * k);
+        const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r;
+        if (x < -10 || x > TVW + 10 || y < -10 || y > TVH + 10) continue;
+        const sz = (4 + (i % 4) * 2.2) * (1 - 0.6 * k), q = sz * 0.28, a = Math.max(0, 1 - k * k);
+        const col = i % 3 ? [1, 1, 1, a] : [0.75, 0.9, 1, a];
+        R.poly([[x, y], [x, y - sz], [x + q, y - q], [x + sz, y], [x + q, y + q], [x, y + sz], [x - q, y + q], [x - sz, y], [x - q, y - q], [x, y - sz]], col);
+      }
+    }
+    // After a catch the picture goes amber and a message names the catcher, before the exchange screen.
+    const FULL = [[0, 0], [TVW, 0], [TVW, TVH], [0, TVH]];
+    function caught(c) {
+      const clamp = x => Math.max(0, Math.min(1, x));
+      const dim = clamp((c.t - 1.4) / 1.0), out = clamp((c.t - (c.total - 0.9)) / 0.9);
+      if (dim > 0) R.poly(FULL, [0.5, 0.28, 0, 0.62 * dim]);
+      if (c.t > 2.2) {
+        const hide = new Set(['CT_null', 'UR_null', 'UL_null', 'PUS_NL', 'GMS_NULL', 'Cng_NULL']);
+        drawLayout(assets.mes, { hide, text: { MESSAGE: 'EXCELLENT' }, textures: { Ic_MON: ICONS[c.seat], pn_1: 'p' + (c.seat + 1) + '.bti' } });
+      }
+      if (out > 0) R.poly(FULL, [0, 0, 0, out]);
     }
     /** The game screen. st: {time, target, left, scores, pacPlayer, fruitUp, ghosts: [{seat, x, y, ...}], views: [per ghost]} */
     function render(st, width) {
@@ -233,6 +267,8 @@
         }
       }
       st.ghosts.slice(0, 3).forEach((g, slot) => ghostCircle(slot, g.seat, st.views[slot], st.time));
+      if (st.sparkle !== undefined) sparkles(st.sparkle);
+      if (st.caught) caught(st.caught);
       return canvas;
     }
     // The exchange screen after a catch (composed by the game from PAC_exchange's pictures).

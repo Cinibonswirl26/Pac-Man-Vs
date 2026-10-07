@@ -9,6 +9,7 @@
   const CAM = { pitch: 38 * Math.PI / 180, dist: 16000, fov: 20.3 * Math.PI / 180 };
   const SKINS = ['r', 'b', 'p', 'g'];          // ghost_r/b/p/g = P1 red, P2 blue, P3 pink, P4 green
   const YAW = [Math.PI, Math.PI / 2, 0, -Math.PI / 2];   // facing for up, right, down, left (models face +z)
+  const BURST_TIME = 1.1;                       // the catch impact lasts about this long
   const FPS = 60;                               // J3D animations advance once per frame at 60 Hz
 
   async function load(disc) {
@@ -122,7 +123,12 @@
         R.ribbon(pts, 780, v.trailColor);
       }
       if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), fl, wz(v.fruit.y), 0, 0.75));
-      if (v.pac) R.draw(pac, m4.trs(wx(v.pac.x), fl + 380, wz(v.pac.y), v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0, 1));
+      if (v.pac) {
+        const yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0;
+        let pm = m4.trs(wx(v.pac.x), fl + (v.pac.hit ? 250 : 380), wz(v.pac.y), yaw, 1);
+        if (v.pac.hit) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
+        R.draw(pac, pm);
+      }
       // Ghosts last: their bodies are blended.
       const blink = J3D.animatePattern(assets.ghostBlink, f).e || 0;
       for (const g of v.ghosts) {
@@ -138,6 +144,22 @@
         }
         R.draw(ghost, m4.trs(wx(g.x), fl + 150, wz(g.y), g.yaw, scale), opts);
       }
+      // where a point on the floor lands in the view: -1..1 across and up the square
+      const vp = m4.mul(proj, view);
+      const project = (x, y, h) => {
+        const X = wx(x), Y = fl + (h || 0), Z = wz(y);
+        const cx = vp[0] * X + vp[4] * Y + vp[8] * Z + vp[12], cy = vp[1] * X + vp[5] * Y + vp[9] * Z + vp[13], cw = vp[3] * X + vp[7] * Y + vp[11] * Z + vp[15];
+        return [cx / cw, cy / cw];
+      };
+      // the impact when Pac-Man is caught: yellow rays thrown out round him, in the picture's own plane
+      if (v.burst && v.burst.age < BURST_TIME) {
+        const [cx, cy] = project(v.burst.x, v.burst.y, 450), k = v.burst.age / BURST_TIME, a = 1 - k * k;
+        for (let i = 0; i < 9; i++) {
+          const ang = i / 9 * 2 * Math.PI + 0.35, ca = Math.cos(ang), sa = Math.sin(ang), r0 = 0.2 + 0.2 * k + (i % 2) * 0.05, r1 = r0 + 0.2 - 0.1 * k, w = 0.026;
+          R.screenPoly([[cx + ca * r0 - sa * w, cy + sa * r0 + ca * w], [cx + ca * r1 - sa * w / 2, cy + sa * r1 + ca * w / 2], [cx + ca * r1 + sa * w / 2, cy + sa * r1 - ca * w / 2], [cx + ca * r0 + sa * w, cy + sa * r0 - ca * w]], [1, 0.72, 0.1, a]);
+        }
+      }
+      return { project };
     }
     return { draw };
   }
