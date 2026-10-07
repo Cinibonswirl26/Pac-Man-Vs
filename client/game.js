@@ -196,6 +196,16 @@
     catch { $('lobbyNote').textContent = 'Copy this link: ' + link; }
   };
   $('disc').onchange = e => { const f = e.target.files[0]; if (f) { audio(); loadDisc(f, true); } };
+  // A button for the file dialog, and drag-and-drop anywhere on the menu as a fallback for frames that block the dialog.
+  $('pick').onclick = () => { try { $('disc').click(); } catch (e) { $('discStatus').className = 'note err'; $('discStatus').textContent = 'The file dialog is blocked here. Drag the disc image onto this page instead.'; } };
+  const hasFile = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+  addEventListener('dragover', e => { if (hasFile(e)) { e.preventDefault(); $('drop').classList.add('over'); } });
+  addEventListener('dragleave', e => { if (!e.relatedTarget) $('drop').classList.remove('over'); });
+  addEventListener('drop', e => {
+    if (!hasFile(e)) return;
+    e.preventDefault(); $('drop').classList.remove('over');
+    const f = e.dataTransfer.files[0]; if (f) { audio(); loadDisc(f, true); }
+  });
 
   // ------------------------------------------------------------------ offline play
   let soloOpts = { start: 'ghost', level: 1, target: 7000, maze: null };
