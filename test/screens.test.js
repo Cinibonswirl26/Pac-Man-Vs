@@ -8,7 +8,7 @@ const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.open
   const arc = async n => Disc.rarc(Disc.yaz0(await d.read('PROOT/Screen/' + n + '.szs')));
   const game = await arc('PAC_game'), ex = await arc('PAC_exchange'), res = await arc('PAC_results');
 
-  // The game screen: 608 x 448, every pane the TV screen uses, materials pointing at real textures.
+  // The game screen: 608 x 448, every pane the shared screen uses, materials pointing at real textures.
   const g = J2D.parseBLO(game.get('scrn/pac_game.blo'));
   ok(g.w === 608 && g.h === 448, 'game screen size');
   for (const n of ['PICT_020', 'NULL_Sco', 'Score1', 'DOT_NUM1', 'WIND_001', 'Rdr', 'Rdr_waku', 'furit_wk', 'P1_waku', 'P2_mon', 'P3_num', 'P4_waku']) ok(g.byName[n], 'game screen lacks pane ' + n);

@@ -1,4 +1,4 @@
-/* Reader for the GameCube J2D screen formats on the player's disc: BLO2 screen layouts (panes,
+/* Reader for the J2D screen formats on the player's disc: BLO2 screen layouts (panes,
  * pictures, windows, text boxes and their materials) and BFN bitmap fonts.
  * Materials come out in the same shape as J3D materials so gx.js can draw them.
  * UMD: window.J2D in the browser, module.exports in Node. */

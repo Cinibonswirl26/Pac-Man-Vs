@@ -1,13 +1,13 @@
-/* The ghosts' TV screen, as in the original: the layout `pac_game.blo` from the player's disc (scrolling
+/* The ghosts' shared screen, as in the original: the layout `pac_game.blo` from the player's disc (scrolling
  * background, target score, pellet counter, player panels, radar, fruit window), drawn with the disc's
  * textures, materials and font, plus one 3D circle per ghost. Browser only (WebGL). */
 (function (root) {
   'use strict';
-  const TVW = 640, TVH = 480;                          // the console's picture
+  const TVW = 640, TVH = 480;                          // the original's picture
   // How the 608 x 448 layout lands on the 640 x 480 picture: scaled by 640/608 both ways and 2 px down
-  // (fitted against the TV picture over the panels, counter, radar and score).
+  // (fitted against the original's picture over the panels, counter, radar and score).
   const MAP = { sx: TVW / 608, sy: TVW / 608, ox: 0, oy: 2 };
-  // Ghost circles measured on the TV picture: first two ghosts (by player number) on top, the third below.
+  // Ghost circles measured on the original's picture: first two ghosts (by player number) on top, the third below.
   const SLOTS = [{ x: 145, y: 146 }, { x: 495, y: 146 }, { x: 319, y: 330 }];
   const R_RING = 126, R_VIEW = 121;
 
@@ -128,14 +128,14 @@
       for (const c of p.children) walk(mats, c, b.x, b.y, st);
     }
     const drawLayout = (L, st) => walk(L.materials, L.root, 0, 0, st);
-    // Free-standing picture centred at (x, y) in TV pixels.
+    // Free-standing picture centred at (x, y) in screen pixels.
     function sprite(mat, name, x, y, w, h, col, flipX) {
       const t = texture(name), c = col || [1, 1, 1, 1], u0 = flipX ? 1 : 0, u1 = flipX ? 0 : 1;
       R.quad(mat, i => (i === 0 ? t : null), [
         { x: x - w / 2, y: y - h / 2, u: u0, v: 0, c }, { x: x + w / 2, y: y - h / 2, u: u1, v: 0, c },
         { x: x + w / 2, y: y + h / 2, u: u1, v: 1, c }, { x: x - w / 2, y: y + h / 2, u: u0, v: 1, c }]);
     }
-    // Text in TV pixels, centred on (x, y).
+    // Text in screen pixels, centred on (x, y).
     const say = (str, x, y, size, col, hBind) => drawText(scoreMat, str, { x: (x - MAP.ox) / MAP.sx - 100, y: (y - MAP.oy) / MAP.sy - size / 2, w: 200, h: size }, { fontW: size, fontH: size, hBind: hBind || 0, charSpace: -1, charColor: col || [1, 1, 1, 1] });
 
     // ---- the ghost circles
@@ -145,7 +145,7 @@
       color: { a: 10, b: 15, c: 8, d: 15, op: 0, bias: 0, scale: 0, clamp: 1, reg: 0 }, alpha: MODULATE.stages[0].op.alpha } })] });
     function ghostCircle(slot, seat, v, time) {
       const s = SLOTS[slot], c = seatColor[seat];
-      // frame colours measured on the TV picture: 63% of the player's colour, the ring a touch brighter
+      // frame colours measured on the original's picture: 63% of the player's colour, the ring a touch brighter
       const dark = [c[0] * 0.63, c[1] * 0.63, c[2] * 0.63, 1];
       const ringCol = [c[0] * 0.66, c[1] * 0.66, c[2] * 0.66, 1];
       // the coloured tab that carries the player badge
@@ -232,7 +232,7 @@
       return canvas;
     }
     // The exchange screen after a catch (composed by the game from PAC_exchange's pictures).
-    // Measured on the TV picture: four circles 140 px across, 152 px apart, LOSER / WINNER above them,
+    // Measured on the original's picture: four circles 140 px across, 152 px apart, LOSER / WINNER above them,
     // the score bars below and the points taken or won under those.
     const MON = ['mon_red.bti', 'mon_blue.bti', 'mon_pink.bti', 'mon_green.bti'];
     const EXCH = [[1, 0.12, 0, 1], [0, 0.69, 0.85, 1], [1, 0.33, 1, 1], [0, 0.9, 0, 1]];
@@ -275,5 +275,5 @@
     return { render, exchange, results, canvas, seatColor };
   }
 
-  root.TV = { load, create, TVW, TVH, MAP };
+  root.Screens = { load, create, TVW, TVH, MAP };
 })(typeof self !== 'undefined' ? self : this);

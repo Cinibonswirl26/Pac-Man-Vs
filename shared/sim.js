@@ -218,7 +218,7 @@
     }
   }
 
-  // What a given player is allowed to see. Pac-Man sees all. The ghost players share one TV in the
+  // What a given player is allowed to see. Pac-Man sees all. The ghost players share one screen in the
   // original, with a circle of sight around each ghost, so a ghost player sees what any ghost sees.
   const sightOf = g => CFG.ghostSight * (g.sightLeft > 0 ? CFG.fruitSightMult : 1);
   function view(s, player) {

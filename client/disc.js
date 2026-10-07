@@ -1,4 +1,4 @@
-/* Reads assets out of a disc image the player supplies (.ciso / .iso / .gcm).
+/* Reads assets out of a disc image the player supplies (.iso or compressed .ciso).
  * Nothing from the disc is stored on the server or in the repository: the browser
  * opens the file the user picks and decodes what it needs in memory.
  * UMD: window.Disc in the browser, module.exports in Node. */
@@ -43,7 +43,7 @@
     const c = await openContainer(blob);
     const boot = await c.read(0, 0x440);
     const id = String.fromCharCode(...boot.slice(0, 6));
-    if (!/^[A-Z0-9]{6}$/.test(id)) throw new Error('This does not look like a GameCube disc image.');
+    if (!/^[A-Z0-9]{6}$/.test(id)) throw new Error('This does not look like a Pac-Man Vs. disc image.');
     const fstOff = u32(boot, 0x424), fstSize = u32(boot, 0x428);
     const fst = await c.read(fstOff, fstSize);
     const count = u32(fst, 8), names = count * 12;
@@ -116,7 +116,7 @@
     let p = o + dataOff;
     const tiles = (bw, bh, fn) => { for (let ty = 0; ty < h; ty += bh) for (let tx = 0; tx < w; tx += bw) fn(tx, ty); };
     switch (fmt) {
-      // Intensity formats: the GameCube copies the intensity into all four channels, alpha included.
+      // Intensity formats: the intensity is copied into all four channels, alpha included.
       case 0: tiles(8, 8, (tx, ty) => { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x += 2) { const v = b[p++], i = c4(v >> 4), j = c4(v & 15); put(tx + x, ty + y, i, i, i, i); put(tx + x + 1, ty + y, j, j, j, j); } }); break;
       case 1: tiles(8, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) { const v = b[p++]; put(tx + x, ty + y, v, v, v, v); } }); break;
       case 2: tiles(8, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) { const v = b[p++], i = c4(v & 15); put(tx + x, ty + y, i, i, i, c4(v >> 4)); } }); break;

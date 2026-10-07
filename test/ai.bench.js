@@ -20,9 +20,9 @@ function run(Sim, pl, gl, seeds) {
 (async () => {
   const N = +process.argv[2] || 24; let Sim = S, name = 'built-in maze';
   if (process.argv[3] && process.argv[3] !== 'builtin') {
-    const fs = require('fs'), Disc = require('../client/disc.js'), Gbamap = require('../client/gbamap.js'); const file = process.argv[3];
+    const fs = require('fs'), Disc = require('../client/disc.js'), MazeData = require('../client/mazedata.js'); const file = process.argv[3];
     const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.openSync(file, 'r'); const buf = Buffer.alloc(b - a); fs.readSync(fd, buf, 0, b - a, a); fs.closeSync(fd); return buf.buffer.slice(buf.byteOffset, buf.byteOffset + (b - a)); } }) };
-    const d = await Disc.open(blob); Sim = S.create(Gbamap.stage1(await d.read('PROOT/gbademo/packman.bin'), S.makeMaze)); name = 'original stage 1';
+    const d = await Disc.open(blob); Sim = S.create(MazeData.stage1(await d.read(MazeData.PATH), S.makeMaze)); name = 'original stage 1';
   }
   console.log(`maze: ${name}, ${N} rounds per row. Pac-Man scores 10 per pellet; ghosts are exactly as fast as Pac-Man.`);
   console.log('pac  ghost | cleared caught | pellets%  surviveSec  ghostsEaten');

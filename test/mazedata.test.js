@@ -1,10 +1,10 @@
-// node test/gbamap.test.js <disc image>: the original stage 1 maze read from the disc's GBA program.
-const fs = require('fs'), Disc = require('../client/disc.js'), Gbamap = require('../client/gbamap.js'), Sim = require('../shared/sim.js');
-const file = process.argv[2]; if (!file) { console.log('usage: node test/gbamap.test.js <image>'); process.exit(2); }
+// node test/mazedata.test.js <disc image>: the original stage 1 maze read from the disc's maze data.
+const fs = require('fs'), Disc = require('../client/disc.js'), MazeData = require('../client/mazedata.js'), Sim = require('../shared/sim.js');
+const file = process.argv[2]; if (!file) { console.log('usage: node test/mazedata.test.js <image>'); process.exit(2); }
 const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.openSync(file, 'r'); const buf = Buffer.alloc(b - a); fs.readSync(fd, buf, 0, b - a, a); fs.closeSync(fd); return buf.buffer.slice(buf.byteOffset, buf.byteOffset + (b - a)); } }) };
 (async () => {
   const d = await Disc.open(blob);
-  const maze = Gbamap.stage1(await d.read('PROOT/gbademo/packman.bin'), Sim.makeMaze);
+  const maze = MazeData.stage1(await d.read(MazeData.PATH), Sim.makeMaze);
   console.log(maze.rows.join('\n'));
   let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } };
   const all = maze.rows.join('');

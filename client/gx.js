@@ -1,7 +1,7 @@
 /* WebGL renderer for J3D models read from the player's disc.
- * Each J3D material describes the GameCube's fixed-function pipeline (lighting channels, texture
+ * Each J3D material describes a fixed-function pipeline (lighting channels, texture
  * coordinate generators, TEV combiner stages, alpha test, blending). This file turns each material
- * into an equivalent GLSL shader so models look as they do on the console.
+ * into an equivalent GLSL shader so models look as they do in the original.
  * UMD: window.GX in the browser, module.exports in Node (shader generation only). */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();

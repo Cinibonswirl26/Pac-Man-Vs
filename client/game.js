@@ -70,8 +70,8 @@
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
 
   // ------------------------------------------------------------------ disc assets
-  const art = { pac: [], logo: null, press: null, maze: null, three: null, tv: null };
-  let view3 = null, tvView = null, onDiscMaze = false;
+  const art = { pac: [], logo: null, press: null, maze: null, three: null, screens: null };
+  let view3 = null, screenView = null, onDiscMaze = false;
   /** Switch the board to another maze (or back to the built-in one). */
   function setMaze(m) {
     const next = m ? PacSim.create(m) : PacSim;
@@ -85,16 +85,16 @@
     if (!view3) { try { view3 = View3D.create(art.three) || false; } catch (e) { console.warn('3D view', e); view3 = false; } }
     return view3 || null;
   }
-  /** The original TV screen for ghost players (layout, panels and the three 3D circles). */
-  function tvScreen() {
-    if (!onDiscMaze || !art.three || !art.tv || tvView === false) return null;
-    if (!tvView) {
+  /** The original shared screen for ghost players (layout, panels and the three 3D circles). */
+  function sharedScreen() {
+    if (!onDiscMaze || !art.three || !art.screens || screenView === false) return null;
+    if (!screenView) {
       try {
-        tvView = TV.create(art.tv, art.three) || false;
-        if (tvView) { tvView.canvas.className = 'tv'; $('stage').insertBefore(tvView.canvas, $('banner')); }
-      } catch (e) { console.warn('TV screen', e); tvView = false; }
+        screenView = Screens.create(art.screens, art.three) || false;
+        if (screenView) { screenView.canvas.className = 'shared'; $('stage').insertBefore(screenView.canvas, $('banner')); }
+      } catch (e) { console.warn('shared screen', e); screenView = false; }
     }
-    return tvView || null;
+    return screenView || null;
   }
   const mazeOf = () => ($('mazeSel').value === 'disc' && art.maze) ? art.maze : null;
   function toCanvas(t) { const c = document.createElement('canvas'); c.width = t.w; c.height = t.h; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h), 0, 0); return c; }
@@ -110,13 +110,13 @@
       art.logo = tex('pactitle_06.bti'); art.press = tex('press_start.bti');
       if (art.logo) { $('logo').src = art.logo.toDataURL(); $('logo').classList.remove('hidden'); $('title').classList.add('hidden'); }
       music.disc = d; music.bufs.clear();
-      try {   // the original stage 1 maze, read from the GBA program on the disc
-        art.maze = Gbamap.stage1(await d.read('PROOT/gbademo/packman.bin'), PacSim.makeMaze);
+      try {   // the original stage 1 maze, read from the disc's maze data
+        art.maze = MazeData.stage1(await d.read(MazeData.PATH), PacSim.makeMaze);
         $('mazeSel').querySelector('[value=disc]').disabled = false; $('mazeSel').value = store.get('pacvs.maze') === 'builtin' ? 'builtin' : 'disc';
       } catch (e) { console.warn('maze', e); art.maze = null; }
       try { art.three = await View3D.load(d); view3 = null; } catch (e) { console.warn('3D models', e); art.three = null; }
-      try { art.tv = await TV.load(d); } catch (e) { console.warn('TV screen', e); art.tv = null; }
-      if (tvView) { tvView.canvas.remove(); tvView = null; }
+      try { art.screens = await Screens.load(d); } catch (e) { console.warn('shared screen', e); art.screens = null; }
+      if (screenView) { screenView.canvas.remove(); screenView = null; }
       st.className = 'note ok'; st.textContent = `Loaded ${d.title} (${d.id}). Original logo, sprites, music${art.three ? ', 3D ghost view' : ''} are on.`;
       if (remember) { try { await idbSet('disc', blob); } catch { /* storage unavailable */ } }
       if (!mode) playMusic('Pac_Op_loop73_LR', true);
@@ -211,7 +211,7 @@
     if (mode === 'online') send({ t: 'in', d }); else if (offline) offline.inputs[0] = d;
     lastDir = d;
   }
-  // Hand-over: after a catch the new Pac-Man says when they are ready (on the console: take the GBA, press START).
+  // Hand-over: after a catch the new Pac-Man says when they are ready (the original's exchange screen asks them to press Start).
   const myHandoff = () => !!(snap && snap.phase === 'handoff' && snap.next === you);
   function ready() {
     if (!myHandoff()) return false;
@@ -257,7 +257,7 @@
   }
   let hudKey = '', phaseT0 = 0, exchangeT0 = 0;
   // Screens drawn from the disc between rounds: the exchange after a catch (through the hand-over) and the final results.
-  const discScreen = () => (snap && (((snap.phase === 'roundover' || snap.phase === 'handoff') && snap.why === 'caught') || snap.phase === 'final') && art.tv) ? tvScreen() : null;
+  const discScreen = () => (snap && (((snap.phase === 'roundover' || snap.phase === 'handoff') && snap.why === 'caught') || snap.phase === 'final') && art.screens) ? sharedScreen() : null;
   function onSnap(force) {
     if (!snap) return;
     if (snap.phase !== lastPhase || force) {
@@ -401,13 +401,13 @@
     if (!snap) return;
     sm.pac = approach(sm.pac, snap.respawning ? null : snap.pac, dt);
     snap.ghosts.forEach((gh, i) => { sm.ghosts[i] = approach(sm.ghosts[i], gh, dt); });
-    // Ghost players with the disc get the original TV screen; Pac-Man keeps the full maze (the GBA's view).
+    // Ghost players with the disc get the original shared screen; Pac-Man keeps the full maze.
     // Everyone sees the exchange and results screens.
-    const between = discScreen(), tv = between || (snap.me >= 0 ? tvScreen() : null);
-    cv.style.display = tv ? 'none' : '';
-    if (tvView) tvView.canvas.style.display = tv ? '' : 'none';
+    const between = discScreen(), scr = between || (snap.me >= 0 ? sharedScreen() : null);
+    cv.style.display = scr ? 'none' : '';
+    if (screenView) screenView.canvas.style.display = scr ? '' : 'none';
     if (between) { drawBetween(between, now); return; }
-    if (tv) { drawTV(tv, now, dt); return; }
+    if (scr) { drawShared(scr, now, dt); return; }
     layout(); const u = cell * dpr;
     g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(mazeCv, 0, 0);
     const pel = snap.pellets;
@@ -457,27 +457,27 @@
     g.restore();
   }
   const u3 = () => cell * dpr;
-  function fitTV(tv) {
+  function fitScreen(scr) {
     const st = $('stage'), cw = Math.max(200, Math.min(st.clientWidth, st.clientHeight * 4 / 3));
-    tv.canvas.style.width = cw + 'px'; tv.canvas.style.height = cw * 3 / 4 + 'px';
+    scr.canvas.style.width = cw + 'px'; scr.canvas.style.height = cw * 3 / 4 + 'px';
     return cw * Math.min(2, window.devicePixelRatio || 1);
   }
-  function drawBetween(tv, now) {
-    const w = fitTV(tv), t = (now - phaseT0) / 1000;
+  function drawBetween(scr, now) {
+    const w = fitScreen(scr), t = (now - phaseT0) / 1000;
     try {
       if (snap.phase === 'final') {
         const order = [0, 1, 2, 3].sort((a, b) => snap.scores[b] - snap.scores[a]);
-        tv.results({ time: t, scores: snap.scores, winner: snap.winner >= 0 ? snap.winner : order[0] }, w);
+        scr.results({ time: t, scores: snap.scores, winner: snap.winner >= 0 ? snap.winner : order[0] }, w);
       } else {
         const after = snap.scores.slice(), before = after.slice();
         before[snap.pacPlayer] += snap.steal; before[snap.catcher] -= snap.steal;
-        tv.exchange({ time: (now - exchangeT0) / 1000, target: snap.target, before, after, loser: snap.pacPlayer, winner: snap.catcher }, w);
+        scr.exchange({ time: (now - exchangeT0) / 1000, target: snap.target, before, after, loser: snap.pacPlayer, winner: snap.catcher }, w);
       }
-    } catch (e) { console.warn('TV screen', e); tvView.canvas.remove(); tvView = false; }
+    } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; }
   }
-  // The TV screen: every ghost's circle (ghosts ordered by player number), panels, radar and counters.
-  function drawTV(tv, now, dt) {
-    const cw = fitTV(tv);
+  // The shared screen: every ghost's circle (ghosts ordered by player number), panels, radar and counters.
+  function drawShared(scr, now, dt) {
+    const cw = fitScreen(scr);
     const pacs = { pacPlayer: snap.pacPlayer };
     const ghosts = [];
     sm.ghosts.forEach((gh, i) => {
@@ -491,8 +491,8 @@
     const shown = ghosts.filter(g => !g.hidden);
     const views = ghosts.map(g => ({ me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash }));
     try {
-      tv.render({ time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
-    } catch (e) { console.warn('TV screen', e); tvView.canvas.remove(); tvView = false; cv.style.display = ''; }
+      scr.render({ time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
+    } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }
   }
   function drawMinimap(u) {
     const w = 5.6 * u, h = 5.2 * u, x0 = W * u - w - 0.5 * u, y0 = H * u - h - 0.5 * u;

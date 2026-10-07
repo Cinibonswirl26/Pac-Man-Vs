@@ -1,10 +1,10 @@
-/* Reads the "Original Pac-Man" maze out of the GBA program (PROOT/gbademo/packman.bin) on the player's own disc.
- * The program keeps each maze as a 32-entry-wide table of 16-bit tile numbers. Walls are individual line
+/* Reads the "Original Pac-Man" maze out of a data file on the player's own disc.
+ * The file keeps each maze as a 32-entry-wide table of 16-bit tile numbers. Walls are individual line
  * pieces, 15 is empty floor, 30 a pellet and 31 a power pellet. Nothing is stored; the layout is read at run time.
- * UMD: window.Gbamap in the browser, module.exports in Node. */
+ * UMD: window.MazeData in the browser, module.exports in Node. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.Gbamap = factory();
+  else root.MazeData = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const EMPTY = 15, PELLET = 30, POWER = 31, GATE = [16, 17, 18];
@@ -69,5 +69,7 @@
       house: { x0: 9, x1: 11, y0: HOUSE_ROW, y1: HOUSE_ROW }
     });
   }
-  return { stage1, locate };
+  // where the maze data sits on the disc
+  const PATH = 'PROOT/gbademo/packman.bin';
+  return { stage1, locate, PATH };
 });

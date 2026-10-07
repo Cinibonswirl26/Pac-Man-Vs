@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const M = () => GX.mat4;
-  // Camera measured against the original's TV picture: a ghost circle 252 px across shows about
+  // Camera measured against the original's picture: a ghost circle 252 px across shows about
   // 5.7 cells at the ghost, looking north and down at 38 degrees.
   const CAM = { pitch: 38 * Math.PI / 180, dist: 16000, fov: 20.3 * Math.PI / 180 };
   const SKINS = ['r', 'b', 'p', 'g'];          // ghost_r/b/p/g = P1 red, P2 blue, P3 pink, P4 green

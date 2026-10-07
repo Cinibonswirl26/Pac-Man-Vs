@@ -1,6 +1,6 @@
 // node test/j3d.test.js <disc image>: the 3D models read from the player's disc.
 const fs = require('fs'), Disc = require('../client/disc.js'), J3D = require('../client/j3d.js'), GX = require('../client/gx.js');
-const Gbamap = require('../client/gbamap.js'), Sim = require('../shared/sim.js');
+const MazeData = require('../client/mazedata.js'), Sim = require('../shared/sim.js');
 const file = process.argv[2]; if (!file) { console.log('usage: node test/j3d.test.js <image>'); process.exit(2); }
 const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.openSync(file, 'r'); const buf = Buffer.alloc(b - a); fs.readSync(fd, buf, 0, b - a, a); fs.closeSync(fd); return buf.buffer.slice(buf.byteOffset, buf.byteOffset + (b - a)); } }) };
 (async () => {
@@ -26,9 +26,9 @@ const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.open
   const pb = bb(J3D.pose(pac, J3D.animate(panim, 10)));
   ok(pb[3] - pb[0] > 600 && pb[3] - pb[0] < 900, 'Pac-Man size');
 
-  // Stage 1: its walls stand exactly where the maze read from the GBA program has walls.
+  // Stage 1: its walls stand exactly where the maze data has walls.
   const stage = J3D.parseBMD(await d.read('PROOT/Map/PacField_1.bmd'));
-  const maze = Gbamap.stage1(await d.read('PROOT/gbademo/packman.bin'), Sim.makeMaze);
+  const maze = MazeData.stage1(await d.read(MazeData.PATH), Sim.makeMaze);
   const tris = []; const sp = J3D.pose(stage);
   for (const s of sp) for (let i = 0; i < s.pos.length; i += 9) tris.push(s.pos.slice(i, i + 9));
   const top = (x, z) => {   // highest surface above the point (x, z)
@@ -50,7 +50,7 @@ const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.open
     const isWall = ch === '#', isOpen = ch === '.' || ch === 'o' || ch === ' ' || ch === '_';
     if ((isWall && !(h > 150)) || (isOpen && !(h < 150))) { mism++; if (mism < 6) console.log('  cell', c, r, JSON.stringify(ch), 'height', h.toFixed(0)); }
   }
-  ok(mism === 0, mism + ' maze cells where the stage model disagrees with the GBA maze');
+  ok(mism === 0, mism + ' maze cells where the stage model disagrees with the maze data');
   const btk = J3D.parseBTK(await d.read('PROOT/Map/PacField_1.btk'));
   const at = J3D.animateTex(btk, btk.length / 2);
   ok(at.neon_v && Math.abs(at.neon_v[1].t[0] - 0.5) < 1e-3, 'neon scroll animation');

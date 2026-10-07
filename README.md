@@ -41,9 +41,9 @@ counter shows how many pellets are left. Pac-Man sees the whole maze.
 - **Online**: Host an online room gives a 4-letter code and an invite link (`/?room=ABCD`). Friends open the
   link and press Join. The host presses Start.
 - **Changing roles**: each player's screen follows their role. Pac-Man gets the whole maze; ghosts get the
-  ghost screen (with your disc: the original TV screen with every ghost's circle). When a person catches
+  ghost screen (with your disc: the original shared screen with every ghost's circle). When a person catches
   Pac-Man, everyone sees the exchange screen, then the catcher is asked to get ready (any key, a tap, the
-  Ready button or a gamepad's A/Start), like picking up the GBA on the console. The next round starts when
+  Ready button or a gamepad's A/Start), as on the original's exchange screen. The next round starts when
   they do, or by itself after 15 seconds. If the catcher has left, a CPU takes over and play goes on at once.
 - Controls: arrow keys or WASD, swipe on touch screens, on-screen arrows on phones, or a gamepad.
   `M` toggles music, `Esc` leaves the match.
@@ -62,15 +62,15 @@ Rooms live in memory and disappear when everyone leaves.
 
 ## Using your own disc image
 
-On the menu, pick the Pac-Man Vs. image (`.ciso`, `.iso` or `.gcm`; the US release `PRJE01` was used).
+On the menu, pick your Pac-Man Vs. disc image (`.iso` or compressed `.ciso`; the US release was used).
 The browser reads it locally and nothing is uploaded. It uses:
-- the maze from the GBA program (`PROOT/gbademo/packman.bin`): exact walls, 172 pellets and 4 power pellets
+- the maze data: exact walls, 172 pellets and 4 power pellets
 - the logo and Pac-Man animation from `PAC_title.szs`
 - music from `AudioRes/Stream` (AFC ADPCM decoded in the browser)
 - the 3D models for the ghost's view: the stage-1 maze (`Map/PacField_1.bmd` and its neon animation),
   the ghost and Pac-Man with their animations and skins (`Model.szs`), the fruit and the pellet sprite.
-  The ghost player's circle is drawn with these in WebGL, camera following the ghost as on the TV.
-- the TV screens from `Screen/PAC_game.szs`, `PAC_exchange.szs` and `PAC_results.szs`: ghost players get
+  The ghost player's circle is drawn with these in WebGL, camera following the ghost as in the original.
+- the shared screens from `Screen/PAC_game.szs`, `PAC_exchange.szs` and `PAC_results.szs`: ghost players get
   the original game screen (one 3D circle per ghost, the player panels, target score, pellet counter, radar,
   fruit window and scrolling background, drawn from the disc's layout, textures and font), and everyone
   sees the original exchange screen after a catch and the results screen at the end.
@@ -87,8 +87,7 @@ Do not commit game files to this repo.
 | `shared/sim.js` | Maze, movement, rules, fog-of-war views, CPU players. Used by server and browser. |
 | `shared/match.js` | Roulette, rounds, point stealing, the target score. Used by server and browser. |
 | `server/server.js` | HTTP static host plus WebSocket rooms. The server is authoritative (30 Hz) and sends each player only what they may see, so ghosts cannot read Pac-Man's position. |
-| `client/` | UI, canvas renderer, input, sound, `disc.js` (CISO/GCM, Yaz0, RARC, BTI, AST audio), `gbamap.js` (maze from the GBA program), `j3d.js` (J3D models and animations: BMD, BCK, BTK), `gx.js` (WebGL renderer that turns each GameCube material into a shader), `view3d.js` (the ghosts' 3D view), `j2d.js` (BLO2 screen layouts and BFN fonts) and `tv.js` (the TV, exchange and results screens). |
+| `client/` | UI, canvas renderer, input, sound, `disc.js` (disc image, archives, textures, streamed audio), `mazedata.js` (the maze data), `j3d.js` (J3D models and animations: BMD, BCK, BTK), `gx.js` (WebGL renderer that turns each of the game's materials into a shader), `view3d.js` (the ghosts' 3D view), `j2d.js` (BLO2 screen layouts and BFN fonts) and `screens.js` (the shared game screen, exchange and results screens). |
 | `test/` | Simulation, match flow, WebSocket end-to-end, maze validation, disc reader and 3D model checks, AI benchmark. |
-| `tools/` | How the rules were measured against the original (see FIDELITY.md). |
 
-Not implemented: the other 12 stages, Pac-Man's GBA screen, the title and rule-select screens, and the original's computer players.
+Not implemented: the other 12 stages, the original's Pac-Man screen, the title and rule-select screens, and the original's computer players.

@@ -1,4 +1,4 @@
-/* Reader for the GameCube J3D model formats used by the disc the player supplies:
+/* Reader for the J3D model formats used by the disc the player supplies:
  * BMD (models: geometry, skeleton, skinning, materials, textures) and BCK (joint animation).
  * It only decodes what the 3D view needs; nothing from the disc is stored anywhere.
  * UMD: window.J3D in the browser, module.exports in Node. */

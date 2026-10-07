@@ -4,7 +4,7 @@
  *  - a roulette picks the first Pac-Man, who starts with 1,600 points;
  *  - catching Pac-Man ends the round: the catcher steals 1,600 points and is Pac-Man next round;
  *  - every round the maze is reset;
- *  - the catcher takes over Pac-Man (on the console they pick up the GBA and press START), so a person
+ *  - the catcher takes over Pac-Man (the original waits for them to press Start), so a person
  *    who catches Pac-Man gets a hand-over pause that ends when they say they are ready. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./sim.js'));
