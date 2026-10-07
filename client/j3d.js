@@ -422,5 +422,26 @@
     return out;
   }
 
-  return { parseBMD, parseBCK, parseBTK, pose, animate, animateTex, jointMatrices, M, chunks };
+  // ---------------------------------------------------------------- BTP texture-pattern animation
+  // Swaps which texture a material shows, frame by frame (the ghosts' blink).
+  function parseBTP(b) {
+    if (tag(b, 0) !== 'J3D1' || tag(b, 4) !== 'btp1') throw new Error('not a BTP animation');
+    const o = 0x20, loop = b[o + 8], length = u16(b, o + 0x0A), n = u16(b, o + 0x0C), nIds = u16(b, o + 0x0E);
+    const aOff = o + u32(b, o + 0x10), idOff = o + u32(b, o + 0x14), remap = o + u32(b, o + 0x18), names = nameTable(b, o + u32(b, o + 0x1C));
+    const anims = [];
+    for (let i = 0; i < n; i++) {
+      const e = aOff + i * 8, count = u16(b, e), start = u16(b, e + 2), frames = [];
+      for (let k = 0; k < count && start + k < nIds; k++) frames.push(u16(b, idOff + (start + k) * 2));
+      anims.push({ material: names[u16(b, remap + i * 2)] || names[i], slot: b[e + 4], frames });
+    }
+    return { loop, length, anims };
+  }
+  /** {materialName: textureIndex} at frame t. */
+  function animatePattern(anim, t) {
+    const L = anim.length || 1, f = Math.floor(((t % L) + L) % L), out = {};
+    for (const a of anim.anims) out[a.material] = a.frames[Math.min(f, a.frames.length - 1)];
+    return out;
+  }
+
+  return { parseBMD, parseBCK, parseBTK, parseBTP, pose, animate, animateTex, animatePattern, jointMatrices, M, chunks };
 });

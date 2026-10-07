@@ -64,10 +64,14 @@ Rooms live in memory and disappear when everyone leaves.
 
 On the menu, pick your Pac-Man Vs. disc image (`.iso` or compressed `.ciso`; the US release was used).
 The browser reads it locally and nothing is uploaded. It uses:
-- the maze data: exact walls, 172 pellets and 4 power pellets
+- the maze data for all 13 stages on the disc: exact walls and pellets. The menu lists the six stages the original's
+  stage-select screen shows (Original Pac-Man, R.I.P. Park, Manic Manor, Haunted Hall, Frantic Forest, Panic Pier),
+  then the seven other layouts found on the disc, which have no menu entry in the original. Those seven carry
+  names of this project's own (Four-Hut Pier, Dusk Pier, Night Forest, Dusk Park, Spotlight Hall, Midnight Pier,
+  Midnight Park).
 - the logo and Pac-Man animation from `PAC_title.szs`
 - music from `AudioRes/Stream` (AFC ADPCM decoded in the browser)
-- the 3D models for the ghost's view: the stage-1 maze (`Map/PacField_1.bmd` and its neon animation),
+- the 3D models for the ghost's view: the stage models (`Map/PacField_1..13.bmd` with their texture scrolling),
   the ghost and Pac-Man with their animations and skins (`Model.szs`), the fruit and the pellet sprite.
   The ghost player's circle is drawn with these in WebGL, camera following the ghost as in the original.
 - the shared screens from `Screen/PAC_game.szs`, `PAC_exchange.szs` and `PAC_results.szs`: ghost players get
@@ -90,4 +94,4 @@ Do not commit game files to this repo.
 | `client/` | UI, canvas renderer, input, sound, `disc.js` (disc image, archives, textures, streamed audio), `mazedata.js` (the maze data), `j3d.js` (J3D models and animations: BMD, BCK, BTK), `gx.js` (WebGL renderer that turns each of the game's materials into a shader), `view3d.js` (the ghosts' 3D view), `j2d.js` (BLO2 screen layouts and BFN fonts) and `screens.js` (the shared game screen, exchange and results screens). |
 | `test/` | Simulation, match flow, WebSocket end-to-end, maze validation, disc reader and 3D model checks, AI benchmark. |
 
-Not implemented: the other 12 stages, the original's Pac-Man screen, the title and rule-select screens, and the original's computer players.
+Not implemented: the original's Pac-Man screen, the title and rule-select screens, and the original's computer players.

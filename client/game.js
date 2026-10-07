@@ -70,16 +70,22 @@
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
 
   // ------------------------------------------------------------------ disc assets
-  const art = { pac: [], logo: null, press: null, maze: null, three: null, screens: null };
-  let view3 = null, screenView = null, onDiscMaze = false;
-  /** Switch the board to another maze (or back to the built-in one). */
+  const art = { pac: [], logo: null, press: null, mazes: [], three: null, screens: null };
+  let view3 = null, screenView = null, onDiscMaze = false, curStage = null, stageWant = 0;
+  /** Switch the board to another maze (or back to the built-in one). A maze that came from the disc also
+   *  loads its 3D stage model; until that is ready the flat view is used. */
   function setMaze(m) {
     const next = m ? PacSim.create(m) : PacSim;
-    onDiscMaze = !!(m && art.maze && m.rows.join('/') === art.maze.rows.join('/'));
+    const disc = m && art.mazes.find(d => d.rows.join('/') === m.rows.join('/'));
+    curStage = null; onDiscMaze = false; stageWant = disc ? disc.stage : 0;
+    if (disc && art.three && music.disc) {
+      const want = disc.stage;
+      View3D.loadStage(music.disc, art.three, disc).then(st => { if (stageWant === want) { curStage = st; onDiscMaze = true; } }, e => console.warn('stage model', e));
+    }
     if (next === S) return;
     S = next; W = S.W; H = S.H; cell = 0; sm.pac = null; sm.ghosts = [null, null, null];
   }
-  /** The 3D ghost view, when the disc's models are loaded and the stage-1 maze is in play. */
+  /** The 3D ghost view, when the disc's models are loaded and one of the disc's mazes is in play. */
   function ghostView3D() {
     if (!onDiscMaze || !art.three || view3 === false) return null;
     if (!view3) { try { view3 = View3D.create(art.three) || false; } catch (e) { console.warn('3D view', e); view3 = false; } }
@@ -96,7 +102,16 @@
     }
     return screenView || null;
   }
-  const mazeOf = () => ($('mazeSel').value === 'disc' && art.maze) ? art.maze : null;
+  const mazeOf = () => { const m = /^disc:(\d+)$/.exec($('mazeSel').value); return m ? art.mazes.find(d => d.stage === +m[1]) || null : null; };
+  /** Fill the maze menu with the stages found on the disc. */
+  function fillMazes() {
+    const sel = $('mazeSel'), keep = store.get('pacvs.maze');
+    const opt = d => `<option value="disc:${d.stage}">${esc(d.name)}</option>`;
+    sel.innerHTML = '<option value="builtin">Built-in maze</option>' +
+      `<optgroup label="Stages on the menu">${art.mazes.filter(d => d.official).map(opt).join('')}</optgroup>` +
+      `<optgroup label="Other layouts on the disc">${art.mazes.filter(d => !d.official).map(opt).join('')}</optgroup>`;
+    sel.value = [...sel.options].some(o => o.value === keep) ? keep : 'disc:1';
+  }
   function toCanvas(t) { const c = document.createElement('canvas'); c.width = t.w; c.height = t.h; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h), 0, 0); return c; }
   async function loadDisc(blob, remember) {
     const st = $('discStatus'); st.className = 'note';
@@ -111,9 +126,9 @@
       if (art.logo) { $('logo').src = art.logo.toDataURL(); $('logo').classList.remove('hidden'); $('title').classList.add('hidden'); }
       music.disc = d; music.bufs.clear();
       try {   // the original stage 1 maze, read from the disc's maze data
-        art.maze = MazeData.stage1(await d.read(MazeData.PATH), PacSim.makeMaze);
-        $('mazeSel').querySelector('[value=disc]').disabled = false; $('mazeSel').value = store.get('pacvs.maze') === 'builtin' ? 'builtin' : 'disc';
-      } catch (e) { console.warn('maze', e); art.maze = null; }
+        art.mazes = MazeData.all(await d.read(MazeData.PATH), PacSim.makeMaze);
+        fillMazes();
+      } catch (e) { console.warn('maze', e); art.mazes = []; }
       try { art.three = await View3D.load(d); view3 = null; } catch (e) { console.warn('3D models', e); art.three = null; }
       try { art.screens = await Screens.load(d); } catch (e) { console.warn('shared screen', e); art.screens = null; }
       if (screenView) { screenView.canvas.remove(); screenView = null; }
@@ -450,7 +465,7 @@
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
     try {
-      img = v3.render({ size: 2 * R, me, zoom: (snap.sight || CFG.ghostSight) / CFG.ghostSight, ghosts, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000 });
+      img = v3.render({ stage: curStage, size: 2 * R, me, zoom: (snap.sight || CFG.ghostSight) / CFG.ghostSight, ghosts, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000 });
     } catch (e) { console.warn('3D view', e); view3 = false; return; }
     g.save(); g.beginPath(); g.arc(me.x * u3(), me.y * u3(), R, 0, 7); g.clip();
     g.drawImage(img, me.x * u3() - R, me.y * u3() - R, 2 * R, 2 * R);
@@ -489,7 +504,7 @@
     ghosts.sort((a, b) => a.seat - b.seat);
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
-    const views = ghosts.map(g => ({ me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash }));
+    const views = ghosts.map(g => ({ stage: curStage, me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash }));
     try {
       scr.render({ time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }
@@ -516,5 +531,5 @@
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });
   addEventListener('resize', () => { cell = 0; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (mode) onSnap(true); });
-  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get art() { return art; }, get offline() { return offline; } };   // for automated tests
+  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get art() { return art; }, get disc() { return music.disc; }, get offline() { return offline; } };   // for automated tests
 })();

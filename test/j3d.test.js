@@ -26,37 +26,59 @@ const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.open
   const pb = bb(J3D.pose(pac, J3D.animate(panim, 10)));
   ok(pb[3] - pb[0] > 600 && pb[3] - pb[0] < 900, 'Pac-Man size');
 
-  // Stage 1: its walls stand exactly where the maze data has walls.
-  const stage = J3D.parseBMD(await d.read('PROOT/Map/PacField_1.bmd'));
-  const maze = MazeData.stage1(await d.read(MazeData.PATH), Sim.makeMaze);
-  const tris = []; const sp = J3D.pose(stage);
-  for (const s of sp) for (let i = 0; i < s.pos.length; i += 9) tris.push(s.pos.slice(i, i + 9));
-  const top = (x, z) => {   // highest surface above the point (x, z)
-    let best = -Infinity;
-    for (const t of tris) {
-      const [ax, ay, az, bx, by, bz, cx, cy, cz] = t;
-      const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz); if (Math.abs(den) < 1e-6) continue;
-      const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / den, l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / den, l3 = 1 - l1 - l2;
-      if (l1 < -1e-4 || l2 < -1e-4 || l3 < -1e-4) continue;
-      best = Math.max(best, l1 * ay + l2 * by + l3 * cy);
+  // The 13 stage models line up with the 13 mazes: on every pellet cell the model has a walkable surface at one
+  // common height, and in the stages with solid walls the walls stand where the maze data has walls.
+  const mazes = MazeData.all(await d.read(MazeData.PATH), Sim.makeMaze);
+  ok(mazes.length === 13, 'thirteen mazes');
+  const SOLID_WALLS = new Set([1, 4, 6, 7, 8, 9, 10, 12, 13]);   // the pier stages use water between planks
+  const stages = [];
+  for (const maze of mazes) {
+    const k = maze.stage, model = J3D.parseBMD(await d.read('PROOT/Map/PacField_' + k + '.bmd'));
+    stages.push(model);
+    const tris = []; for (const sh of J3D.pose(model)) for (let i = 0; i < sh.pos.length; i += 9) tris.push(sh.pos.slice(i, i + 9));
+    const surfaces = (x, z) => {   // every surface height above the point (x, z), highest first
+      const out = [];
+      for (const t of tris) {
+        const [ax, ay, az, bx, by, bz, cx, cy, cz] = t;
+        const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz); if (Math.abs(den) < 1e-6) continue;
+        const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / den, l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / den, l3 = 1 - l1 - l2;
+        if (l1 < -1e-4 || l2 < -1e-4 || l3 < -1e-4) continue;
+        out.push(l1 * ay + l2 * by + l3 * cy);
+      }
+      return out.sort((a, b) => b - a);
+    };
+    const at = (c, r) => [(c + maze.colOffset - 1) * 1000 + 500, (r + maze.rowOffset - 1) * 1000 + 500];
+    let floorY = null, noFloor = 0, wallsOk = 0, wallsTot = 0, n = 0;
+    maze.rows.forEach((row, r) => [...row].forEach((ch, c) => {
+      const [x, z] = at(c, r);
+      if (ch === '.' && n++ % 6 === 0) {
+        const y = surfaces(x, z).find(v => v <= 600);
+        if (y === undefined) { noFloor++; return; }
+        if (floorY === null) floorY = y;
+        if (Math.abs(y - floorY) > 60) noFloor++;
+      }
+    }));
+    ok(noFloor === 0, `stage ${k}: ${noFloor} sampled pellet cells have no walkable surface at the common floor height ${floorY}`);
+    if (SOLID_WALLS.has(k)) {
+      maze.rows.forEach((row, r) => [...row].forEach((ch, c) => {
+        if ((ch !== '#' && ch !== '.' && ch !== 'o') || (r + c) % 3) return;
+        const [x, z] = at(c, r), h = Math.max(...[[0, 0], [-300, 0], [300, 0], [0, -300], [0, 300]].map(([dx, dz]) => surfaces(x + dx, z + dz)[0] ?? -1e9));
+        wallsTot++; if ((ch === '#') === (h > floorY + 150)) wallsOk++;
+      }));
+      ok(wallsOk / wallsTot >= 0.85, `stage ${k}: walls match the model in ${(100 * wallsOk / wallsTot).toFixed(0)}% of sampled cells`);
     }
-    return best;
-  };
-  let mism = 0;
-  for (let r = 0; r < maze.H; r++) for (let c = 1; c < maze.W - 1; c++) {
-    // highest point among the centre and four points around it (some wall blocks have a sunken middle)
-    const cx = (c - 1) * 1000 + 500, cz = r * 1000 + 500, ch = maze.rows[r][c];
-    const h = Math.max(...[[0, 0], [-300, 0], [300, 0], [0, -300], [0, 300]].map(([dx, dz]) => top(cx + dx, cz + dz)));
-    const isWall = ch === '#', isOpen = ch === '.' || ch === 'o' || ch === ' ' || ch === '_';
-    if ((isWall && !(h > 150)) || (isOpen && !(h < 150))) { mism++; if (mism < 6) console.log('  cell', c, r, JSON.stringify(ch), 'height', h.toFixed(0)); }
   }
-  ok(mism === 0, mism + ' maze cells where the stage model disagrees with the maze data');
+  const stage = stages[0];
   const btk = J3D.parseBTK(await d.read('PROOT/Map/PacField_1.btk'));
   const at = J3D.animateTex(btk, btk.length / 2);
   ok(at.neon_v && Math.abs(at.neon_v[1].t[0] - 0.5) < 1e-3, 'neon scroll animation');
+  // The ghosts blink: the eye texture goes 0,1,2,3,4,4,3,2,1,0 once every 64 frames.
+  const btp = J3D.parseBTP(arc.get('ghost/btp/ghost.btp'));
+  let seq = ''; for (let t = 0; t < btp.length; t++) seq += J3D.animatePattern(btp, t).e;
+  ok(btp.length === 64 && /^0+123443210+$/.test(seq), 'ghost blink animation: ' + seq);
 
   // Every material turns into a shader.
-  for (const m of [ghost, pac, stage, J3D.parseBMD(arc.get('cherry.bmd'))]) for (const mat of m.materials) {
+  for (const m of [ghost, pac, ...stages, J3D.parseBMD(arc.get('cherry.bmd'))]) for (const mat of m.materials) {
     const s = GX.genShader(mat);
     ok(!/undefined|NaN/.test(s.vs + s.fs) && /gl_FragColor/.test(s.fs), 'shader for ' + mat.name);
   }

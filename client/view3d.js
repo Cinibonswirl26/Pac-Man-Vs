@@ -1,4 +1,4 @@
-/* The ghost's 3D view, drawn with the models on the player's disc: the stage-1 maze, the ghost and
+/* The ghost's 3D view, drawn with the models on the player's disc: the stage models, the ghost and
  * Pac-Man models with their animations, the fruit and the pellet sprite. The camera follows the ghost
  * from behind and above, framed like the original's ghost circles. Browser only (WebGL). */
 (function (root) {
@@ -15,10 +15,10 @@
     const arc = Disc.rarc(Disc.yaz0(await disc.read('PROOT/Model.szs')));
     const file = n => { const v = arc.get(n); if (!v) throw new Error('missing in Model.szs: ' + n); return v; };
     return {
-      stage: J3D.parseBMD(await disc.read('PROOT/Map/PacField_1.bmd')),
-      stageAnim: J3D.parseBTK(await disc.read('PROOT/Map/PacField_1.btk')),
+      stages: new Map(),
       ghost: J3D.parseBMD(file('ghost/ghost.bmd')),
       ghostAnim: J3D.parseBCK(file('ghost/anm/ghost.bck')),
+      ghostBlink: J3D.parseBTP(file('ghost/btp/ghost.btp')),
       skins: Object.fromEntries([...SKINS, 'yowari', 'com', 'toumei'].map(s => [s, Disc.decodeBTI(file('ghost/ghost_' + s + '.bti'))])),
       pac: J3D.parseBMD(file('packman/pacman.bmd')),
       pacAnim: J3D.parseBCK(file('packman/anm/pacman.bck')),
@@ -27,54 +27,96 @@
     };
   }
 
+  /** Read stage model k (1-13) and its texture animation. Cached in assets.stages. `maze` is the descriptor
+   *  from MazeData (it places the model: colOffset, rowOffset) and also gives the floor height. */
+  async function loadStage(disc, assets, maze) {
+    const k = maze.stage;
+    if (assets.stages.has(k)) return assets.stages.get(k);
+    const bmd = J3D.parseBMD(await disc.read('PROOT/Map/PacField_' + k + '.bmd'));
+    let btk = null; try { btk = J3D.parseBTK(await disc.read('PROOT/Map/PacField_' + k + '.btk')); } catch (e) { /* no scrolling */ }
+    const st = { k, bmd, btk, colOff: maze.colOffset, rowOff: maze.rowOffset, floor: floorHeight(bmd, maze) };
+    assets.stages.set(k, st);
+    return st;
+  }
+  /** Height of the corridors: the median top surface above a sample of pellet cells (stage 1 is at 0). */
+  function floorHeight(bmd, maze) {
+    const cells = [];
+    maze.rows.forEach((row, r) => [...row].forEach((ch, c) => { if (ch === '.') cells.push([c, r]); }));
+    const pick = cells.filter((_, i) => i % Math.max(1, Math.floor(cells.length / 14)) === 0).slice(0, 14);
+    const tris = [];
+    for (const sh of J3D.pose(bmd)) for (let i = 0; i + 8 < sh.pos.length; i += 9) tris.push(sh.pos.subarray(i, i + 9));
+    const ys = [];
+    for (const [c, r] of pick) {
+      const x = (c + maze.colOffset - 1) * 1000 + 500, z = (r + maze.rowOffset - 1) * 1000 + 500;
+      let best = -Infinity;
+      for (const t of tris) {
+        const den = (t[5] - t[8]) * (t[0] - t[6]) + (t[6] - t[3]) * (t[2] - t[8]); if (Math.abs(den) < 1e-6) continue;
+        const l1 = ((t[5] - t[8]) * (x - t[6]) + (t[6] - t[3]) * (z - t[8])) / den, l2 = ((t[8] - t[2]) * (x - t[6]) + (t[0] - t[6]) * (z - t[8])) / den, l3 = 1 - l1 - l2;
+        if (l1 < 0 || l2 < 0 || l3 < 0) continue;
+        const y = l1 * t[1] + l2 * t[4] + l3 * t[7]; if (y <= 600 && y > best) best = y;
+      }
+      if (best > -Infinity) ys.push(best);
+    }
+    ys.sort((a, b) => a - b);
+    return ys.length ? Math.round(ys[ys.length >> 1]) : 0;
+  }
+
   /** The 3D scene on an existing GX renderer. draw(v) renders into the current viewport. */
   function scene(assets, R) {
-    const stage = R.model(assets.stage, J3D.pose(assets.stage));
+    let cur = null;   // the stage model on the GPU: {k, model, anim}
+    const useStage = st => {
+      if (cur && cur.k === st.k) return cur;
+      cur = { k: st.k, model: R.model(st.bmd, J3D.pose(st.bmd)), anim: st.btk };
+      return cur;
+    };
     const ghost = R.model(assets.ghost, J3D.pose(assets.ghost, J3D.animate(assets.ghostAnim, 0)));
     const pac = R.model(assets.pac, J3D.pose(assets.pac, J3D.animate(assets.pacAnim, 0)));
     const cherry = R.model(assets.cherry, J3D.pose(assets.cherry));
     const tex = t => R.texture(Object.assign({}, t, { wrapS: 1, wrapT: 1 }));
     const skins = {}; for (const k in assets.skins) skins[k] = tex(assets.skins[k]);
     const dot = tex(assets.dot);
+    // the ghosts' blink: the five eye textures, swapped by the disc's pattern animation
+    const eyes = assets.ghost.textures.slice(0, 5).map(t => R.texture(t));
     let lastGhostFrame = -1, lastPacFrame = -1;
     const m4 = M();
 
-    // Sim coordinates (cell units, centre at +0.5, grid including the outer wall columns) -> stage units.
-    const wx = x => (x - 1) * 1000, wz = y => y * 1000;
-
-    /** v: {me, zoom, aspect, ghosts: [{x, y, m, yaw, seat}], pac, pellets, W, H, fruit, flash, time} */
+    /** v: {stage (from loadStage), me, zoom, aspect, ghosts: [{x, y, m, yaw, seat}], pac, pellets, W, H, fruit, flash, time} */
     function draw(v) {
-      const gl = R.gl, f = v.time * FPS;
+      const gl = R.gl, f = v.time * FPS, st = v.stage, fl = st.floor;
+      // Sim coordinates (cell units, centre at +0.5) -> stage units, with this stage's grid placement.
+      const wx = x => (x + st.colOff - 1) * 1000, wz = y => (y + st.rowOff - 1) * 1000;
+      const stage = useStage(st);
       // Animations: the ghosts' float cycle and Pac-Man's mouth, shared by every instance.
       const gf = Math.floor(f) % assets.ghostAnim.length;
       if (gf !== lastGhostFrame) { lastGhostFrame = gf; ghost.setPose(J3D.pose(assets.ghost, J3D.animate(assets.ghostAnim, gf))); }
       const pf = Math.floor(f) % assets.pacAnim.length;
       if (pf !== lastPacFrame && v.pac) { lastPacFrame = pf; pac.setPose(J3D.pose(assets.pac, J3D.animate(assets.pacAnim, pf))); }
-      stage.setTexMtx(J3D.animateTex(assets.stageAnim, f));
+      if (stage.anim) stage.model.setTexMtx(J3D.animateTex(stage.anim, f));
       gl.clear(gl.DEPTH_BUFFER_BIT);
 
-      const tx = wx(v.me.x), tz = wz(v.me.y), ty = 200, d = CAM.dist * (v.zoom || 1);
+      const tx = wx(v.me.x), tz = wz(v.me.y), ty = fl + 200, d = CAM.dist * (v.zoom || 1);
       const eye = [tx, ty + d * Math.sin(CAM.pitch), tz + d * Math.cos(CAM.pitch)];
       const view = m4.lookAt(eye, [tx, ty, tz], [0, 1, 0]);
       const proj = m4.perspective(CAM.fov, v.aspect || 1, 500, 200000);
       // Light: colour channels lit from the camera; the ghosts' alpha channel (which shades their body) from
       // below and in front, which matches the original's shading of the ghost bodies.
       R.begin(view, proj, { dir: [0, Math.sin(CAM.pitch), Math.cos(CAM.pitch)], dirA: [0, -1, 0.3], color: [1, 1, 1, 0.5] });
-      R.draw(stage, m4.ident());
+      R.draw(stage.model, m4.ident());
       const pel = [];
       for (let y = 0; y < v.H; y++) for (let x = 0; x < v.W; x++) {
         const p = v.pellets[y * v.W + x]; if (!p) continue;
-        pel.push([wx(x + 0.5), 250, wz(y + 0.5), p === 2 ? 560 + 80 * Math.sin(v.time * 9) : 260]);
+        pel.push([wx(x + 0.5), fl + 250, wz(y + 0.5), p === 2 ? 560 + 80 * Math.sin(v.time * 9) : 260]);
       }
       R.sprites(dot, pel);
-      if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), 0, wz(v.fruit.y), 0, 0.75));
-      if (v.pac) R.draw(pac, m4.trs(wx(v.pac.x), 380, wz(v.pac.y), YAW[v.pac.d] || 0, 1));
+      if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), fl, wz(v.fruit.y), 0, 0.75));
+      if (v.pac) R.draw(pac, m4.trs(wx(v.pac.x), fl + 380, wz(v.pac.y), YAW[v.pac.d] || 0, 1));
       // Ghosts last: their bodies are blended.
+      const blink = J3D.animatePattern(assets.ghostBlink, f).e || 0;
       for (const g of v.ghosts) {
         let skin = skins[SKINS[g.seat]];
         if (g.m === 'f') skin = v.flash ? skins.com : skins.yowari;
         else if (g.m === 'e') skin = skins.toumei;
-        R.draw(ghost, m4.trs(wx(g.x), 150, wz(g.y), g.yaw, 1.25), { textures: { ghost_r: skin } });
+        R.draw(ghost, m4.trs(wx(g.x), fl + 150, wz(g.y), g.yaw, 1.25), { textures: { ghost_r: skin, 'ghost_eye.0': eyes[blink] } });
       }
     }
     return { draw };
@@ -98,5 +140,5 @@
     return { render, canvas, YAW };
   }
 
-  root.View3D = { load, create, scene, YAW, SKINS };
+  root.View3D = { load, loadStage, create, scene, YAW, SKINS };
 })(typeof self !== 'undefined' ? self : this);

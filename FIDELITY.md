@@ -27,7 +27,8 @@ and what is still a best guess.
 | Ghost view | A circle around each ghost, a minimap of the ghosts and a pellet counter. All ghost players watch the same screen, so each sees every ghost's circle | shared screen |
 | Fruit (from published descriptions, plus one 400-point score seen on a ghost) | Appears in the middle of the maze once enough pellets are gone. Pac-Man or a ghost can take it. A ghost gets 400 points and a wider view for a while | Wikipedia and reviews; a ghost's 400 points seen in the emulator |
 | Clearing the maze | Pac-Man gets a 1,600 bonus | Wikipedia |
-| Stage 1 in 3D | The disc's stage model has its walls exactly where the maze data has them (every one of the 441 cells checked) | `test/j3d.test.js` |
+| Stages | The disc holds 13 mazes, one for each of its 13 stage models, in the same order. Walls and pellets are read from the maze data; on every model the pellet cells sit on a walkable surface at one height | `test/mazedata.test.js`, `test/j3d.test.js` (the 3D models drawn over the maze data) |
+| Ghost blink | The eyes cycle through five textures once every 64 frames (open, half, closed, half, open) | The disc's texture-pattern animation |
 | Ghost view camera | Looks north, 38 degrees down; a circle 252 px across on the 640 x 480 picture shows about 5.7 cells at the ghost | Rendered from the same cell and compared with the original's picture; pellet rows and wall edges line up |
 | shared screen layout | The disc's `pac_game.blo` scaled by 640/608 in both directions and moved 2 px down; circles 252 px across centred at (145, 146), (495, 146) and (319, 330), first two ghosts by player number on top | Fitted against the original's picture: panels, counter, radar and score line up; circle centres and frame colours measured |
 | Exchange screen | Four circles 140 px across, 152 px apart, LOSER / WINNER above, score bars and the points moved below | Measured on the original's picture after a catch |
@@ -40,12 +41,14 @@ and what is still a best guess.
 - Fruit details: how many pellets trigger it (here 6, then every 70), how long it stays (here 10 s), what Pac-Man scores for it (here 400), how much wider the ghost view gets (here 1.8 times) and for how long (here 10 s). I could not capture these in my recordings of the original.
 - After the maze is cleared the game here starts a new round with the same Pac-Man.
 - Whether a catcher can also win by stealing past the target. Here, any player who reaches the target wins at once.
-- The other 12 stages. Only the first stage layout is read from the disc.
+- Which maze number each menu entry plays. The stage-select screen shows six small maps with names like `DpDay`, `HhDay`, `HhPnch`, `Or`, `UwDay` and `UwEvn`. I matched them to maze numbers by shape and power-pellet count (Original = 1, R.I.P. Park = 4, Manic Manor = 8, Haunted Hall = 13, Frantic Forest = 6, Panic Pier = 5). The links between the six names and these maps are a best match, not read from the game.
+- The other seven mazes (2, 3, 7, 9, 10, 11, 12) have no menu entry or picture in the original and may be unused or test layouts. Their names are this project's own.
+- Start cells for all mazes except the original. The data holds no start positions. Pac-Man starts in the centre column below the house, the ghosts above it and beside it, the same arrangement as the original.
+- The pier stages: the planks are the corridors and the water between them is the wall. Walls here follow the maze data, not the water.
 - The CPU players. The original's computer ghosts and Pac-Man are not documented, so these are new.
 - How far a ghost can see. The circle here is 4.6 cells in every direction; the original's circle shows more to the north than to the south because of the camera angle.
 - 3D lighting. The game sets its lights at run time. The light here was picked so the ghost bodies shade like the original's picture.
 - The neon colours. The stage's neon has coloured sections (purple, yellow, green, red) that the game switches on during play. Here the neon stays the scrolling blue that the disc's material shows by default.
-- The ghost eye animation (ghost.btp) is not played.
 - Screen details drawn by the game's code rather than its layouts: the shape of the circles' tabs, the size and
   colour of the score digits in the player panels, how the exchange screen animates and when its arrow appears,
   and the order in which the results screen shows the ranking and then the winner. These were matched by eye
