@@ -42,7 +42,7 @@ ok(near(S.CFG.frightSpeed / S.CFG.ghostSpeed, 0.75, 1e-9), 'frightened speed is 
 {
   const s = S.newRound([1600, 0, 0, 0], 0);
   const g1 = S.view(s, 1);
-  ok(g1.pellets.filter(Boolean).length < s.total / 3, 'ghost sees too many pellets');
+  ok(g1.pellets.filter(Boolean).length < s.total * 0.6, 'ghost sees too many pellets');
   ok(S.view(s, 0).pellets.filter(Boolean).length === s.total, 'pac should see all pellets');
   ok(S.view(s, 0).ghosts.every(Boolean), 'pac should see every ghost');
   s.pac.x = 1.5; s.pac.y = 19.5;

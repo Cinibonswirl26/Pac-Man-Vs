@@ -32,6 +32,8 @@
     // Pac-Man leaves a trail in his player's colour that ghosts can follow. Look (wide flat ribbon, paler by Pac-Man) is from the original; the length is a guess.
     trailTime: 2, trailEvery: 0.1,
     ghostSight: 4.6,
+    // The 3D circle looks down at an angle, so it shows ground out to about 1.3 times the sight radius ahead of the ghost; what the server sends covers all of it.
+    viewReach: 1.35,
     catchDist: 0.55,                     // how close a ghost and Pac-Man must be (cell centres) to touch; their bodies are about 0.65 wide
     // Fruit: appears in the middle of the maze once enough pellets are gone (documented: both sides may take it,
     // ghosts get 400 points and a wider view for a while). The numbers below are guesses.
@@ -268,7 +270,7 @@
     const gi = ghostIndexOf(s, player);
     const me = gi < 0 ? s.pac : s.ghosts[gi];
     const sight = gi >= 0 ? sightOf(me) : CFG.ghostSight;
-    const seen = (x, y) => s.ghosts.some(g => Math.hypot(x - g.x, y - g.y) <= sightOf(g));
+    const seen = (x, y) => s.ghosts.some(g => Math.hypot(x - g.x, y - g.y) <= sightOf(g) * CFG.viewReach);
     const vis = e => gi < 0 || seen(e.x, e.y);
     const out = {
       tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, over: s.over, why: s.overReason,
