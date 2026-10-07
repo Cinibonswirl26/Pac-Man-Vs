@@ -11,7 +11,18 @@
   let ws = null, room = null, you = 0;
   let snap = null, offline = null, lastPhase = null, lastCount = -1;
   let names = ['You', 'CPU', 'CPU', 'CPU'];
-  const sm = { pac: null, ghosts: [null, null, null], yaw: [0, 0, 0] };
+  const sm = { pac: null, ghosts: [null, null, null], yaw: [0, 0, 0], sight: [null, null, null] };
+  // The circle's reach changes with an animation: in the original, picking up the fruit pulls the camera back by
+  // about 1.6x over a little more than a second, easing out. The sim changes the radius in one step; this tweens it.
+  const ZOOM_TIME = 1.1;
+  function tweenSight(i, target, now) {
+    const t = sm.sight[i];
+    if (!t) return (sm.sight[i] = { from: target, to: target, t0: now, v: target }).v;
+    if (t.to !== target) { t.from = t.v; t.to = target; t.t0 = now; }
+    const k = Math.min(1, (now - t.t0) / (ZOOM_TIME * 1000));
+    t.v = t.from + (t.to - t.from) * Math.sin(k * Math.PI / 2);
+    return t.v;
+  }
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -176,6 +187,7 @@
     $('start').classList.toggle('hidden', !host);
     $('lobbyNote').textContent = host ? 'You are the host. Start whenever everyone is in.' : 'Waiting for the host to start.';
   }
+  const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   $('solo').onclick = () => {
@@ -394,6 +406,20 @@
     const open = (Math.sin(now / 70) + 1) / 2 * 0.65 + 0.05, a = [-Math.PI / 2, 0, Math.PI / 2, Math.PI][p.d];
     g.fillStyle = '#ffd400'; g.beginPath(); g.moveTo(x, y); g.arc(x, y, r, a + open, a + Math.PI * 2 - open); g.closePath(); g.fill();
   }
+  // Pac-Man's trail on the flat board: a ribbon in his player's colour that fades towards the tail.
+  function drawTrail(u) {
+    const tr = snap.trail; if (!tr || !tr.length) return;
+    const pts = []; let last = sm.pac ? [sm.pac.x, sm.pac.y] : null;
+    if (last) pts.push([last[0], last[1], 0]);
+    for (let i = tr.length - 1; i >= 0; i--) { const [x, y, age] = tr[i]; if (last && Math.abs(x - last[0]) > W / 2) break; pts.push([x, y, age]); last = [x, y]; }
+    const col = SEAT_COLORS[snap.pacPlayer];
+    g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = u * 0.78;
+    for (let i = 1; i < pts.length; i++) {
+      g.globalAlpha = 0.85 * Math.min(1, Math.max(0, 1 - pts[i][2] / CFG.trailTime) / 0.4); g.strokeStyle = col;
+      g.beginPath(); g.moveTo(pts[i - 1][0] * u, pts[i - 1][1] * u); g.lineTo(pts[i][0] * u, pts[i][1] * u); g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
   function drawFruit(f, u, now) {
     const x = f.x * u, y = f.y * u + Math.sin(now / 250) * u * 0.05, r = u * 0.2;
     g.strokeStyle = '#3fbf3f'; g.lineWidth = u * 0.08; g.beginPath(); g.moveTo(x - r * 0.9, y + r * 0.2); g.quadraticCurveTo(x - r * 0.4, y - r * 2.2, x + r * 1.1, y - r * 2.4); g.moveTo(x + r * 0.9, y + r * 0.2); g.quadraticCurveTo(x + r * 0.7, y - r * 1.6, x + r * 1.1, y - r * 2.4); g.stroke();
@@ -443,6 +469,7 @@
     }
     if (snap.fruit) drawFruit(snap.fruit, u, now);
     sm.ghosts.forEach((gh, i) => { if (gh && snap.ghosts[i] && snap.ghosts[i].m !== 'r') drawGhost(gh, SEAT_COLORS[S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i)], u, now, snap.me === i); });
+    drawTrail(u);
     if (sm.pac) drawPac(sm.pac, u, now, snap.me < 0);
     // Ghost players see a circular window around themselves, a minimap of the ghosts, and the pellet count.
     if (snap.me >= 0 && sm.ghosts[snap.me]) {
@@ -450,10 +477,10 @@
       f.globalCompositeOperation = 'source-over'; f.clearRect(0, 0, fogCv.width, fogCv.height);
       f.fillStyle = 'rgba(1,2,8,0.965)'; f.fillRect(0, 0, fogCv.width, fogCv.height);
       f.globalCompositeOperation = 'destination-out';
-      const R = (snap.sight || CFG.ghostSight) * u;
+      const R = tweenSight(snap.me, snap.sight || CFG.ghostSight, now) * u;
       // the ghost players share one screen, so every ghost's circle is open
       f.fillStyle = '#000';
-      sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { f.beginPath(); f.arc(gh.x * u, gh.y * u, (sg.s || CFG.ghostSight) * u, 0, 7); f.fill(); } });
+      sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { f.beginPath(); f.arc(gh.x * u, gh.y * u, tweenSight(i, sg.s || CFG.ghostSight, now) * u, 0, 7); f.fill(); } });
       g.drawImage(fogCv, 0, 0);
       const v3 = ghostView3D();
       if (v3) draw3D(v3, me, R, now, dt);
@@ -475,7 +502,7 @@
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
     try {
-      img = v3.render({ stage: curStage, size: 2 * R, me, zoom: (snap.sight || CFG.ghostSight) / CFG.ghostSight, ghosts, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000 });
+      img = v3.render({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, size: 2 * R, me, zoom: R / u3() / CFG.ghostSight, ghosts, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000 });
     } catch (e) { console.warn('3D view', e); view3 = false; return; }
     g.save(); g.beginPath(); g.arc(me.x * u3(), me.y * u3(), R, 0, 7); g.clip();
     g.drawImage(img, me.x * u3() - R, me.y * u3() - R, 2 * R, 2 * R);
@@ -509,12 +536,12 @@
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(pacs, i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: s.s || CFG.ghostSight, hidden: s.m === 'r' });
+      ghosts.push({ i, seat: S.playerOfGhost(pacs, i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r' });
     });
     ghosts.sort((a, b) => a.seat - b.seat);
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
-    const views = ghosts.map(g => ({ stage: curStage, me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash }));
+    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash }));
     try {
       scr.render({ time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }

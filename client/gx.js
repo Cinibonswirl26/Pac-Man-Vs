@@ -258,6 +258,38 @@
       gl.drawArrays(gl.TRIANGLES, 0, list.length * 6);
     }
     const quadCache = new WeakMap();
+    // A flat ribbon on the ground following a path (Pac-Man's trail). pts: [[x, y, z, a, white]] head first, a = alpha at
+    // that point and white (0-1, optional) how much the colour is paled towards white there; the ribbon is `width` wide in the ground plane and tinted `rgb`.
+    let ribbonProg = null; const ribbonBuf = gl.createBuffer();
+    function ribbon(pts, width, rgb) {
+      if (pts.length < 2) return;
+      if (!ribbonProg) {
+        const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+        const pr = gl.createProgram();
+        gl.attachShader(pr, sh(gl.VERTEX_SHADER, 'attribute vec3 aPos; attribute vec4 aClr; uniform mat4 uVP; varying vec4 vC; void main() { vC = aClr; gl_Position = uVP * vec4(aPos, 1.0); }'));
+        gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec4 vC; void main() { gl_FragColor = vC; }'));
+        gl.bindAttribLocation(pr, 0, 'aPos'); gl.bindAttribLocation(pr, 2, 'aClr'); gl.linkProgram(pr);
+        ribbonProg = { pr, uVP: gl.getUniformLocation(pr, 'uVP') };
+      }
+      const n = pts.length, data = new Float32Array(n * 2 * 7);
+      for (let i = 0; i < n; i++) {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+        let tx = b[0] - a[0], tz = b[2] - a[2]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
+        const nx = -tz * width / 2, nz = tx * width / 2, p = pts[i], w = p[4] || 0;
+        const c0 = rgb[0] + (1 - rgb[0]) * w, c1 = rgb[1] + (1 - rgb[1]) * w, c2 = rgb[2] + (1 - rgb[2]) * w;
+        data.set([p[0] + nx, p[1], p[2] + nz, c0, c1, c2, p[3], p[0] - nx, p[1], p[2] - nz, c0, c1, c2, p[3]], i * 14);
+      }
+      gl.useProgram(ribbonProg.pr);
+      gl.uniformMatrix4fv(ribbonProg.uVP, false, mat4.mul(frame.proj, frame.view));
+      gl.bindBuffer(gl.ARRAY_BUFFER, ribbonBuf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+      for (let i = 1; i < 4; i++) gl.disableVertexAttribArray(i);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
+      gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 28, 12);
+      gl.disable(gl.CULL_FACE); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
+      gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, n * 2);
+      gl.depthMask(true);
+    }
     // Flat-coloured polygons in screen space (frames, tabs) and stencil masks (the ghosts' circles).
     let flatProg = null; const flatBuf = gl.createBuffer();
     function poly(points, color, stencil) {
@@ -281,6 +313,11 @@
       else { gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); }
       gl.drawArrays(gl.TRIANGLES, 0, data.length / 3);
       gl.colorMask(true, true, true, true);
+    }
+    /** Darken or colour everything drawn so far: a blended full-viewport rectangle. */
+    function tint(color) {
+      const keep = frame.proj; frame.proj = mat4.ident();
+      poly([[-1, -1], [1, -1], [1, 1], [-1, 1]], color); frame.proj = keep;
     }
     // Set a material's state and draw one batch of triangles.
     function submit(d, mv, nm, texFor, opts) {
@@ -313,7 +350,7 @@
       gl.depthMask(true);
     }
     return {
-      gl, texture, model, mat4, sprites, white, poly,
+      gl, texture, model, mat4, sprites, white, poly, ribbon, tint,
       /** Set camera and light for the following draws. light.dir points from surfaces towards the light, in world
        * space; light.dirA, if given, is used for the alpha lighting channels instead. */
       begin(view, proj, light) {

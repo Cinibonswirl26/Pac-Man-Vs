@@ -28,11 +28,13 @@
     ghostSpeed: 0.5 * FPS / CELL,        // ghosts are exactly as fast as Pac-Man
     frightSpeed: 0.375 * FPS / CELL,     // 2.80 cells/s
     eyeSpeed: 1.0 * FPS / CELL,          // not measured
-    frightTime: 10, frightFlash: 2, respawnTime: 3,   // respawnTime not measured
+    frightTime: 10, frightFlash: 2,
+    // Pac-Man leaves a trail in his player's colour that ghosts can follow. Look (wide flat ribbon, paler by Pac-Man) is from the original; the length is a guess.
+    trailTime: 2, trailEvery: 0.1,
     ghostSight: 4.6,
     // Fruit: appears in the middle of the maze once enough pellets are gone (documented: both sides may take it,
     // ghosts get 400 points and a wider view for a while). The numbers below are guesses.
-    fruitPts: 400, fruitFirst: 6, fruitEvery: 70, fruitStay: 10, fruitSightMult: 1.8, fruitSightTime: 10,
+    fruitPts: 400, fruitFirst: 6, fruitEvery: 70, fruitStay: 10, fruitSightMult: 1.6, fruitSightTime: 10,
     clearBonus: 1600,
     pelletPts: 10, powerPts: 110,
     ghostChain: [200, 400, 800, 1600],   // not measured
@@ -60,12 +62,13 @@
     x = ((x % W) + W) % W;
     const c = ROWS[y][x];
     if (c === '#' || c === '=') return true;
-    if (c === 'D') return who !== 'ghost';
+    if (c === 'D') return who !== 'eyes';      // the door: only eaten ghosts (eyes) pass freely, ghosts use it one way only (see canGo)
     return false;
   }
   // house interior is ghost-only
   function inHouse(x, y) { return x >= HOUSE.x0 && x <= HOUSE.x1 && y >= HOUSE.y0 && y <= HOUSE.y1; }
-  function blocked(x, y, who) { return wallAt(x, y, who) || (who === 'pac' && inHouse(x, y)); }
+  function blocked(x, y, who) { return wallAt(x, y, who) || ((who === 'pac' || who === 'ghost') && inHouse(x, y)); }
+  const cellAt = (x, y) => (y < 0 || y >= H) ? '#' : ROWS[y][((x % W) + W) % W];
 
   /** Start a round. `scores` (4 numbers) is kept and updated in place, so points carry over between rounds. */
   function newRound(scores, pacPlayer, opts) {
@@ -80,10 +83,10 @@
     return {
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: ent(START.pac), ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', spawnLeft: 0, id: i, sightLeft: 0 })),
+      pac: ent(START.pac), ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0 })),
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
       pacPlayer, tick: 0, catcher: -1, steal: 0, winner: -1, time: 0,
-      eaten: 0, nextFruit: CFG.fruitFirst, fruit: null
+      eaten: 0, nextFruit: CFG.fruitFirst, fruit: null, trail: [], trailLast: -1
     };
   }
   function ent(p) { return { x: p[0] + 0.5, y: p[1] + 0.5, dir: 1, want: 1 }; }
@@ -102,8 +105,16 @@
   }
 
   function canGo(e, dir, who) {
-    const cx = Math.floor(e.x), cy = Math.floor(e.y);
-    return !blocked(cx + DIRS[dir][0], cy + DIRS[dir][1], who);
+    const cx = Math.floor(e.x), cy = Math.floor(e.y), nx = cx + DIRS[dir][0], ny = cy + DIRS[dir][1];
+    if (who !== 'ghost') return !blocked(nx, ny, who);
+    // A ghost that is not eaten may only leave the house: from inside it goes up through the door and out,
+    // and it can never come back in or step down through the door.
+    const c = cellAt(nx, ny);
+    if (c === '#' || c === '=') return false;
+    if (c === 'D') return dir === 0 && inHouse(cx, cy);
+    if (inHouse(nx, ny)) return inHouse(cx, cy);
+    if (cellAt(cx, cy) === 'D') return dir === 0;
+    return true;
   }
 
   // Tile-centre movement: entities travel centre to centre, may reverse at any time,
@@ -154,6 +165,8 @@
     // Pac-Man
     if (inputs.pac != null) s.pac.want = inputs.pac;
     step(s.pac, CFG.pacSpeed, dt, 'pac');
+    if (s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
+    while (s.trail.length && s.time - s.trail[0].t > CFG.trailTime) s.trail.shift();
     const px = Math.floor(s.pac.x), py = Math.floor(s.pac.y);
     const pi = py * W + (((px % W) + W) % W);
     if (s.pellets[pi]) {
@@ -182,20 +195,19 @@
     // Ghosts
     for (let i = 0; i < s.ghosts.length; i++) {
       const g = s.ghosts[i];
-      if (g.mode === 'respawn') {
-        g.spawnLeft -= dt;
-        if (g.spawnLeft <= 0) Object.assign(g, ent(EXIT), { mode: s.frightLeft > 0 ? 'fright' : 'normal', spawnLeft: 0 });
+      if (g.sightLeft > 0) g.sightLeft = Math.max(0, g.sightLeft - dt);
+      if (g.mode === 'eyes') {
+        // An eaten ghost flies back to the house by itself (nobody steers it), then plays again from inside.
+        g.want = eyeWant(g);
+        step(g, CFG.eyeSpeed, dt, 'eyes');
+        if (Math.floor(g.x) === DOOR[0] && Math.floor(g.y) === HOUSE.y0 && Math.hypot(g.x - (DOOR[0] + 0.5), g.y - (HOUSE.y0 + 0.5)) < 0.3) {
+          g.mode = 'normal'; g.dir = g.want = 0; s.events.push('respawn');
+        }
         continue;
       }
-      if (g.sightLeft > 0) g.sightLeft = Math.max(0, g.sightLeft - dt);
       const inp = inputs.ghosts[i];
       if (inp != null) g.want = inp;
-      const speed = g.mode === 'eyes' ? CFG.eyeSpeed : g.mode === 'fright' ? CFG.frightSpeed : CFG.ghostSpeed;
-      step(g, speed, dt, 'ghost');
-      if (g.mode === 'eyes' && Math.abs(g.x - (DOOR[0] + 0.5)) < 0.6 && g.y > EXIT[1] - 0.5 && g.y < DOOR[1] + 0.5) {
-        Object.assign(g, ent([DOOR[0], HOUSE.y0]), { mode: 'respawn', spawnLeft: CFG.respawnTime });
-        continue;
-      }
+      step(g, g.mode === 'fright' ? CFG.frightSpeed : CFG.ghostSpeed, dt, 'ghost');
       if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7) {
         s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; g.sightLeft = CFG.fruitSightTime; s.events.push('fruitghost');
         award(s, playerOfGhost(s, i), CFG.fruitPts); if (s.over) return;
@@ -218,6 +230,36 @@
     }
   }
 
+  // Eaten ghosts: the direction towards the house from the centre they are about to reach.
+  let eyeField = null;
+  /** Steer an eaten ghost: turn round if the centre behind is the shorter way home, and choose the turn to make at
+   *  the centre ahead (a ghost passes a centre inside a tick, so the choice has to be made beforehand). */
+  function eyeWant(g) {
+    if (!eyeField) eyeField = distMap(DOOR[0], HOUSE.y0, 'eyes');
+    const fieldAt = (x, y) => { if (y < 0 || y >= H) return 1e6; const v = eyeField[tileIdx(x, y)]; return v < 0 ? 1e6 : v; };
+    let dx = DIRS[g.dir][0], dy = DIRS[g.dir][1];
+    const cx = Math.floor(g.x), cy = Math.floor(g.y);
+    let ahead = (cx + 0.5 - g.x) * dx + (cy + 0.5 - g.y) * dy;
+    if (Math.abs(ahead) > 1e-9) {
+      const frontX = ahead > 0 ? cx : cx + dx, frontY = ahead > 0 ? cy : cy + dy;
+      const travelled = ahead > 0 ? 1 - ahead : -ahead;
+      if (travelled + fieldAt(frontX - dx, frontY - dy) < (1 - travelled) + fieldAt(frontX, frontY) - 1e-6) {
+        g.dir = OPP[g.dir]; dx = -dx; dy = -dy; ahead = (cx + 0.5 - g.x) * dx + (cy + 0.5 - g.y) * dy;
+      }
+    }
+    // the centre this ghost reaches next (or stands on)
+    const fx = Math.abs(ahead) <= 1e-9 || ahead > 0 ? cx : cx + dx, fy = Math.abs(ahead) <= 1e-9 || ahead > 0 ? cy : cy + dy;
+    if (fieldAt(fx, fy) === 0) return g.dir;
+    let best = -1, bv = 1e9;
+    for (let d = 0; d < 4; d++) {
+      if (d === OPP[g.dir]) continue;
+      const nx = (fx + DIRS[d][0] + W) % W, ny = fy + DIRS[d][1];
+      if (ny < 0 || ny >= H || blocked(nx, ny, 'eyes')) continue;
+      const v = fieldAt(nx, ny); if (v < bv || (v === bv && d === g.dir)) { bv = v; best = d; }
+    }
+    return best < 0 ? OPP[g.dir] : best;
+  }
+
   // What a given player is allowed to see. Pac-Man sees all. The ghost players share one screen in the
   // original, with a circle of sight around each ghost, so a ghost player sees what any ghost sees.
   const sightOf = g => CFG.ghostSight * (g.sightLeft > 0 ? CFG.fruitSightMult : 1);
@@ -225,7 +267,7 @@
     const gi = ghostIndexOf(s, player);
     const me = gi < 0 ? s.pac : s.ghosts[gi];
     const sight = gi >= 0 ? sightOf(me) : CFG.ghostSight;
-    const seen = (x, y) => s.ghosts.some(g => g.mode !== 'respawn' && Math.hypot(x - g.x, y - g.y) <= sightOf(g));
+    const seen = (x, y) => s.ghosts.some(g => Math.hypot(x - g.x, y - g.y) <= sightOf(g));
     const vis = e => gi < 0 || seen(e.x, e.y);
     const out = {
       tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, over: s.over, why: s.overReason,
@@ -233,6 +275,8 @@
       catcher: s.catcher, steal: s.steal, winner: s.winner, sight, boost: gi >= 0 ? me.sightLeft : 0, fruitUp: !!s.fruit,
       fruit: s.fruit && vis(s.fruit) ? { x: s.fruit.x, y: s.fruit.y } : null,
       pac: vis(s.pac) ? q(s.pac) : null,
+      // the trail Pac-Man leaves: [x, y, age in seconds]; ghosts only see the parts inside a circle of sight
+      trail: s.trail.filter(p => vis(p)).map(p => [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100, Math.round((s.time - p.t) * 100) / 100]),
       // Every ghost is on the shared screen (its own circle and the minimap); `s` is the radius of its circle.
       ghosts: s.ghosts.map(g => Object.assign(q(g), { m: g.mode[0], s: sightOf(g) }))
     };
@@ -306,8 +350,9 @@
       if (g.mode === 'eyes') continue;
       const harmless = g.mode === 'fright' && s.frightLeft > 3;
       if (harmless) continue;
-      let sx = g.x, sy = g.y, delay = 0;
-      if (g.mode === 'respawn') { sx = EXIT[0] + 0.5; sy = EXIT[1] + 0.5; delay = Math.max(0, g.spawnLeft) + 0.3; }
+      // a ghost still inside the house is counted from the exit, a moment later
+      const inside = inHouse(Math.floor(g.x), Math.floor(g.y)) || cellAt(Math.floor(g.x), Math.floor(g.y)) === 'D';
+      const sx = inside ? EXIT[0] + 0.5 : g.x, sy = inside ? EXIT[1] + 0.5 : g.y, delay = inside ? 1 : 0;
       const dm = distMap(sx, sy, 'ghost');
       for (let i = 0; i < T; i++) if (dm[i] >= 0) { const t = delay + dm[i] / CFG.ghostSpeed; if (t < best[i]) best[i] = t; }
     }
@@ -415,9 +460,11 @@
   function cpuGhost(s, gi, rng, level) {
     level = level == null ? 1 : level;
     const g = s.ghosts[gi];
-    if (g.mode === 'respawn') return null;
+    if (g.mode === 'eyes') return null;           // eaten ghosts steer themselves
     if (!atCentre(g)) return null;
-    if (g.mode === 'eyes') return pathStep(g.x, g.y, 'ghost', (x, y) => x === DOOR[0] && y === DOOR[1]);
+    // Just revived: out through the door
+    const gx = Math.floor(g.x), gy = Math.floor(g.y);
+    if (inHouse(gx, gy) || cellAt(gx, gy) === 'D') return gx === DOOR[0] ? 0 : (gx < DOOR[0] ? 1 : 3);
     const ex = exits(g, 'ghost'), fwd = ex.filter(d => d !== OPP[g.dir]);
     const pool = fwd.length ? fwd : ex;
     if (g.mode === 'fright' && s.frightLeft > 0) {
@@ -430,7 +477,7 @@
       const fx = Math.floor(s.fruit.x), fy = Math.floor(s.fruit.y), d = pathStep(g.x, g.y, 'ghost', (x, y) => x === fx && y === fy);
       if (d != null && distMap(g.x, g.y, 'ghost')[tileIdx(fx, fy)] <= 9) return d;
     }
-    const sight = level === 0 ? CFG.ghostSight : level === 1 ? CFG.ghostSight * 1.8 : 99;
+    const sight = level === 0 ? CFG.ghostSight : level === 1 ? CFG.ghostSight * CFG.fruitSightMult : 99;
     const near = dist(g, s.pac) <= sight;
     if (near && rng() > (level === 0 ? 0.35 : 0.05)) {
       // Three roles so the pack does not simply queue behind each other.

@@ -102,21 +102,41 @@
       // below and in front, which matches the original's shading of the ghost bodies.
       R.begin(view, proj, { dir: [0, Math.sin(CAM.pitch), Math.cos(CAM.pitch)], dirA: [0, -1, 0.3], color: [1, 1, 1, 0.5] });
       R.draw(stage.model, m4.ident());
+      if (v.dim) R.tint([0.01, 0.02, 0.1, 0.5 * v.dim]);       // while the ghosts are vulnerable the scene darkens
       const pel = [];
       for (let y = 0; y < v.H; y++) for (let x = 0; x < v.W; x++) {
         const p = v.pellets[y * v.W + x]; if (!p) continue;
         pel.push([wx(x + 0.5), fl + 250, wz(y + 0.5), p === 2 ? 560 + 80 * Math.sin(v.time * 9) : 260]);
       }
       R.sprites(dot, pel);
+      // Pac-Man's trail: a wide flat ribbon in his player's colour, pale next to him and fading out at its tail
+      if (v.trail && v.trail.length && v.trailColor) {
+        const pts = []; let last = v.pac ? [v.pac.x, v.pac.y] : null;
+        const k = age => Math.max(0, Math.min(1, age / v.trailTime));
+        if (last) pts.push([wx(last[0]), fl + 45, wz(last[1]), 0.92, 0.45]);
+        for (let i = v.trail.length - 1; i >= 0; i--) {
+          const [x, y, age] = v.trail[i];
+          if (last && Math.abs(x - last[0]) > v.W / 2) break;       // through the tunnel: the line ends here
+          pts.push([wx(x), fl + 45, wz(y), 0.92 * Math.min(1, (1 - k(age)) / 0.4), 0.45 * (1 - k(age)) ** 2]); last = [x, y];
+        }
+        R.ribbon(pts, 780, v.trailColor);
+      }
       if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), fl, wz(v.fruit.y), 0, 0.75));
       if (v.pac) R.draw(pac, m4.trs(wx(v.pac.x), fl + 380, wz(v.pac.y), YAW[v.pac.d] || 0, 1));
       // Ghosts last: their bodies are blended.
       const blink = J3D.animatePattern(assets.ghostBlink, f).e || 0;
       for (const g of v.ghosts) {
-        let skin = skins[SKINS[g.seat]];
-        if (g.m === 'f') skin = v.flash ? skins.com : skins.yowari;
-        else if (g.m === 'e') skin = skins.toumei;
-        R.draw(ghost, m4.trs(wx(g.x), fl + 150, wz(g.y), g.yaw, 1.25), { textures: { ghost_r: skin, 'ghost_eye.0': eyes[blink] } });
+        let skin = skins[SKINS[g.seat]], scale = 1.25, opts;
+        if (g.m === 'f') {
+          // vulnerable: a smaller dark blue ghost with a mouth and no big eyes, blinking out near the end
+          if (v.flash) continue;
+          skin = skins.yowari; scale = 1.05;
+          opts = { textures: { ghost_r: skin }, filter: d => d.mat.name !== 'e' };
+        } else {
+          if (g.m === 'e') skin = skins.toumei;
+          opts = { textures: { ghost_r: skin, 'ghost_eye.0': eyes[blink] } };
+        }
+        R.draw(ghost, m4.trs(wx(g.x), fl + 150, wz(g.y), g.yaw, scale), opts);
       }
     }
     return { draw };

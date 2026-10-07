@@ -32,13 +32,17 @@ and what is still a best guess.
 | Ghost view camera | Looks north, 38 degrees down; a circle 252 px across on the 640 x 480 picture shows about 5.7 cells at the ghost | Rendered from the same cell and compared with the original's picture; pellet rows and wall edges line up |
 | shared screen layout | The disc's `pac_game.blo` scaled by 640/608 in both directions and moved 2 px down; circles 252 px across centred at (145, 146), (495, 146) and (319, 330), first two ghosts by player number on top | Fitted against the original's picture: panels, counter, radar and score line up; circle centres and frame colours measured |
 | Exchange screen | Four circles 140 px across, 152 px apart, LOSER / WINNER above, score bars and the points moved below | Measured on the original's picture after a catch |
+| Fruit pickup zoom | When a ghost takes the fruit its circle's picture pulls back to about 1.6 times the reach (by the measured area of the ghost in the circle), easing out over about 1.1 s (67 frames of the 59.7 Hz clock), with a "400" floating over the ghost and white sparkles for about 0.3 s. It stayed zoomed for the 8 s I recorded | Frame by frame in the emulator |
+| Frightened look | Scene dims; ghosts turn into smaller dark-blue ghosts with a wavy mouth and no big eyes; cyan sparkles trail them; in the last 2 s they blink out; at the end pink rings burst and the ghost returns | Frame by frame in the emulator (blink timing roughly 0.15 s on and off) |
+| Pac-Man's trail | A wide flat ribbon on the floor (nearly a full corridor wide) in the Pac-Man player's colour, near-opaque, paler next to Pac-Man and fading at its tail; ghosts see it inside their circles | Seen in the emulator in all circles; the length is a guess (2 s here) |
 | Ghost body | Disc model with its float animation, the player's skin (ghost_r/b/p/g), the frightened skin (ghost_yowari) and an invisible body for eaten ghosts (ghost_toumei) | Disc files; compared with the original's picture |
 
 ## Not measured (best guesses in this game)
 
 - Points for eating a frightened ghost. Uses 200, 400, 800, 1,600 for consecutive ghosts.
+- How long Pac-Man's trail is, and how it ends when he is caught.
 - Speed of an eaten ghost's eyes and how long it takes to come back.
-- Fruit details: how many pellets trigger it (here 6, then every 70), how long it stays (here 10 s), what Pac-Man scores for it (here 400), how much wider the ghost view gets (here 1.8 times) and for how long (here 10 s). I could not capture these in my recordings of the original.
+- Fruit details: how many pellets trigger it (here 6, then every 70), how long it stays (here 10 s), what Pac-Man scores for it (here 400), how long the wider ghost view lasts (here 10 s; the 1.6 times is measured). I could not capture these in my recordings of the original.
 - After the maze is cleared the game here starts a new round with the same Pac-Man.
 - Whether a catcher can also win by stealing past the target. Here, any player who reaches the target wins at once.
 - Which maze number each menu entry plays. The stage-select screen shows six small maps with names like `DpDay`, `HhDay`, `HhPnch`, `Or`, `UwDay` and `UwEvn`. I matched them to maze numbers by shape and power-pellet count (Original = 1, R.I.P. Park = 4, Manic Manor = 8, Haunted Hall = 13, Frantic Forest = 6, Panic Pier = 5). The links between the six names and these maps are a best match, not read from the game.

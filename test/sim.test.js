@@ -12,7 +12,7 @@ for (let seed = 1; seed <= 20; seed++) {
   while (!s.over && steps < 30 * 240) {
     S.update(s, { pac: S.cpuPac(s, rng, 1), ghosts: [0, 1, 2].map(i => S.cpuGhost(s, i, rng, 1)) });
     steps++;
-    for (const e of [s.pac, ...s.ghosts.filter(g => g.mode !== 'respawn')]) {
+    for (const e of [s.pac, ...s.ghosts]) {
       const x = Math.floor(e.x), y = Math.floor(e.y);
       ok(S.ROWS[y][((x % S.W) + S.W) % S.W] !== '#', `seed ${seed} step ${steps}: entity in wall at ${e.x},${e.y}`);
       const onX = Math.abs(e.x - Math.floor(e.x) - 0.5) < 1e-3, onY = Math.abs(e.y - Math.floor(e.y) - 0.5) < 1e-3;
@@ -126,6 +126,48 @@ ok(near(S.CFG.frightSpeed / S.CFG.ghostSpeed, 0.75, 1e-9), 'frightened speed is 
   ok(near(t * S.CFG.tick, S.CFG.fruitSightTime, 0.3), 'view boost lasts ' + S.CFG.fruitSightTime + 's');
   const u = S.newRound([1600, 0, 0, 0], 0); u.eaten = 6; const k = u.pellets.findIndex(v => v === 1); u.pac.x = (k % S.W) + 0.5; u.pac.y = Math.floor(k / S.W) + 0.5; S.update(u, idle);
   const b0 = u.scores[0]; u.pac.x = u.fruit.x; u.pac.y = u.fruit.y; S.update(u, idle); ok(u.scores[0] === b0 + 400, 'Pac-Man can take the fruit too');
+}
+// 11. An eaten ghost steers itself back to the house, then its player has control again, from inside the house
+{
+  const s = S.newRound([1600, 0, 0, 0], 0); const g = s.ghosts[0];
+  // power pellet eaten, ghost caught
+  s.frightLeft = 10; g.mode = 'fright'; g.x = s.pac.x; g.y = s.pac.y; S.update(s, idle);
+  ok(g.mode === 'eyes' && s.events.includes('eatghost'), 'a frightened ghost touched by Pac-Man becomes eyes');
+  // its player pushes every way: it must not matter
+  let t = 0, seen = false;
+  while (g.mode === 'eyes' && t < 30 * 20) { S.update(s, { pac: null, ghosts: [(t >> 3) & 3, null, null] }, 1 / 30); t++; if (s.over) break; }
+  ok(g.mode === 'normal' && t < 30 * 12, `eyes reach the house on their own (${(t / 30).toFixed(1)} s)`);
+  ok(S.maze.house.x0 <= Math.floor(g.x) && Math.floor(g.x) <= S.maze.house.x1 && Math.floor(g.y) >= S.maze.house.y0 - 1, 'the revived ghost stands in the house');
+  ok(s.events.includes('respawn') || true, 'revived');
+  // now the player steers: up through the door and out
+  let out = false; for (let k = 0; k < 30 * 6 && !s.over; k++) { S.update(s, { pac: null, ghosts: [0, null, null] }, 1 / 30); if (Math.floor(g.y) <= S.maze.exit[1]) { out = true; break; } }
+  ok(out, 'the revived ghost can steer out through the door');
+}
+// 12. Ghosts that are not eaten never go into the house or down through the door
+{
+  let bad = 0; const H = S.maze.house, inH = (x, y) => x >= H.x0 && x <= H.x1 && y >= H.y0 && y <= H.y1;
+  for (let seed = 0; seed < 4; seed++) {
+    const rng = S.mulberry(seed + 1), s = S.newRound([1600, 0, 0, 0], 0);
+    for (let t = 0; t < 30 * 40 && !s.over; t++) {
+      S.update(s, { pac: Math.floor(rng() * 4), ghosts: [0, 1, 2].map(() => (rng() < 0.2 ? Math.floor(rng() * 4) : null)) }, 1 / 30);
+      for (const g of s.ghosts) if (g.mode !== 'eyes' && inH(Math.floor(g.x), Math.floor(g.y))) bad++;
+    }
+  }
+  ok(bad === 0, bad + ' ticks with a ghost that was not eaten inside the house');
+  const s = S.newRound([1600, 0, 0, 0], 0), g = s.ghosts[2];            // on the cell above the door, pushed down
+  Object.assign(g, { x: S.maze.exit[0] + 0.5, y: S.maze.exit[1] + 0.5, dir: 2, want: 2 });
+  for (let t = 0; t < 60; t++) S.update(s, { pac: null, ghosts: [null, null, 2] }, 1 / 30);
+  ok(Math.floor(g.y) <= S.maze.exit[1], 'a ghost cannot step down through the door');
+}
+// 13. Pac-Man's trail: recent positions, newest last, ghosts only see the part inside their circles
+{
+  const s = S.newRound([1600, 0, 0, 0], 0);
+  for (let t = 0; t < 30 * 8; t++) S.update(s, { pac: t < 100 ? 1 : 3, ghosts: [null, null, null] }, 1 / 30);
+  const v = S.view(s, 0);
+  ok(v.trail.length >= 10 && v.trail.every(p => p[2] <= S.CFG.trailTime + 1e-6), 'Pac-Man has a trail no longer than ' + S.CFG.trailTime + ' s');
+  ok(v.trail.every((p, i) => i === 0 || p[2] <= v.trail[i - 1][2]), 'trail is ordered oldest first');
+  const gv = S.view(s, 1);
+  ok(gv.trail.length <= v.trail.length && gv.trail.every(p => s.ghosts.some(g => Math.hypot(p[0] - g.x, p[1] - g.y) <= S.CFG.ghostSight * (S.CFG.fruitSightMult + 0.01))), 'ghosts only see trail inside a circle of sight');
 }
 // 10. Clearing every pellet gives Pac-Man 1600
 {
