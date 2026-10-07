@@ -9,6 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const EMPTY = 15, PELLET = 30, POWER = 31, GATE = [16, 17, 18];
+  const LANE = 23;                                   // a floor tile used once, in the left lane of the R.I.P. Park maze (its mirror image is plain floor)
   const COLS = 21;                                   // every maze fits in table columns 0..20, centred on column 10
 
   // The disc holds 13 mazes. Their order matches the stage models (PacField_1..13). The stage-select
@@ -69,7 +70,7 @@
     for (let r = 0; r < h && gr < 0; r++) for (let c = 0; c + 2 < 32; c++) if (GATE.every((g, i) => tile(c + i, r) === g)) { gr = r; gc = c; break; }
     if (gr < 0) return null;
     const cx = gc + 1;
-    const floor = t => t === EMPTY || t === PELLET || t === POWER;
+    const floor = t => t === EMPTY || t === PELLET || t === POWER || t === LANE;
     // Where each row's walls start and end: floor beyond them is a tunnel that can only be entered sideways.
     const left = [], right = [];
     for (let r = 0; r < h; r++) {
@@ -105,7 +106,8 @@
       let s = '';
       for (let c = c0; c <= c1; c++) {
         const t = tile(c, r);
-        if (r === gr && c >= gc && c <= gc + 2) s += 'D';
+        // the gate is two wall pieces with the door between them: only the middle cell can be passed
+        if (r === gr && c >= gc && c <= gc + 2) s += c === gc + 1 ? 'D' : '#';
         else if (r === gr + 1 && c >= gc && c <= gc + 2) s += '_';
         else if (!seen.has(c + ',' + r)) s += '#';
         else s += t === PELLET ? '.' : t === POWER ? 'o' : ' ';

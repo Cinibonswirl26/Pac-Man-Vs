@@ -8,7 +8,7 @@ and what is still a best guess.
 
 | Rule | Value | How it was checked |
 | --- | --- | --- |
-| Maze (stage "Original Pac-Man") | 19 x 21 cells, mirror-symmetric, one tunnel row (row 10), ghost house in the middle with a 3-cell gate | Tile map stored in the game's data, compared with the in-game picture |
+| Maze (stage "Original Pac-Man") | 19 x 21 cells, mirror-symmetric, one tunnel row (row 10), ghost house in the middle: a 3 x 1 room with walls on both sides and below, and a gate of two wall pieces with a one-cell door between them (checked against the stage model; only eaten ghosts pass the door freely) | Tile map stored in the game's data, compared with the in-game picture |
 | Pellets | 172 small + 4 power = **176**. Power pellets at (0,2), (18,2), (0,16), (18,16) | Counted in the tile map, matches the on-screen counter at the start of a round |
 | Start cells | Pac-Man (9,12); ghosts (6,6), (12,6), (9,8) | Sprite positions at round start |
 | Pac-Man speed | **0.5 px per frame** = 3.73 cells per second | Sprite tracked over hundreds of frames |

@@ -13,7 +13,13 @@ const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.open
     const tag = `stage ${m.stage} ${m.name}`, all = m.rows.join('');
     ok(m.stage === i + 1, tag + ': order');
     ok((all.match(/\./g) || []).length === counts[i][0] && (all.match(/o/g) || []).length === counts[i][1], `${tag}: pellets ${(all.match(/\./g) || []).length}+${(all.match(/o/g) || []).length}, expected ${counts[i]}`);
-    ok((all.match(/D/g) || []).length === 3 && (all.match(/_/g) || []).length === 3, tag + ': a three-wide gate over a three-wide house');
+    ok((all.match(/D/g) || []).length === 1 && (all.match(/_/g) || []).length === 3, tag + ': one door cell over a three-wide house');
+    // the house is closed: a wall ring around it, broken only by the door in the middle of its top
+    const [dx0, dy0] = m.door, hs = m.house;
+    ok(m.rows[dy0].slice(dx0 - 2, dx0 + 3) === '##D##' && hs.x0 === dx0 - 1 && hs.x1 === dx0 + 1 && hs.y0 === dy0 + 1 && hs.y1 === dy0 + 1, `${tag}: gate is two wall pieces around the door, over the house (${m.rows[dy0].slice(dx0 - 2, dx0 + 3)})`);
+    ok(m.rows[hs.y0].slice(hs.x0 - 1, hs.x1 + 2) === '#___#' && m.rows[hs.y0 + 1].slice(hs.x0 - 1, hs.x1 + 2) === '#####', `${tag}: the house has walls on both sides and below`);
+    // no dead ends: every open cell leads somewhere
+    m.rows.forEach((r, y) => [...r].forEach((c, x) => { if ('#D_'.includes(c)) return; let n = 0; for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const yy = y + ay, xx = (x + ax + m.W) % m.W; if (yy >= 0 && yy < m.H && !'#D_'.includes(m.rows[yy][xx])) n++; } ok(n >= 2, `${tag}: dead end at ${x},${y}`); }));
     ok(m.W === 21, tag + ': 21 columns, centred on the gate');
     const S = Sim.create(m);
     // the start cells are open floor; Pac-Man can reach every pellet (the grid wraps sideways)
