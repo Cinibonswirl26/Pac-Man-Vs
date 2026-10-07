@@ -11,7 +11,7 @@
   let ws = null, room = null, you = 0;
   let snap = null, offline = null, lastPhase = null, lastCount = -1;
   let names = ['You', 'CPU', 'CPU', 'CPU'];
-  const sm = { pac: null, ghosts: [null, null, null] };
+  const sm = { pac: null, ghosts: [null, null, null], yaw: [0, 0, 0] };
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -70,12 +70,20 @@
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
 
   // ------------------------------------------------------------------ disc assets
-  const art = { pac: [], logo: null, press: null, maze: null };
+  const art = { pac: [], logo: null, press: null, maze: null, three: null };
+  let view3 = null, onDiscMaze = false;
   /** Switch the board to another maze (or back to the built-in one). */
   function setMaze(m) {
     const next = m ? PacSim.create(m) : PacSim;
+    onDiscMaze = !!(m && art.maze && m.rows.join('/') === art.maze.rows.join('/'));
     if (next === S) return;
     S = next; W = S.W; H = S.H; cell = 0; sm.pac = null; sm.ghosts = [null, null, null];
+  }
+  /** The 3D ghost view, when the disc's models are loaded and the stage-1 maze is in play. */
+  function ghostView3D() {
+    if (!onDiscMaze || !art.three || view3 === false) return null;
+    if (!view3) { try { view3 = View3D.create(art.three) || false; } catch (e) { console.warn('3D view', e); view3 = false; } }
+    return view3 || null;
   }
   const mazeOf = () => ($('mazeSel').value === 'disc' && art.maze) ? art.maze : null;
   function toCanvas(t) { const c = document.createElement('canvas'); c.width = t.w; c.height = t.h; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h), 0, 0); return c; }
@@ -95,7 +103,8 @@
         art.maze = Gbamap.stage1(await d.read('PROOT/gbademo/packman.bin'), PacSim.makeMaze);
         $('mazeSel').querySelector('[value=disc]').disabled = false; $('mazeSel').value = store.get('pacvs.maze') === 'builtin' ? 'builtin' : 'disc';
       } catch (e) { console.warn('maze', e); art.maze = null; }
-      st.className = 'note ok'; st.textContent = `Loaded ${d.title} (${d.id}). Original logo, sprites and music are on.`;
+      try { art.three = await View3D.load(d); view3 = null; } catch (e) { console.warn('3D models', e); art.three = null; }
+      st.className = 'note ok'; st.textContent = `Loaded ${d.title} (${d.id}). Original logo, sprites, music${art.three ? ', 3D ghost view' : ''} are on.`;
       if (remember) { try { await idbSet('disc', blob); } catch { /* storage unavailable */ } }
       if (!mode) playMusic('Pac_Op_loop73_LR', true);
     } catch (e) { st.className = 'note err'; st.textContent = 'Could not use that file: ' + e.message; }
@@ -370,11 +379,33 @@
       const R = (snap.sight || CFG.ghostSight) * u;
       f.fillStyle = '#000'; f.beginPath(); f.arc(me.x * u, me.y * u, R, 0, 7); f.fill();
       g.drawImage(fogCv, 0, 0);
+      const v3 = ghostView3D();
+      if (v3) draw3D(v3, me, R, now, dt);
       g.strokeStyle = col; g.lineWidth = Math.max(3, u * 0.16); g.beginPath(); g.arc(me.x * u, me.y * u, R, 0, 7); g.stroke();
-      drawGhost(me, col, u, now, true);
+      if (!v3) drawGhost(me, col, u, now, true);
       drawMinimap(u);
     }
   }
+  // The ghost's circle drawn in 3D from the disc's models, camera following the ghost.
+  function draw3D(v3, me, R, now, dt) {
+    const ghosts = [];
+    sm.ghosts.forEach((gh, i) => {
+      const s = snap.ghosts[i]; if (!gh || !s || s.m === 'r' || (s.far && i !== snap.me)) return;
+      const target = View3D.YAW[gh.d] || 0;
+      let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      sm.yaw[i] += dy * Math.min(1, dt * 14);
+      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i) });
+    });
+    const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
+    let img;
+    try {
+      img = v3.render({ size: 2 * R, me, zoom: (snap.sight || CFG.ghostSight) / CFG.ghostSight, ghosts, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000 });
+    } catch (e) { console.warn('3D view', e); view3 = false; return; }
+    g.save(); g.beginPath(); g.arc(me.x * u3(), me.y * u3(), R, 0, 7); g.clip();
+    g.drawImage(img, me.x * u3() - R, me.y * u3() - R, 2 * R, 2 * R);
+    g.restore();
+  }
+  const u3 = () => cell * dpr;
   function drawMinimap(u) {
     const w = 5.6 * u, h = 5.2 * u, x0 = W * u - w - 0.5 * u, y0 = H * u - h - 0.5 * u;
     g.fillStyle = 'rgba(255,190,0,0.95)'; g.fillRect(x0 - 0.15 * u, y0 - 1.65 * u, w + 0.3 * u, h + 1.8 * u);

@@ -26,6 +26,9 @@ and what is still a best guess.
 | Ghost view | A circle around each ghost, a minimap of the ghosts and a pellet counter | TV screen |
 | Fruit (from published descriptions, plus one 400-point score seen on a ghost) | Appears in the middle of the maze once enough pellets are gone. Pac-Man or a ghost can take it. A ghost gets 400 points and a wider view for a while | Wikipedia and reviews; a ghost's 400 points seen in the emulator |
 | Clearing the maze | Pac-Man gets a 1,600 bonus | Wikipedia |
+| Stage 1 in 3D | The disc's stage model has its walls exactly where the GBA maze has them (every one of the 441 cells checked) | `test/j3d.test.js` |
+| Ghost view camera | Looks north, 38 degrees down; a circle 252 px across on the 640 x 480 TV shows about 5.7 cells at the ghost | Rendered from the same cell and compared with the TV picture; pellet rows and wall edges line up |
+| Ghost body | Disc model with its float animation, the player's skin (ghost_r/b/p/g), the frightened skin (ghost_yowari) and an invisible body for eaten ghosts (ghost_toumei) | Disc files; compared with the TV picture |
 
 ## Not measured (best guesses in this game)
 
@@ -36,4 +39,7 @@ and what is still a best guess.
 - Whether a catcher can also win by stealing past the target. Here, any player who reaches the target wins at once.
 - The other 12 stages. Only the first stage layout is read from the disc.
 - The CPU players. The original's computer ghosts and Pac-Man are not documented, so these are new.
-- The ghost view radius and the camera (the original is a 3D view).
+- How far a ghost can see. The circle here is 4.6 cells in every direction; the original's circle shows more to the north than to the south because of the camera angle.
+- 3D lighting. The game sets its lights at run time. The light here was picked so the ghost bodies shade like the TV picture.
+- The neon colours. The stage's neon has coloured sections (purple, yellow, green, red) that the game switches on during play. Here the neon stays the scrolling blue that the disc's material shows by default.
+- The ghost eye animation (ghost.btp) is not played.

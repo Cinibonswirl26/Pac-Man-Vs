@@ -62,6 +62,9 @@ The browser reads it locally and nothing is uploaded. It uses:
 - the maze from the GBA program (`PROOT/gbademo/packman.bin`): exact walls, 172 pellets and 4 power pellets
 - the logo and Pac-Man animation from `PAC_title.szs`
 - music from `AudioRes/Stream` (AFC ADPCM decoded in the browser)
+- the 3D models for the ghost's view: the stage-1 maze (`Map/PacField_1.bmd` and its neon animation),
+  the ghost and Pac-Man with their animations and skins (`Model.szs`), the fruit and the pellet sprite.
+  The ghost player's circle is drawn with these in WebGL, camera following the ghost as on the TV.
 
 The file is remembered in this browser's IndexedDB so you only pick it once.
 When you host a room with the original maze selected, the host's browser sends the maze layout
@@ -75,8 +78,8 @@ Do not commit game files to this repo.
 | `shared/sim.js` | Maze, movement, rules, fog-of-war views, CPU players. Used by server and browser. |
 | `shared/match.js` | Roulette, rounds, point stealing, the target score. Used by server and browser. |
 | `server/server.js` | HTTP static host plus WebSocket rooms. The server is authoritative (30 Hz) and sends each player only what they may see, so ghosts cannot read Pac-Man's position. |
-| `client/` | UI, canvas renderer, input, sound, `disc.js` (CISO/GCM, Yaz0, RARC, BTI, AST audio) and `gbamap.js` (maze from the GBA program). |
-| `test/` | Simulation, match flow, WebSocket end-to-end, maze validation, disc reader checks, AI benchmark. |
+| `client/` | UI, canvas renderer, input, sound, `disc.js` (CISO/GCM, Yaz0, RARC, BTI, AST audio), `gbamap.js` (maze from the GBA program), `j3d.js` (J3D models and animations: BMD, BCK, BTK), `gx.js` (WebGL renderer that turns each GameCube material into a shader) and `view3d.js` (the ghost's 3D view). |
+| `test/` | Simulation, match flow, WebSocket end-to-end, maze validation, disc reader and 3D model checks, AI benchmark. |
 | `tools/` | How the rules were measured against the original (see FIDELITY.md). |
 
-Not implemented: the other 12 stages, the 3D look, and the original's computer players.
+Not implemented: the other 12 stages, the original's TV screen layout and result screens, and the original's computer players.
