@@ -24,13 +24,15 @@ and what is still a best guess.
 | Round reset | Pellets back to 176, everyone back to their start cells | Next round |
 | Round timer | None found. A round ran over 80 s with no clock | HUD and play |
 | Ghost view | A circle around each ghost, a minimap of the ghosts and a pellet counter | TV screen |
+| Fruit (from published descriptions, plus one 400-point score seen on a ghost) | Appears in the middle of the maze once enough pellets are gone. Pac-Man or a ghost can take it. A ghost gets 400 points and a wider view for a while | Wikipedia and reviews; a ghost's 400 points seen in the emulator |
+| Clearing the maze | Pac-Man gets a 1,600 bonus | Wikipedia |
 
 ## Not measured (best guesses in this game)
 
 - Points for eating a frightened ghost. Uses 200, 400, 800, 1,600 for consecutive ghosts.
 - Speed of an eaten ghost's eyes and how long it takes to come back.
-- The cherry bonus. It appears in the real game after some pellets are eaten, but its value and rules are not implemented.
-- What happens when every pellet is eaten. Here Pac-Man keeps his score and a new round starts.
+- Fruit details: how many pellets trigger it (here 6, then every 70), how long it stays (here 10 s), what Pac-Man scores for it (here 400), how much wider the ghost view gets (here 1.8 times) and for how long (here 10 s). I could not capture these in the emulator: it ran slower than real time and the game kept stalling.
+- After the maze is cleared the game here starts a new round with the same Pac-Man.
 - Whether a catcher can also win by stealing past the target. Here, any player who reaches the target wins at once.
 - The other 12 stages. Only the first stage layout is read from the disc.
 - The CPU players. The original's computer ghosts and Pac-Man are not documented, so these are new.

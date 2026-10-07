@@ -30,6 +30,7 @@ npm run bench        # CPU skill benchmark
    **becomes Pac-Man** in the next round. The maze is reset each round.
 5. The first player to reach the target score wins.
 
+Fruit appears in the middle of the maze. A ghost that takes it gets 400 points and a wider view for a while.
 Ghost players only see a circle around themselves. A minimap shows where the other ghosts are, and a
 counter shows how many pellets are left. Pac-Man sees the whole maze.
 
@@ -78,4 +79,4 @@ Do not commit game files to this repo.
 | `test/` | Simulation, match flow, WebSocket end-to-end, maze validation, disc reader checks, AI benchmark. |
 | `tools/` | How the rules were measured against the original (see FIDELITY.md). |
 
-Not implemented: the other 12 stages, the 3D look, fruit, and the original's computer players.
+Not implemented: the other 12 stages, the 3D look, and the original's computer players.

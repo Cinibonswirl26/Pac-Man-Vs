@@ -109,5 +109,25 @@ ok(near(S.CFG.frightSpeed / S.CFG.ghostSpeed, 0.75, 1e-9), 'frightened speed is 
   t.scores[0] = 1600; t.scores[3] = 6500; t.ghosts[2].x = t.pac.x; t.ghosts[2].y = t.pac.y; S.update(t, idle);
   ok(t.over && t.overReason === 'won' && t.winner === S.playerOfGhost(t, 2), 'a catcher whose steal reaches the target wins, ' + t.overReason + t.winner);
 }
+// 9. Fruit: appears after enough pellets; a ghost taking it gets 400 points and a wider view for a while
+{
+  const s = S.newRound([1600, 0, 0, 0], 0); s.eaten = S.CFG.fruitFirst - 1;
+  const i = s.pellets.findIndex(v => v === 1); s.pac.x = (i % S.W) + 0.5; s.pac.y = Math.floor(i / S.W) + 0.5; S.update(s, idle);
+  ok(s.fruit, 'fruit appears after enough pellets'); ok(S.view(s, 0).fruit, 'Pac-Man sees the fruit');
+  const g = s.ghosts[1], p = S.playerOfGhost(s, 1), before = s.scores[p], base = S.view(s, p).sight;
+  g.x = s.fruit.x; g.y = s.fruit.y; S.update(s, idle);
+  ok(!s.fruit && s.scores[p] === before + 400, 'ghost gets 400 for the fruit, got ' + (s.scores[p] - before));
+  const v = S.view(s, p); ok(v.sight > base * 1.5 && v.boost > 0, 'ghost view is wider after the fruit');
+  let t = 0; while (S.view(s, p).boost > 0 && t < 2000) { S.update(s, idle); t++; if (s.over) break; }
+  ok(near(t * S.CFG.tick, S.CFG.fruitSightTime, 0.3), 'view boost lasts ' + S.CFG.fruitSightTime + 's');
+  const u = S.newRound([1600, 0, 0, 0], 0); u.eaten = 6; const k = u.pellets.findIndex(v => v === 1); u.pac.x = (k % S.W) + 0.5; u.pac.y = Math.floor(k / S.W) + 0.5; S.update(u, idle);
+  const b0 = u.scores[0]; u.pac.x = u.fruit.x; u.pac.y = u.fruit.y; S.update(u, idle); ok(u.scores[0] === b0 + 400, 'Pac-Man can take the fruit too');
+}
+// 10. Clearing every pellet gives Pac-Man 1600
+{
+  const s = S.newRound([1600, 0, 0, 0], 0, { target: 1e9 }); s.pellets.fill(0); const k = S.ROWS.join('').indexOf('.');
+  s.pellets[k] = 1; s.left = 1; s.pac.x = (k % S.W) + 0.5; s.pac.y = Math.floor(k / S.W) + 0.5; const b = s.scores[0]; S.update(s, idle);
+  ok(s.over && s.overReason === 'cleared' && s.scores[0] === b + 10 + 1600, 'clearing the maze: +1600 bonus');
+}
 console.log(fails ? `${fails} FAILED` : 'all sim checks passed');
 process.exit(fails ? 1 : 0);

@@ -42,6 +42,7 @@
       else if (e === 'power') tone(180, 0.35, 'sawtooth', 0.12, 720);
       else if (e === 'eatghost') { tone(900, 0.12, 'square', 0.12, 300); setTimeout(() => tone(300, 0.2, 'square', 0.1, 1200), 90); }
       else if (e === 'pacdeath') tone(700, 0.9, 'sawtooth', 0.16, 70);
+      else if (e === 'fruit' || e === 'fruitghost') { tone(660, 0.08, 'square', 0.1); setTimeout(() => tone(990, 0.12, 'square', 0.1), 80); }
       else if (e === 'respawn') tone(300, 0.15, 'triangle', 0.1, 600);
     }
   }
@@ -317,6 +318,11 @@
     const open = (Math.sin(now / 70) + 1) / 2 * 0.65 + 0.05, a = [-Math.PI / 2, 0, Math.PI / 2, Math.PI][p.d];
     g.fillStyle = '#ffd400'; g.beginPath(); g.moveTo(x, y); g.arc(x, y, r, a + open, a + Math.PI * 2 - open); g.closePath(); g.fill();
   }
+  function drawFruit(f, u, now) {
+    const x = f.x * u, y = f.y * u + Math.sin(now / 250) * u * 0.05, r = u * 0.2;
+    g.strokeStyle = '#3fbf3f'; g.lineWidth = u * 0.08; g.beginPath(); g.moveTo(x - r * 0.9, y + r * 0.2); g.quadraticCurveTo(x - r * 0.4, y - r * 2.2, x + r * 1.1, y - r * 2.4); g.moveTo(x + r * 0.9, y + r * 0.2); g.quadraticCurveTo(x + r * 0.7, y - r * 1.6, x + r * 1.1, y - r * 2.4); g.stroke();
+    g.fillStyle = '#e5231b'; for (const dx of [-0.9, 0.9]) { g.beginPath(); g.arc(x + dx * r, y + r * 0.6, r * 1.1, 0, 7); g.fill(); g.fillStyle = '#ff8a80'; g.beginPath(); g.arc(x + dx * r - r * 0.3, y + r * 0.2, r * 0.3, 0, 7); g.fill(); g.fillStyle = '#e5231b'; }
+  }
   function drawGhost(gh, color, u, now, mine) {
     const x = gh.x * u, y = gh.y * u, r = u * 0.46;
     if (mine) { g.strokeStyle = '#ffffff'; g.lineWidth = u * 0.08; g.beginPath(); g.arc(x, y, r + u * 0.16, 0, 7); g.stroke(); }
@@ -350,6 +356,7 @@
       g.fillStyle = '#ffd9b0'; g.beginPath();
       g.arc((x + 0.5) * u, (y + 0.5) * u, v === 2 ? u * (0.2 + 0.05 * Math.sin(now / 120)) : u * 0.09, 0, 7); g.fill();
     }
+    if (snap.fruit) drawFruit(snap.fruit, u, now);
     sm.pac = approach(sm.pac, snap.respawning ? null : snap.pac, dt);
     snap.ghosts.forEach((gh, i) => { sm.ghosts[i] = approach(sm.ghosts[i], gh, dt); });
     sm.ghosts.forEach((gh, i) => { if (gh && snap.ghosts[i] && snap.ghosts[i].m !== 'r') drawGhost(gh, SEAT_COLORS[S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i)], u, now, snap.me === i); });
@@ -360,7 +367,7 @@
       f.globalCompositeOperation = 'source-over'; f.clearRect(0, 0, fogCv.width, fogCv.height);
       f.fillStyle = 'rgba(1,2,8,0.965)'; f.fillRect(0, 0, fogCv.width, fogCv.height);
       f.globalCompositeOperation = 'destination-out';
-      const R = CFG.ghostSight * u;
+      const R = (snap.sight || CFG.ghostSight) * u;
       f.fillStyle = '#000'; f.beginPath(); f.arc(me.x * u, me.y * u, R, 0, 7); f.fill();
       g.drawImage(fogCv, 0, 0);
       g.strokeStyle = col; g.lineWidth = Math.max(3, u * 0.16); g.beginPath(); g.arc(me.x * u, me.y * u, R, 0, 7); g.stroke();

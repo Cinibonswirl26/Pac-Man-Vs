@@ -30,6 +30,10 @@
     eyeSpeed: 1.0 * FPS / CELL,          // not measured
     frightTime: 10, frightFlash: 2, respawnTime: 3,   // respawnTime not measured
     ghostSight: 4.6,
+    // Fruit: appears in the middle of the maze once enough pellets are gone (documented: both sides may take it,
+    // ghosts get 400 points and a wider view for a while). The numbers below are guesses.
+    fruitPts: 400, fruitFirst: 6, fruitEvery: 70, fruitStay: 10, fruitSightMult: 1.8, fruitSightTime: 10,
+    clearBonus: 1600,
     pelletPts: 10, powerPts: 110,
     ghostChain: [200, 400, 800, 1600],   // not measured
     stealPts: 1600, startPts: 1600,
@@ -49,7 +53,7 @@
   /** Builds the rules for one maze. All maze-specific numbers live in `maze`. */
   function build(maze) {
   if (!maze.W) maze = makeMaze(maze.rows, maze);      // accept a bare descriptor (as sent over the network)
-  const ROWS = maze.rows, W = maze.W, H = maze.H, START = { pac: maze.pac, ghosts: maze.ghosts }, DOOR = maze.door, EXIT = maze.exit, HOUSE = maze.house;
+  const ROWS = maze.rows, W = maze.W, H = maze.H, START = { pac: maze.pac, ghosts: maze.ghosts }, DOOR = maze.door, EXIT = maze.exit, HOUSE = maze.house, FRUIT = maze.fruit || maze.pac;
 
   function wallAt(x, y, who) {
     if (y < 0 || y >= H) return true;
@@ -76,9 +80,10 @@
     return {
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: ent(START.pac), ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', spawnLeft: 0, id: i })),
+      pac: ent(START.pac), ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', spawnLeft: 0, id: i, sightLeft: 0 })),
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
-      pacPlayer, tick: 0, catcher: -1, steal: 0, winner: -1, time: 0
+      pacPlayer, tick: 0, catcher: -1, steal: 0, winner: -1, time: 0,
+      eaten: 0, nextFruit: CFG.fruitFirst, fruit: null
     };
   }
   function ent(p) { return { x: p[0] + 0.5, y: p[1] + 0.5, dir: 1, want: 1 }; }
@@ -153,7 +158,8 @@
     const pi = py * W + (((px % W) + W) % W);
     if (s.pellets[pi]) {
       const power = s.pellets[pi] === 2;
-      s.pellets[pi] = 0; s.left--;
+      s.pellets[pi] = 0; s.left--; s.eaten++;
+      if (!s.fruit && s.eaten >= s.nextFruit && s.left > 8) s.fruit = { x: FRUIT[0] + 0.5, y: FRUIT[1] + 0.5, left: CFG.fruitStay };
       s.events.push(power ? 'power' : 'pellet');
       if (power) {
         s.frightLeft = CFG.frightTime; s.chain = 0;
@@ -161,7 +167,12 @@
       }
       award(s, s.pacPlayer, power ? CFG.powerPts : CFG.pelletPts);
       if (s.over) return;
-      if (s.left <= 0) { s.over = true; s.overReason = 'cleared'; return; }
+      if (s.left <= 0) { award(s, s.pacPlayer, CFG.clearBonus); s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'cleared'; return; }
+    }
+    if (s.fruit) {
+      s.fruit.left -= dt;
+      if (dist(s.pac, s.fruit) < 0.7) { s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; s.events.push('fruit'); award(s, s.pacPlayer, CFG.fruitPts); if (s.over) return; }
+      else if (s.fruit.left <= 0) { s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; }
     }
     if (s.frightLeft > 0) {
       s.frightLeft -= dt;
@@ -176,6 +187,7 @@
         if (g.spawnLeft <= 0) Object.assign(g, ent(EXIT), { mode: s.frightLeft > 0 ? 'fright' : 'normal', spawnLeft: 0 });
         continue;
       }
+      if (g.sightLeft > 0) g.sightLeft = Math.max(0, g.sightLeft - dt);
       const inp = inputs.ghosts[i];
       if (inp != null) g.want = inp;
       const speed = g.mode === 'eyes' ? CFG.eyeSpeed : g.mode === 'fright' ? CFG.frightSpeed : CFG.ghostSpeed;
@@ -183,6 +195,10 @@
       if (g.mode === 'eyes' && Math.abs(g.x - (DOOR[0] + 0.5)) < 0.6 && g.y > EXIT[1] - 0.5 && g.y < DOOR[1] + 0.5) {
         Object.assign(g, ent([DOOR[0], HOUSE.y0]), { mode: 'respawn', spawnLeft: CFG.respawnTime });
         continue;
+      }
+      if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7) {
+        s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; g.sightLeft = CFG.fruitSightTime; s.events.push('fruitghost');
+        award(s, playerOfGhost(s, i), CFG.fruitPts); if (s.over) return;
       }
       if (dist(g, s.pac) < 0.8) {
         if (g.mode === 'fright') {
@@ -206,12 +222,13 @@
   function view(s, player) {
     const gi = ghostIndexOf(s, player);
     const me = gi < 0 ? s.pac : s.ghosts[gi];
-    const sight = CFG.ghostSight;
+    const sight = CFG.ghostSight * (gi >= 0 && me.sightLeft > 0 ? CFG.fruitSightMult : 1);
     const vis = e => gi < 0 || dist(e, me) <= sight;
     const out = {
       tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, over: s.over, why: s.overReason,
       pacPlayer: s.pacPlayer, scores: s.scores.slice(), rs: s.roundScores.slice(), me: gi, ev: s.events.slice(),
-      catcher: s.catcher, steal: s.steal, winner: s.winner,
+      catcher: s.catcher, steal: s.steal, winner: s.winner, sight, boost: gi >= 0 ? me.sightLeft : 0, fruitUp: !!s.fruit,
+      fruit: s.fruit && vis(s.fruit) ? { x: s.fruit.x, y: s.fruit.y } : null,
       pac: vis(s.pac) ? q(s.pac) : null,
       // Ghost players always know where their fellow ghosts are (the minimap); `far` marks those outside their circle of sight.
       ghosts: s.ghosts.map(g => (gi >= 0 && g.id === gi) || vis(g) ? Object.assign(q(g), { m: g.mode[0] }) : (gi >= 0 ? Object.assign(q(g), { m: g.mode[0], far: true }) : null))
@@ -405,6 +422,10 @@
       let best = pool[0], bv = -1;
       for (const d of pool) { const i = tileIdx(Math.floor(g.x) + DIRS[d][0], Math.floor(g.y) + DIRS[d][1]); const v = (dm[i] < 0 ? 0 : dm[i]) + rng() * 1.5; if (v > bv) { bv = v; best = d; } }
       return best;
+    }
+    if (s.fruit && level >= 1 && dist(g, s.pac) > 5) {
+      const fx = Math.floor(s.fruit.x), fy = Math.floor(s.fruit.y), d = pathStep(g.x, g.y, 'ghost', (x, y) => x === fx && y === fy);
+      if (d != null && distMap(g.x, g.y, 'ghost')[tileIdx(fx, fy)] <= 9) return d;
     }
     const sight = level === 0 ? CFG.ghostSight : level === 1 ? CFG.ghostSight * 1.8 : 99;
     const near = dist(g, s.pac) <= sight;
