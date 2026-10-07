@@ -122,6 +122,7 @@ wss.on('connection', ws => {
       }
       case 'start': if (r && r.host === ws.slot) r.start(); break;
       case 'in': if (r && Number.isInteger(m.d) && m.d >= 0 && m.d <= 3) r.inputs[ws.slot] = m.d; break;
+      case 'ready': if (r && r.match.ready(ws.slot)) { r.inputs = [null, null, null, null]; r.broadcastRoom(); } break;
       case 'leave': if (r) r.remove(ws); break;
       case 'ping': ws.send(JSON.stringify({ t: 'pong', c: m.c })); break;
     }

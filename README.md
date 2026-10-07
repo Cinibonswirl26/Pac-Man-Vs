@@ -40,6 +40,11 @@ counter shows how many pellets are left. Pac-Man sees the whole maze.
   plus a CPU skill and the points to win.
 - **Online**: Host an online room gives a 4-letter code and an invite link (`/?room=ABCD`). Friends open the
   link and press Join. The host presses Start.
+- **Changing roles**: each player's screen follows their role. Pac-Man gets the whole maze; ghosts get the
+  ghost screen (with your disc: the original TV screen with every ghost's circle). When a person catches
+  Pac-Man, everyone sees the exchange screen, then the catcher is asked to get ready (any key, a tap, the
+  Ready button or a gamepad's A/Start), like picking up the GBA on the console. The next round starts when
+  they do, or by itself after 15 seconds. If the catcher has left, a CPU takes over and play goes on at once.
 - Controls: arrow keys or WASD, swipe on touch screens, on-screen arrows on phones, or a gamepad.
   `M` toggles music, `Esc` leaves the match.
 

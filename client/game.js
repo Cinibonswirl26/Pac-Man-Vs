@@ -211,8 +211,16 @@
     if (mode === 'online') send({ t: 'in', d }); else if (offline) offline.inputs[0] = d;
     lastDir = d;
   }
+  // Hand-over: after a catch the new Pac-Man says when they are ready (on the console: take the GBA, press START).
+  const myHandoff = () => !!(snap && snap.phase === 'handoff' && snap.next === you);
+  function ready() {
+    if (!myHandoff()) return false;
+    if (mode === 'online') send({ t: 'ready' }); else if (offline) offline.match.ready(0);
+    return true;
+  }
   addEventListener('keydown', e => {
     if (e.target && e.target.tagName === 'INPUT') return;
+    if (myHandoff() && e.code !== 'Escape' && e.code !== 'KeyM') { e.preventDefault(); ready(); return; }
     if (e.code in KEYS) { e.preventDefault(); if (mode) setDir(KEYS[e.code]); }
     else if (e.code === 'KeyM') { music.enabled = !music.enabled; if (!music.enabled) stopMusic(); else onSnap(true); }
     else if (e.code === 'Escape' && mode) toMenu();
@@ -220,6 +228,7 @@
   document.querySelectorAll('#pad button').forEach(b => { b.addEventListener('pointerdown', e => { e.preventDefault(); setDir(+b.dataset.d); }); });
   let tx = 0, ty = 0;
   const cv = $('cv'), g = cv.getContext('2d');
+  $('stage').addEventListener('pointerdown', () => { ready(); });
   cv.addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
   cv.addEventListener('touchmove', e => {
     const dx = e.touches[0].clientX - tx, dy = e.touches[0].clientY - ty;
@@ -231,6 +240,7 @@
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
       if (!p) continue;
+      if (myHandoff() && ((p.buttons[0] && p.buttons[0].pressed) || (p.buttons[9] && p.buttons[9].pressed))) { ready(); break; }
       let d = -1;
       if (p.buttons[12] && p.buttons[12].pressed) d = 0; else if (p.buttons[15] && p.buttons[15].pressed) d = 1;
       else if (p.buttons[13] && p.buttons[13].pressed) d = 2; else if (p.buttons[14] && p.buttons[14].pressed) d = 3;
@@ -245,13 +255,17 @@
     screen('game'); lastPhase = null; lastCount = -1; sm.pac = null; sm.ghosts = [null, null, null];
     if (!raf) raf = requestAnimationFrame(frame);
   }
-  let hudKey = '', phaseT0 = 0;
-  // Screens drawn from the disc between rounds: the exchange after a catch and the final results.
-  const discScreen = () => (snap && ((snap.phase === 'roundover' && snap.why === 'caught') || snap.phase === 'final') && art.tv) ? tvScreen() : null;
+  let hudKey = '', phaseT0 = 0, exchangeT0 = 0;
+  // Screens drawn from the disc between rounds: the exchange after a catch (through the hand-over) and the final results.
+  const discScreen = () => (snap && (((snap.phase === 'roundover' || snap.phase === 'handoff') && snap.why === 'caught') || snap.phase === 'final') && art.tv) ? tvScreen() : null;
   function onSnap(force) {
     if (!snap) return;
     if (snap.phase !== lastPhase || force) {
-      if (snap.phase !== lastPhase) phaseT0 = performance.now();
+      if (snap.phase !== lastPhase) {
+        phaseT0 = performance.now();
+        if (snap.phase === 'roundover') exchangeT0 = phaseT0;
+        if (snap.phase === 'handoff' && snap.next === you) { tone(660, 0.1, 'square', 0.12); setTimeout(() => tone(990, 0.18, 'square', 0.12), 110); }
+      }
       if (snap.phase === 'countdown' && snap.phase !== lastPhase) lastDir = -1;
       lastPhase = snap.phase;
       if (snap.phase === 'countdown' || snap.phase === 'play') playMusic(GAME_TRACKS[(snap.round || 0) % 4], true); else stopMusic();
@@ -261,26 +275,32 @@
   }
   const fmt = n => n.toLocaleString('en-US');
   function renderHud() {
-    const key = JSON.stringify([snap.scores, snap.pacPlayer, names, snap.target, snap.left, snap.round, snap.phase]);
+    const handoff = snap.phase === 'handoff', pacSeat = handoff ? snap.next : snap.pacPlayer;
+    const key = JSON.stringify([snap.scores, pacSeat, handoff, names, snap.target, snap.left, snap.round, snap.phase]);
     if (key === hudKey) return; hudKey = key;
     $('hud').innerHTML = [0, 1, 2, 3].map(i => {
-      const pac = i === snap.pacPlayer;
-      return `<div class="pl ${i === you ? 'me' : ''} ${pac ? 'pacrole' : ''}"><div class="n"><span class="dot" style="background:${SEAT_COLORS[i]};border-radius:${pac ? '50% 50% 50% 50%' : '50% 50% 3px 3px'}"></span>${esc(names[i])}${pac ? ' <span class="note">Pac-Man</span>' : ''}</div><div class="s">${fmt(snap.scores[i])}</div></div>`;
+      const pac = i === pacSeat;
+      return `<div class="pl ${i === you ? 'me' : ''} ${pac ? 'pacrole' : ''}"><div class="n"><span class="dot" style="background:${SEAT_COLORS[i]};border-radius:${pac ? '50% 50% 50% 50%' : '50% 50% 3px 3px'}"></span>${esc(names[i])}${pac ? ` <span class="note">${handoff ? 'Pac-Man next' : 'Pac-Man'}</span>` : ''}</div><div class="s">${fmt(snap.scores[i])}</div></div>`;
     }).join('');
-    const pacMe = snap.me < 0;
-    $('roleTxt').textContent = (pacMe ? 'You are Pac-Man' : 'You are a ghost') + ` · first to ${fmt(snap.target)} wins`;
+    const pacMe = handoff ? snap.next === you : snap.me < 0;
+    $('roleTxt').textContent = (handoff ? (pacMe ? 'You are Pac-Man next' : 'You are a ghost next round') : pacMe ? 'You are Pac-Man' : 'You are a ghost') + ` · first to ${fmt(snap.target)} wins`;
     $('timeTxt').textContent = `${snap.left} pellets left`;
   }
   function renderBanner() {
     const b = $('banner'); let html = '';
     const pacMe = snap.me < 0, pn = names[snap.pacPlayer];
     const onDisc = !!discScreen();
-    if (onDisc && snap.phase === 'roundover') html = '';
+    if (snap.phase === 'handoff') {
+      const secs = Math.ceil(snap.left_t), nx = names[snap.next];
+      html = myHandoff()
+        ? `<div class="handoff"><div class="big">You are Pac-Man next</div><div class="sm">Press any key or tap when ready · starts in ${secs} s</div><button class="primary" id="readyBtn">Ready</button></div>`
+        : `<div class="handoff"><div class="big">${esc(nx)} is Pac-Man next</div><div class="sm">Waiting for ${esc(nx)} to get ready · ${secs} s</div></div>`;
+    } else if (onDisc && snap.phase === 'roundover') html = '';
     else if (onDisc && snap.phase === 'final') {
       const canAgain = mode === 'offline' || (room && room.host === you);
       html = `<div class="row" style="justify-content:center;flex:none;margin-top:auto">${canAgain ? '<button class="primary" id="again">Play again</button>' : '<span class="sm">Waiting for the host…</span>'}<button id="quit">Back to menu</button></div>`;
     } else if (snap.phase === 'countdown') {
-      html = `<div class="big">${Math.max(1, Math.ceil(snap.left_t))}</div><div class="sm">${pacMe ? `You are Pac-Man with ${fmt(snap.scores[snap.pacPlayer])} points. Eat pellets. If a ghost catches you it steals 1,600.` : `${esc(pn)} is Pac-Man. Catch Pac-Man to steal 1,600 points and become Pac-Man yourself.`}</div>`;
+      html = `<div class="big">${Math.min(3, Math.max(1, Math.ceil(snap.left_t)))}</div><div class="sm">${pacMe ? `You are Pac-Man with ${fmt(snap.scores[snap.pacPlayer])} points. Eat pellets. If a ghost catches you it steals 1,600.` : `${esc(pn)} is Pac-Man. Catch Pac-Man to steal 1,600 points and become Pac-Man yourself.`}</div>`;
     } else if (snap.phase === 'roundover') {
       if (snap.why === 'caught') html = `<div class="big">${esc(names[snap.catcher])} caught Pac-Man</div><div class="sm">${esc(names[snap.catcher])} takes ${fmt(snap.steal)} points from ${esc(pn)} and is Pac-Man next round.</div>`;
       else if (snap.why === 'cleared') html = `<div class="big">Maze cleared</div><div class="sm">${esc(pn)} keeps ${fmt(snap.scores[snap.pacPlayer])} points.</div>`;
@@ -295,6 +315,7 @@
       b.dataset.h = html; b.innerHTML = html; b.style.background = html && !onDisc ? 'rgba(5,6,15,0.62)' : 'transparent';
       const a = $('again'); if (a) a.onclick = () => { if (mode === 'online') send({ t: 'start' }); else startOffline(); };
       const q = $('quit'); if (q) q.onclick = () => toMenu();
+      const r = $('readyBtn'); if (r) r.onclick = () => ready();
     }
   }
 
@@ -450,7 +471,7 @@
       } else {
         const after = snap.scores.slice(), before = after.slice();
         before[snap.pacPlayer] += snap.steal; before[snap.catcher] -= snap.steal;
-        tv.exchange({ time: t, target: snap.target, before, after, loser: snap.pacPlayer, winner: snap.catcher }, w);
+        tv.exchange({ time: (now - exchangeT0) / 1000, target: snap.target, before, after, loser: snap.pacPlayer, winner: snap.catcher }, w);
       }
     } catch (e) { console.warn('TV screen', e); tvView.canvas.remove(); tvView = false; }
   }
@@ -495,5 +516,5 @@
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });
   addEventListener('resize', () => { cell = 0; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (mode) onSnap(true); });
-  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get art() { return art; } };   // for automated tests
+  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get art() { return art; }, get offline() { return offline; } };   // for automated tests
 })();

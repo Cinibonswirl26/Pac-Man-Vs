@@ -21,6 +21,7 @@ and what is still a best guess.
 | Goal | A target score is chosen before the match (7,000 shown first) | "Choose a score" screen |
 | First Pac-Man | Picked by a roulette. Starts with **1,600** points | Scoreboard at round start, three separate matches |
 | Catching Pac-Man | The round ends at once. The catcher **steals 1,600** points from Pac-Man (he keeps the rest, e.g. 1,610 -> 10) and **becomes the next Pac-Man** | Loser/winner screen: -1,600 / +1,600 |
+| Hand-over | After the exchange screen the new Pac-Man has to take the GBA and press START before the next round | TV: "Take the Game Boy Advance and Press START." with an arrow at the new Pac-Man. Here the new Pac-Man presses a key or Ready instead; the 15-second limit is this game's own |
 | Round reset | Pellets back to 176, everyone back to their start cells | Next round |
 | Round timer | None found. A round ran over 80 s with no clock | HUD and play |
 | Ghost view | A circle around each ghost, a minimap of the ghosts and a pellet counter. All ghost players watch the same TV, so each sees every ghost's circle | TV screen |
