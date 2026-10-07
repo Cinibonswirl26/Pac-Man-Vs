@@ -33,7 +33,9 @@
       const c = Math.cos(ry) * s, n = Math.sin(ry) * s;
       return [c, 0, -n, 0, 0, s, 0, 0, n, 0, c, 0, x, y, z, 1];
     },
-    normal3(m) { return [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]]; }
+    normal3(m) { return [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]]; },
+    /** Orthographic projection with y pointing down: (0,0) is the top-left corner of a w x h screen. */
+    screen(w, h) { return [2 / w, 0, 0, 0, 0, -2 / h, 0, 0, 0, 0, -1, 0, -1, 1, 0, 1]; }
   };
 
   // ---------------------------------------------------------------- shader generation
@@ -255,8 +257,63 @@
       gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
       gl.drawArrays(gl.TRIANGLES, 0, list.length * 6);
     }
+    const quadCache = new WeakMap();
+    // Flat-coloured polygons in screen space (frames, tabs) and stencil masks (the ghosts' circles).
+    let flatProg = null; const flatBuf = gl.createBuffer();
+    function poly(points, color, stencil) {
+      if (!flatProg) {
+        const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+        const pr = gl.createProgram();
+        gl.attachShader(pr, sh(gl.VERTEX_SHADER, 'attribute vec3 aPos; uniform mat4 uP; void main() { gl_Position = uP * vec4(aPos, 1.0); }'));
+        gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, 'precision mediump float; uniform vec4 uC; void main() { gl_FragColor = uC; }'));
+        gl.bindAttribLocation(pr, 0, 'aPos'); gl.linkProgram(pr);
+        flatProg = { pr, uP: gl.getUniformLocation(pr, 'uP'), uC: gl.getUniformLocation(pr, 'uC') };
+      }
+      const data = new Float32Array((points.length - 2) * 9);   // triangle fan around points[0]
+      for (let i = 1, o = 0; i + 1 < points.length; i++) for (const q of [points[0], points[i], points[i + 1]]) { data[o++] = q[0]; data[o++] = q[1]; data[o++] = 0; }
+      gl.useProgram(flatProg.pr);
+      gl.uniformMatrix4fv(flatProg.uP, false, frame.proj); gl.uniform4fv(flatProg.uC, color || [1, 1, 1, 1]);
+      gl.bindBuffer(gl.ARRAY_BUFFER, flatBuf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+      for (let i = 1; i < 4; i++) gl.disableVertexAttribArray(i);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.disable(gl.CULL_FACE); gl.disable(gl.DEPTH_TEST);
+      if (stencil) { gl.colorMask(false, false, false, false); gl.disable(gl.BLEND); }
+      else { gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); }
+      gl.drawArrays(gl.TRIANGLES, 0, data.length / 3);
+      gl.colorMask(true, true, true, true);
+    }
+    // Set a material's state and draw one batch of triangles.
+    function submit(d, mv, nm, texFor, opts) {
+      const mat = d.mat, p = d.prog, u = p.u;
+      gl.frontFace(gl.CW);   // GX treats clockwise triangles as front-facing
+      gl.useProgram(p.pr);
+      gl.uniformMatrix4fv(u.uMV, false, mv); gl.uniformMatrix4fv(u.uP, false, frame.proj); gl.uniformMatrix3fv(u.uNM, false, nm);
+      let m0 = mat.matColor[0] || [1, 1, 1, 1];
+      if (opts.matColor) m0 = m0.map((x, i) => x * opts.matColor[i]);
+      gl.uniform4fv(u.uMat0, m0); gl.uniform4fv(u.uMat1, mat.matColor[1] || [1, 1, 1, 1]);
+      gl.uniform4fv(u.uAmb0, mat.ambColor[0] || [0, 0, 0, 0]); gl.uniform4fv(u.uAmb1, mat.ambColor[1] || [0, 0, 0, 0]);
+      gl.uniform3fv(u.uLightDir, frame.lightDir); gl.uniform3fv(u.uLightDirA, frame.lightDirA); gl.uniform4fv(u.uLightCol, frame.lightCol);
+      if (u.uTM && d.texMtx.length) gl.uniformMatrix3fv(u.uTM, false, flat(d.texMtx));
+      gl.uniform4fv(u.uK, flat(opts.kColors || mat.kColors)); gl.uniform4fv(u.uReg, flat(opts.tevColors || mat.tevColors));
+      for (let i = 0; i < 8; i++) { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, texFor(mat.textures[i], i)); }
+      gl.uniform1iv(u.uTex, [0, 1, 2, 3, 4, 5, 6, 7]);
+      const cull = mat.cull;
+      if (cull === 0) gl.disable(gl.CULL_FACE);
+      else { gl.enable(gl.CULL_FACE); gl.cullFace(cull === 1 ? gl.FRONT : cull === 2 ? gl.BACK : gl.FRONT_AND_BACK); }
+      const bl = mat.blend;
+      if (bl && bl.type === 1) { gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(BF[bl.src], BFD[bl.dst]); }
+      else if (bl && bl.type === 3) { gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT); gl.blendFunc(gl.ONE, gl.ONE); }
+      else gl.disable(gl.BLEND);
+      const z = mat.zMode || { enable: true, func: 3, write: true };
+      if (z.enable) { gl.enable(gl.DEPTH_TEST); gl.depthFunc(ZF[z.func]); } else gl.disable(gl.DEPTH_TEST);
+      gl.depthMask(!!z.write && opts.depthWrite !== false);
+      const attr = (i, b, n) => { gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); };
+      attr(0, d.pos, 3); attr(1, d.nrm, 3); attr(2, d.clr, 4); attr(3, d.uv, 2);
+      gl.drawArrays(gl.TRIANGLES, 0, d.count);
+      gl.depthMask(true);
+    }
     return {
-      gl, texture, model, mat4, sprites,
+      gl, texture, model, mat4, sprites, white, poly,
       /** Set camera and light for the following draws. light.dir points from surfaces towards the light, in world
        * space; light.dirA, if given, is used for the alpha lighting channels instead. */
       begin(view, proj, light) {
@@ -268,44 +325,30 @@
       draw(gm, world, opts) {
         opts = opts || {};
         const mv = mat4.mul(frame.view, world), nm = mat4.normal3(mv);
-        gl.frontFace(gl.CW);   // GX treats clockwise triangles as front-facing
         for (const d of gm.draws) {
           if (opts.filter && !opts.filter(d)) continue;
-          const mat = d.mat, p = d.prog, u = p.u;
-          gl.useProgram(p.pr);
-          gl.uniformMatrix4fv(u.uMV, false, mv); gl.uniformMatrix4fv(u.uP, false, frame.proj); gl.uniformMatrix3fv(u.uNM, false, nm);
-          const mc = (c, dflt) => c || dflt;
-          let m0 = mc(mat.matColor[0], [1, 1, 1, 1]);
-          if (opts.matColor) m0 = m0.map((x, i) => x * opts.matColor[i]);
-          gl.uniform4fv(u.uMat0, m0); gl.uniform4fv(u.uMat1, mc(mat.matColor[1], [1, 1, 1, 1]));
-          gl.uniform4fv(u.uAmb0, mc(mat.ambColor[0], [0, 0, 0, 0])); gl.uniform4fv(u.uAmb1, mc(mat.ambColor[1], [0, 0, 0, 0]));
-          gl.uniform3fv(u.uLightDir, frame.lightDir); gl.uniform3fv(u.uLightDirA, frame.lightDirA); gl.uniform4fv(u.uLightCol, frame.lightCol);
-          if (u.uTM) gl.uniformMatrix3fv(u.uTM, false, flat(d.texMtx));
-          gl.uniform4fv(u.uK, flat(mat.kColors)); gl.uniform4fv(u.uReg, flat(mat.tevColors));
-          const units = [];
-          for (let i = 0; i < 8; i++) {
-            const ti = mat.textures[i];
-            let t = white;
-            if (ti >= 0 && gm.textures[ti]) { const name = gm.m.textures[ti].name; t = (opts.textures && opts.textures[name]) || gm.textures[ti]; }
-            gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, t); units.push(i);
-          }
-          gl.uniform1iv(u.uTex, units);
-          // fixed-function state
-          const cull = mat.cull;
-          if (cull === 0) gl.disable(gl.CULL_FACE);
-          else { gl.enable(gl.CULL_FACE); gl.cullFace(cull === 1 ? gl.FRONT : cull === 2 ? gl.BACK : gl.FRONT_AND_BACK); }
-          const bl = mat.blend;
-          if (bl && bl.type === 1) { gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(BF[bl.src], BFD[bl.dst]); }
-          else if (bl && bl.type === 3) { gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT); gl.blendFunc(gl.ONE, gl.ONE); }
-          else gl.disable(gl.BLEND);
-          const z = mat.zMode || { enable: true, func: 3, write: true };
-          if (z.enable) { gl.enable(gl.DEPTH_TEST); gl.depthFunc(ZF[z.func]); } else gl.disable(gl.DEPTH_TEST);
-          gl.depthMask(!!z.write && opts.depthWrite !== false);
-          const attr = (i, b, n) => { gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); };
-          attr(0, d.pos, 3); attr(1, d.nrm, 3); attr(2, d.clr, 4); attr(3, d.uv, 2);
-          gl.drawArrays(gl.TRIANGLES, 0, d.count);
+          submit(d, mv, nm, ti => {
+            if (!(ti >= 0 && gm.textures[ti])) return white;
+            return (opts.textures && opts.textures[gm.m.textures[ti].name]) || gm.textures[ti];
+          }, opts);
         }
-        gl.depthMask(true);
+      },
+      /** Draw one quad with a material (2D screens). verts: 4 corners {x, y, u, v, c: [r,g,b,a]} in order
+       * top-left, top-right, bottom-right, bottom-left; tex(i) gives the GL texture for the material's slot i. */
+      quad(mat, tex, verts, opts) {
+        let q = quadCache.get(mat);
+        if (!q) {
+          q = { mat, prog: program(mat), count: 6, pos: gl.createBuffer(), nrm: gl.createBuffer(), clr: gl.createBuffer(), uv: gl.createBuffer(), texMtx: mat.texMtx.map(tm => tm ? srt(tm) : [1, 0, 0, 0, 1, 0, 0, 0, 1]) };
+          quadCache.set(mat, q);
+          gl.bindBuffer(gl.ARRAY_BUFFER, q.nrm); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(18).map((_, i) => i % 3 === 2 ? 1 : 0), gl.STATIC_DRAW);
+        }
+        const order = [0, 1, 2, 0, 2, 3], P = new Float32Array(18), C = new Float32Array(24), U = new Float32Array(12);
+        order.forEach((k, i) => { const v = verts[k]; P[i * 3] = v.x; P[i * 3 + 1] = v.y; C.set(v.c || [1, 1, 1, 1], i * 4); U[i * 2] = v.u; U[i * 2 + 1] = v.v; });
+        gl.bindBuffer(gl.ARRAY_BUFFER, q.pos); gl.bufferData(gl.ARRAY_BUFFER, P, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, q.clr); gl.bufferData(gl.ARRAY_BUFFER, C, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, q.uv); gl.bufferData(gl.ARRAY_BUFFER, U, gl.DYNAMIC_DRAW);
+        if (opts && opts.texMtx) for (const k in opts.texMtx) { const base = mat.texMtx[k]; if (base) q.texMtx[k] = srt(Object.assign({}, base, opts.texMtx[k])); }
+        submit(q, frame.view, mat4.normal3(frame.view), (ti, slot) => tex(slot) || white, opts || {});
       }
     };
   }

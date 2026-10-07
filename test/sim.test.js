@@ -48,7 +48,11 @@ ok(near(S.CFG.frightSpeed / S.CFG.ghostSpeed, 0.75, 1e-9), 'frightened speed is 
   s.pac.x = 1.5; s.pac.y = 19.5;
   const v = S.view(s, S.playerOfGhost(s, 0));
   ok(v.pac === null, 'far Pac-Man must stay hidden from ghosts');
-  ok(v.ghosts.every(g => g), 'ghosts always see their teammates (minimap)');
+  ok(v.ghosts.every(g => g && g.s > 0), 'ghosts always see their teammates and the size of their circles');
+  // the ghost players share one screen: what one ghost's circle shows, every ghost player sees
+  s.ghosts[2].x = 2.5; s.ghosts[2].y = 18.5;
+  ok(S.view(s, S.playerOfGhost(s, 0)).pac !== null, 'Pac-Man inside another ghost\'s circle must be visible to every ghost player');
+  ok(S.view(s, S.playerOfGhost(s, 0)).pellets[19 * S.W + 1] === s.pellets[19 * S.W + 1], 'pellets around another ghost are visible too');
 }
 
 // 4. Start of a round: three ghosts, every start cell is open floor, pellet count matches the maze

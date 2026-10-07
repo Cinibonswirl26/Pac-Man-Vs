@@ -23,11 +23,13 @@ and what is still a best guess.
 | Catching Pac-Man | The round ends at once. The catcher **steals 1,600** points from Pac-Man (he keeps the rest, e.g. 1,610 -> 10) and **becomes the next Pac-Man** | Loser/winner screen: -1,600 / +1,600 |
 | Round reset | Pellets back to 176, everyone back to their start cells | Next round |
 | Round timer | None found. A round ran over 80 s with no clock | HUD and play |
-| Ghost view | A circle around each ghost, a minimap of the ghosts and a pellet counter | TV screen |
+| Ghost view | A circle around each ghost, a minimap of the ghosts and a pellet counter. All ghost players watch the same TV, so each sees every ghost's circle | TV screen |
 | Fruit (from published descriptions, plus one 400-point score seen on a ghost) | Appears in the middle of the maze once enough pellets are gone. Pac-Man or a ghost can take it. A ghost gets 400 points and a wider view for a while | Wikipedia and reviews; a ghost's 400 points seen in the emulator |
 | Clearing the maze | Pac-Man gets a 1,600 bonus | Wikipedia |
 | Stage 1 in 3D | The disc's stage model has its walls exactly where the GBA maze has them (every one of the 441 cells checked) | `test/j3d.test.js` |
 | Ghost view camera | Looks north, 38 degrees down; a circle 252 px across on the 640 x 480 TV shows about 5.7 cells at the ghost | Rendered from the same cell and compared with the TV picture; pellet rows and wall edges line up |
+| TV screen layout | The disc's `pac_game.blo` scaled by 640/608 in both directions and moved 2 px down; circles 252 px across centred at (145, 146), (495, 146) and (319, 330), first two ghosts by player number on top | Fitted against the TV picture: panels, counter, radar and score line up; circle centres and frame colours measured |
+| Exchange screen | Four circles 140 px across, 152 px apart, LOSER / WINNER above, score bars and the points moved below | Measured on the TV picture after a catch |
 | Ghost body | Disc model with its float animation, the player's skin (ghost_r/b/p/g), the frightened skin (ghost_yowari) and an invisible body for eaten ghosts (ghost_toumei) | Disc files; compared with the TV picture |
 
 ## Not measured (best guesses in this game)
@@ -43,3 +45,8 @@ and what is still a best guess.
 - 3D lighting. The game sets its lights at run time. The light here was picked so the ghost bodies shade like the TV picture.
 - The neon colours. The stage's neon has coloured sections (purple, yellow, green, red) that the game switches on during play. Here the neon stays the scrolling blue that the disc's material shows by default.
 - The ghost eye animation (ghost.btp) is not played.
+- Screen details drawn by the game's code rather than its layouts: the shape of the circles' tabs, the size and
+  colour of the score digits in the player panels, how the exchange screen animates and when its arrow appears,
+  and the order in which the results screen shows the ranking and then the winner. These were matched by eye
+  to the TV pictures or guessed.
+- The dotted bar next to Pac-Man's score in the player panel and the "COM" labels are not drawn.

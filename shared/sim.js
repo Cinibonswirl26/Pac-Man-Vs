@@ -218,27 +218,30 @@
     }
   }
 
-  // What a given player is allowed to see. Ghosts get fog of war; Pac-Man sees all.
+  // What a given player is allowed to see. Pac-Man sees all. The ghost players share one TV in the
+  // original, with a circle of sight around each ghost, so a ghost player sees what any ghost sees.
+  const sightOf = g => CFG.ghostSight * (g.sightLeft > 0 ? CFG.fruitSightMult : 1);
   function view(s, player) {
     const gi = ghostIndexOf(s, player);
     const me = gi < 0 ? s.pac : s.ghosts[gi];
-    const sight = CFG.ghostSight * (gi >= 0 && me.sightLeft > 0 ? CFG.fruitSightMult : 1);
-    const vis = e => gi < 0 || dist(e, me) <= sight;
+    const sight = gi >= 0 ? sightOf(me) : CFG.ghostSight;
+    const seen = (x, y) => s.ghosts.some(g => g.mode !== 'respawn' && Math.hypot(x - g.x, y - g.y) <= sightOf(g));
+    const vis = e => gi < 0 || seen(e.x, e.y);
     const out = {
       tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, over: s.over, why: s.overReason,
       pacPlayer: s.pacPlayer, scores: s.scores.slice(), rs: s.roundScores.slice(), me: gi, ev: s.events.slice(),
       catcher: s.catcher, steal: s.steal, winner: s.winner, sight, boost: gi >= 0 ? me.sightLeft : 0, fruitUp: !!s.fruit,
       fruit: s.fruit && vis(s.fruit) ? { x: s.fruit.x, y: s.fruit.y } : null,
       pac: vis(s.pac) ? q(s.pac) : null,
-      // Ghost players always know where their fellow ghosts are (the minimap); `far` marks those outside their circle of sight.
-      ghosts: s.ghosts.map(g => (gi >= 0 && g.id === gi) || vis(g) ? Object.assign(q(g), { m: g.mode[0] }) : (gi >= 0 ? Object.assign(q(g), { m: g.mode[0], far: true }) : null))
+      // Every ghost is on the shared screen (its own circle and the minimap); `s` is the radius of its circle.
+      ghosts: s.ghosts.map(g => Object.assign(q(g), { m: g.mode[0], s: sightOf(g) }))
     };
     if (gi < 0) out.pellets = Array.from(s.pellets);
     else {
       const p = new Array(W * H).fill(0);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const v = s.pellets[y * W + x];
-        if (v && Math.hypot(x + 0.5 - me.x, y + 0.5 - me.y) <= sight) p[y * W + x] = v;
+        if (v && seen(x + 0.5, y + 0.5)) p[y * W + x] = v;
       }
       out.pellets = p;
     }

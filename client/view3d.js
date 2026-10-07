@@ -27,13 +27,8 @@
     };
   }
 
-  /** Create the renderer for parsed assets. Returns null when WebGL is unavailable. */
-  function create(assets) {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 256;
-    const gl = canvas.getContext('webgl', { antialias: true, alpha: true, premultipliedAlpha: false });
-    if (!gl) return null;
-    const R = GX.renderer(gl);
+  /** The 3D scene on an existing GX renderer. draw(v) renders into the current viewport. */
+  function scene(assets, R) {
     const stage = R.model(assets.stage, J3D.pose(assets.stage));
     const ghost = R.model(assets.ghost, J3D.pose(assets.ghost, J3D.animate(assets.ghostAnim, 0)));
     const pac = R.model(assets.pac, J3D.pose(assets.pac, J3D.animate(assets.pacAnim, 0)));
@@ -42,33 +37,30 @@
     const skins = {}; for (const k in assets.skins) skins[k] = tex(assets.skins[k]);
     const dot = tex(assets.dot);
     let lastGhostFrame = -1, lastPacFrame = -1;
+    const m4 = M();
 
     // Sim coordinates (cell units, centre at +0.5, grid including the outer wall columns) -> stage units.
     const wx = x => (x - 1) * 1000, wz = y => y * 1000;
 
-    /** Draw the view and return the canvas. v: {size, me, zoom, ghosts, pac, pellets, W, H, fruit, fright, flash, time} */
-    function render(v) {
-      const size = Math.max(64, Math.min(1024, Math.round(v.size)));
-      if (canvas.width !== size) { canvas.width = canvas.height = size; }
-      gl.viewport(0, 0, size, size);
-      gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      const m4 = M(), f = v.time * FPS;
+    /** v: {me, zoom, aspect, ghosts: [{x, y, m, yaw, seat}], pac, pellets, W, H, fruit, flash, time} */
+    function draw(v) {
+      const gl = R.gl, f = v.time * FPS;
       // Animations: the ghosts' float cycle and Pac-Man's mouth, shared by every instance.
       const gf = Math.floor(f) % assets.ghostAnim.length;
       if (gf !== lastGhostFrame) { lastGhostFrame = gf; ghost.setPose(J3D.pose(assets.ghost, J3D.animate(assets.ghostAnim, gf))); }
       const pf = Math.floor(f) % assets.pacAnim.length;
       if (pf !== lastPacFrame && v.pac) { lastPacFrame = pf; pac.setPose(J3D.pose(assets.pac, J3D.animate(assets.pacAnim, pf))); }
       stage.setTexMtx(J3D.animateTex(assets.stageAnim, f));
+      gl.clear(gl.DEPTH_BUFFER_BIT);
 
       const tx = wx(v.me.x), tz = wz(v.me.y), ty = 200, d = CAM.dist * (v.zoom || 1);
       const eye = [tx, ty + d * Math.sin(CAM.pitch), tz + d * Math.cos(CAM.pitch)];
       const view = m4.lookAt(eye, [tx, ty, tz], [0, 1, 0]);
-      const proj = m4.perspective(CAM.fov, 1, 500, 200000);
+      const proj = m4.perspective(CAM.fov, v.aspect || 1, 500, 200000);
       // Light: colour channels lit from the camera; the ghosts' alpha channel (which shades their body) from
       // below and in front, which matches the original's shading of the ghost bodies.
       R.begin(view, proj, { dir: [0, Math.sin(CAM.pitch), Math.cos(CAM.pitch)], dirA: [0, -1, 0.3], color: [1, 1, 1, 0.5] });
       R.draw(stage, m4.ident());
-
       const pel = [];
       for (let y = 0; y < v.H; y++) for (let x = 0; x < v.W; x++) {
         const p = v.pellets[y * v.W + x]; if (!p) continue;
@@ -84,10 +76,27 @@
         else if (g.m === 'e') skin = skins.toumei;
         R.draw(ghost, m4.trs(wx(g.x), 150, wz(g.y), g.yaw, 1.25), { textures: { ghost_r: skin } });
       }
+    }
+    return { draw };
+  }
+
+  /** A standalone square view on its own canvas. Returns null when WebGL is unavailable. */
+  function create(assets) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    const gl = canvas.getContext('webgl', { antialias: true, alpha: true, premultipliedAlpha: false });
+    if (!gl) return null;
+    const sc = scene(assets, GX.renderer(gl));
+    function render(v) {
+      const size = Math.max(64, Math.min(1024, Math.round(v.size)));
+      if (canvas.width !== size) { canvas.width = canvas.height = size; }
+      gl.viewport(0, 0, size, size);
+      gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      sc.draw(v);
       return canvas;
     }
     return { render, canvas, YAW };
   }
 
-  root.View3D = { load, create, YAW };
+  root.View3D = { load, create, scene, YAW, SKINS };
 })(typeof self !== 'undefined' ? self : this);

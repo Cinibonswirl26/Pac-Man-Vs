@@ -116,8 +116,9 @@
     let p = o + dataOff;
     const tiles = (bw, bh, fn) => { for (let ty = 0; ty < h; ty += bh) for (let tx = 0; tx < w; tx += bw) fn(tx, ty); };
     switch (fmt) {
-      case 0: tiles(8, 8, (tx, ty) => { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x += 2) { const v = b[p++]; put(tx + x, ty + y, c4(v >> 4), c4(v >> 4), c4(v >> 4), 255); put(tx + x + 1, ty + y, c4(v & 15), c4(v & 15), c4(v & 15), 255); } }); break;
-      case 1: tiles(8, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) { const v = b[p++]; put(tx + x, ty + y, v, v, v, 255); } }); break;
+      // Intensity formats: the GameCube copies the intensity into all four channels, alpha included.
+      case 0: tiles(8, 8, (tx, ty) => { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x += 2) { const v = b[p++], i = c4(v >> 4), j = c4(v & 15); put(tx + x, ty + y, i, i, i, i); put(tx + x + 1, ty + y, j, j, j, j); } }); break;
+      case 1: tiles(8, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) { const v = b[p++]; put(tx + x, ty + y, v, v, v, v); } }); break;
       case 2: tiles(8, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) { const v = b[p++], i = c4(v & 15); put(tx + x, ty + y, i, i, i, c4(v >> 4)); } }); break;
       case 3: tiles(4, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const a = b[p++], i = b[p++]; put(tx + x, ty + y, i, i, i, a); } }); break;
       case 4: tiles(4, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const c = rgb565(u16(b, p)); p += 2; put(tx + x, ty + y, ...c); } }); break;
@@ -141,7 +142,7 @@
       }); break;
       default: throw new Error('unsupported BTI format ' + fmt);
     }
-    return { w, h, rgba, fmt };
+    return { w, h, rgba, fmt, wrapS: b[o + 6], wrapT: b[o + 7] };
   }
 
   // ---- AST (streamed music, AFC ADPCM) -> Float32 channels ----

@@ -70,8 +70,8 @@
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
 
   // ------------------------------------------------------------------ disc assets
-  const art = { pac: [], logo: null, press: null, maze: null, three: null };
-  let view3 = null, onDiscMaze = false;
+  const art = { pac: [], logo: null, press: null, maze: null, three: null, tv: null };
+  let view3 = null, tvView = null, onDiscMaze = false;
   /** Switch the board to another maze (or back to the built-in one). */
   function setMaze(m) {
     const next = m ? PacSim.create(m) : PacSim;
@@ -84,6 +84,17 @@
     if (!onDiscMaze || !art.three || view3 === false) return null;
     if (!view3) { try { view3 = View3D.create(art.three) || false; } catch (e) { console.warn('3D view', e); view3 = false; } }
     return view3 || null;
+  }
+  /** The original TV screen for ghost players (layout, panels and the three 3D circles). */
+  function tvScreen() {
+    if (!onDiscMaze || !art.three || !art.tv || tvView === false) return null;
+    if (!tvView) {
+      try {
+        tvView = TV.create(art.tv, art.three) || false;
+        if (tvView) { tvView.canvas.className = 'tv'; $('stage').insertBefore(tvView.canvas, $('banner')); }
+      } catch (e) { console.warn('TV screen', e); tvView = false; }
+    }
+    return tvView || null;
   }
   const mazeOf = () => ($('mazeSel').value === 'disc' && art.maze) ? art.maze : null;
   function toCanvas(t) { const c = document.createElement('canvas'); c.width = t.w; c.height = t.h; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h), 0, 0); return c; }
@@ -104,6 +115,8 @@
         $('mazeSel').querySelector('[value=disc]').disabled = false; $('mazeSel').value = store.get('pacvs.maze') === 'builtin' ? 'builtin' : 'disc';
       } catch (e) { console.warn('maze', e); art.maze = null; }
       try { art.three = await View3D.load(d); view3 = null; } catch (e) { console.warn('3D models', e); art.three = null; }
+      try { art.tv = await TV.load(d); } catch (e) { console.warn('TV screen', e); art.tv = null; }
+      if (tvView) { tvView.canvas.remove(); tvView = null; }
       st.className = 'note ok'; st.textContent = `Loaded ${d.title} (${d.id}). Original logo, sprites, music${art.three ? ', 3D ghost view' : ''} are on.`;
       if (remember) { try { await idbSet('disc', blob); } catch { /* storage unavailable */ } }
       if (!mode) playMusic('Pac_Op_loop73_LR', true);
@@ -232,10 +245,13 @@
     screen('game'); lastPhase = null; lastCount = -1; sm.pac = null; sm.ghosts = [null, null, null];
     if (!raf) raf = requestAnimationFrame(frame);
   }
-  let hudKey = '';
+  let hudKey = '', phaseT0 = 0;
+  // Screens drawn from the disc between rounds: the exchange after a catch and the final results.
+  const discScreen = () => (snap && ((snap.phase === 'roundover' && snap.why === 'caught') || snap.phase === 'final') && art.tv) ? tvScreen() : null;
   function onSnap(force) {
     if (!snap) return;
     if (snap.phase !== lastPhase || force) {
+      if (snap.phase !== lastPhase) phaseT0 = performance.now();
       if (snap.phase === 'countdown' && snap.phase !== lastPhase) lastDir = -1;
       lastPhase = snap.phase;
       if (snap.phase === 'countdown' || snap.phase === 'play') playMusic(GAME_TRACKS[(snap.round || 0) % 4], true); else stopMusic();
@@ -258,7 +274,12 @@
   function renderBanner() {
     const b = $('banner'); let html = '';
     const pacMe = snap.me < 0, pn = names[snap.pacPlayer];
-    if (snap.phase === 'countdown') {
+    const onDisc = !!discScreen();
+    if (onDisc && snap.phase === 'roundover') html = '';
+    else if (onDisc && snap.phase === 'final') {
+      const canAgain = mode === 'offline' || (room && room.host === you);
+      html = `<div class="row" style="justify-content:center;flex:none;margin-top:auto">${canAgain ? '<button class="primary" id="again">Play again</button>' : '<span class="sm">Waiting for the host…</span>'}<button id="quit">Back to menu</button></div>`;
+    } else if (snap.phase === 'countdown') {
       html = `<div class="big">${Math.max(1, Math.ceil(snap.left_t))}</div><div class="sm">${pacMe ? `You are Pac-Man with ${fmt(snap.scores[snap.pacPlayer])} points. Eat pellets. If a ghost catches you it steals 1,600.` : `${esc(pn)} is Pac-Man. Catch Pac-Man to steal 1,600 points and become Pac-Man yourself.`}</div>`;
     } else if (snap.phase === 'roundover') {
       if (snap.why === 'caught') html = `<div class="big">${esc(names[snap.catcher])} caught Pac-Man</div><div class="sm">${esc(names[snap.catcher])} takes ${fmt(snap.steal)} points from ${esc(pn)} and is Pac-Man next round.</div>`;
@@ -271,7 +292,7 @@
         `<div class="row" style="justify-content:center;flex:none">${canAgain ? '<button class="primary" id="again">Play again</button>' : '<span class="sm">Waiting for the host…</span>'}<button id="quit">Back to menu</button></div>`;
     }
     if (b.dataset.h !== html) {
-      b.dataset.h = html; b.innerHTML = html; b.style.background = html ? 'rgba(5,6,15,0.62)' : 'transparent';
+      b.dataset.h = html; b.innerHTML = html; b.style.background = html && !onDisc ? 'rgba(5,6,15,0.62)' : 'transparent';
       const a = $('again'); if (a) a.onclick = () => { if (mode === 'online') send({ t: 'start' }); else startOffline(); };
       const q = $('quit'); if (q) q.onclick = () => toMenu();
     }
@@ -357,6 +378,15 @@
     if (mode === 'offline' && offline) offlineFrame(now);
     pollPad();
     if (!snap) return;
+    sm.pac = approach(sm.pac, snap.respawning ? null : snap.pac, dt);
+    snap.ghosts.forEach((gh, i) => { sm.ghosts[i] = approach(sm.ghosts[i], gh, dt); });
+    // Ghost players with the disc get the original TV screen; Pac-Man keeps the full maze (the GBA's view).
+    // Everyone sees the exchange and results screens.
+    const between = discScreen(), tv = between || (snap.me >= 0 ? tvScreen() : null);
+    cv.style.display = tv ? 'none' : '';
+    if (tvView) tvView.canvas.style.display = tv ? '' : 'none';
+    if (between) { drawBetween(between, now); return; }
+    if (tv) { drawTV(tv, now, dt); return; }
     layout(); const u = cell * dpr;
     g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(mazeCv, 0, 0);
     const pel = snap.pellets;
@@ -366,8 +396,6 @@
       g.arc((x + 0.5) * u, (y + 0.5) * u, v === 2 ? u * (0.2 + 0.05 * Math.sin(now / 120)) : u * 0.09, 0, 7); g.fill();
     }
     if (snap.fruit) drawFruit(snap.fruit, u, now);
-    sm.pac = approach(sm.pac, snap.respawning ? null : snap.pac, dt);
-    snap.ghosts.forEach((gh, i) => { sm.ghosts[i] = approach(sm.ghosts[i], gh, dt); });
     sm.ghosts.forEach((gh, i) => { if (gh && snap.ghosts[i] && snap.ghosts[i].m !== 'r') drawGhost(gh, SEAT_COLORS[S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i)], u, now, snap.me === i); });
     if (sm.pac) drawPac(sm.pac, u, now, snap.me < 0);
     // Ghost players see a circular window around themselves, a minimap of the ghosts, and the pellet count.
@@ -377,7 +405,9 @@
       f.fillStyle = 'rgba(1,2,8,0.965)'; f.fillRect(0, 0, fogCv.width, fogCv.height);
       f.globalCompositeOperation = 'destination-out';
       const R = (snap.sight || CFG.ghostSight) * u;
-      f.fillStyle = '#000'; f.beginPath(); f.arc(me.x * u, me.y * u, R, 0, 7); f.fill();
+      // the ghost players share one screen, so every ghost's circle is open
+      f.fillStyle = '#000';
+      sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { f.beginPath(); f.arc(gh.x * u, gh.y * u, (sg.s || CFG.ghostSight) * u, 0, 7); f.fill(); } });
       g.drawImage(fogCv, 0, 0);
       const v3 = ghostView3D();
       if (v3) draw3D(v3, me, R, now, dt);
@@ -390,7 +420,7 @@
   function draw3D(v3, me, R, now, dt) {
     const ghosts = [];
     sm.ghosts.forEach((gh, i) => {
-      const s = snap.ghosts[i]; if (!gh || !s || s.m === 'r' || (s.far && i !== snap.me)) return;
+      const s = snap.ghosts[i]; if (!gh || !s || s.m === 'r') return;
       const target = View3D.YAW[gh.d] || 0;
       let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
@@ -406,6 +436,43 @@
     g.restore();
   }
   const u3 = () => cell * dpr;
+  function fitTV(tv) {
+    const st = $('stage'), cw = Math.max(200, Math.min(st.clientWidth, st.clientHeight * 4 / 3));
+    tv.canvas.style.width = cw + 'px'; tv.canvas.style.height = cw * 3 / 4 + 'px';
+    return cw * Math.min(2, window.devicePixelRatio || 1);
+  }
+  function drawBetween(tv, now) {
+    const w = fitTV(tv), t = (now - phaseT0) / 1000;
+    try {
+      if (snap.phase === 'final') {
+        const order = [0, 1, 2, 3].sort((a, b) => snap.scores[b] - snap.scores[a]);
+        tv.results({ time: t, scores: snap.scores, winner: snap.winner >= 0 ? snap.winner : order[0] }, w);
+      } else {
+        const after = snap.scores.slice(), before = after.slice();
+        before[snap.pacPlayer] += snap.steal; before[snap.catcher] -= snap.steal;
+        tv.exchange({ time: t, target: snap.target, before, after, loser: snap.pacPlayer, winner: snap.catcher }, w);
+      }
+    } catch (e) { console.warn('TV screen', e); tvView.canvas.remove(); tvView = false; }
+  }
+  // The TV screen: every ghost's circle (ghosts ordered by player number), panels, radar and counters.
+  function drawTV(tv, now, dt) {
+    const cw = fitTV(tv);
+    const pacs = { pacPlayer: snap.pacPlayer };
+    const ghosts = [];
+    sm.ghosts.forEach((gh, i) => {
+      const s = snap.ghosts[i]; if (!gh || !s) return;
+      let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      sm.yaw[i] += dy * Math.min(1, dt * 14);
+      ghosts.push({ i, seat: S.playerOfGhost(pacs, i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: s.s || CFG.ghostSight, hidden: s.m === 'r' });
+    });
+    ghosts.sort((a, b) => a.seat - b.seat);
+    const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
+    const shown = ghosts.filter(g => !g.hidden);
+    const views = ghosts.map(g => ({ me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: sm.pac, pellets: snap.pellets, W, H, fruit: snap.fruit, flash }));
+    try {
+      tv.render({ time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
+    } catch (e) { console.warn('TV screen', e); tvView.canvas.remove(); tvView = false; cv.style.display = ''; }
+  }
   function drawMinimap(u) {
     const w = 5.6 * u, h = 5.2 * u, x0 = W * u - w - 0.5 * u, y0 = H * u - h - 0.5 * u;
     g.fillStyle = 'rgba(255,190,0,0.95)'; g.fillRect(x0 - 0.15 * u, y0 - 1.65 * u, w + 0.3 * u, h + 1.8 * u);
@@ -428,5 +495,5 @@
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });
   addEventListener('resize', () => { cell = 0; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (mode) onSnap(true); });
-  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; } };   // for automated tests
+  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get art() { return art; } };   // for automated tests
 })();
