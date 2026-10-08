@@ -83,7 +83,7 @@
     musicNode = src;
   }
   // ---- sound effects and the announcer, from the disc's wave banks (client/sound.js)
-  const snd = { sfx: null, voice: null, busyUntil: 0, said: new Set() };
+  const snd = { sfx: null, voice: null, busyUntil: 0, said: new Set(), chain: 0 };
   const pick = list => list[Math.floor(Math.random() * list.length)];
   function playWave(w, vol) {
     const a = audio(); if (!a || !w) return;
@@ -391,7 +391,9 @@
     if (cur.phase !== 'play') return;
     if (!prev.fruitUp && cur.fruitUp) fire('fruitAppears');
     if (cur.frightLeft > prev.frightLeft + 5) fire(snap && snap.me >= 0 ? 'powerGhost' : 'powerPac');
-    cur.ghosts.forEach((g, i) => { if (prev.ghosts[i] && prev.ghosts[i].m === 'f' && g.m === 'e') fire('eatGhost'); });
+    if (cur.frightLeft > prev.frightLeft + 5) snd.chain = 0;
+    cur.ghosts.forEach((g, i) => { if (prev.ghosts[i] && prev.ghosts[i].m === 'f' && g.m === 'e') fire('eatGhost', { index: snd.chain++ || 0 }); });
+    if (cur.left <= 20 && prev.left > 20) fire('twentyLeft');
     if (cur.left <= 10 && prev.left > 10) fire('tenLeft');
     const top = Math.max(...cur.scores), toGo = cur.target - top;
     if (toGo <= 500 && !snd.said.has(500)) { snd.said.add(500); snd.said.add(1000); fire('pts500'); }

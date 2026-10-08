@@ -12,19 +12,22 @@
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v1';
+  const KEY = 'pacvs.soundmap.v2';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
 
   // Names the lab shows next to each sound. Lines found by speech recognition are named; the rest are for you to name.
   const VOICE_NAMES = {
+    0: 'Pac-Man ate a Power Pellet!', 1: 'Watch out! Pac-Man ate a Power Pellet!', 2: 'Pac-Man ate a Power-Dot! (Japanese line?)', 3: 'Watch out! Pac-Man ate a Power Dot! (Japanese line?)',
     4: 'got the fruit (seat 1)', 5: 'got the fruit (seat 2)', 6: 'got the fruit (seat 3)', 7: 'got the fruit (seat 4)',
-    8: 'Fruit appeared', 9: 'Fruit appeared (other)', 13: 'Excellent (seat 1)', 14: 'Excellent (seat 2)', 15: 'Excellent (seat 3)', 16: 'Excellent (seat 4)',
-    17: 'game over / final', 18: 'Only ten pellets left', 19: 'Only ten pellets left (other)',
+    8: 'Fruit appeared', 9: 'Fruit appeared (other)',
+    10: 'Oh no (first ghost in the chain eaten)', 11: 'Oh NO (second ghost in the chain eaten)', 12: 'OH NO! (third ghost in the chain eaten)',
+    13: 'Excellent (seat 1)', 14: 'Excellent (seat 2)', 15: 'Excellent (seat 3)', 16: 'Excellent (seat 4)',
+    17: 'game over / final', 18: 'Only ten pellets left', 19: 'Only ten pellets left (other)', 20: "This doesn't look good! (20 pellets left)", 21: 'Unused (warp zone?)',
     22: 'champion (seat 1)', 23: 'champion (seat 2)', 24: 'champion (seat 3)', 25: 'champion (seat 4)',
     26: 'Pac-Man ate the fruit', 27: 'Pac-Man ate the fruit (other)', 28: 'One thousand points left', 29: 'Five hundred points left',
-    31: 'Go', 32: 'Ready'
+    30: 'End of the game', 31: 'Go', 32: 'Ready', 33: 'Go go go!', 34: 'You can do it!', 35: 'Title'
   };
   const SFX_NAMES = { 6: 'fruit appears chime', 13: 'fruit taken' };
 
@@ -33,12 +36,13 @@
     { id: 'ready', label: 'Round is about to start', when: 'Countdown begins', cues: [voice([32], { force: true })] },
     { id: 'go', label: 'Round starts', when: 'Countdown ends', cues: [voice([31], { force: true }), hand('start')] },
     { id: 'pellet', label: 'Pellet eaten (Pac-Man)', when: 'Each pellet, and each power pellet', cues: [hand('waka')], note: 'When this has a cue and the disc is loaded, the old beeps are not used' },
-    { id: 'powerPac', label: 'Power pellet - Pac-Man side', when: 'Pac-Man eats a power pellet (said to Pac-Man)', cues: [voice([0, 2], { force: true })] },
+    { id: 'powerPac', label: 'Power pellet - Pac-Man side', when: 'Pac-Man eats a power pellet (said to Pac-Man)', cues: [voice([0, 2], { force: true, who: 'pac' })] },
     { id: 'powerGhost', label: 'Power pellet - ghost side', when: 'Pac-Man eats a power pellet (said to the ghosts)', cues: [voice([1, 3], { force: true })] },
-    { id: 'eatGhost', label: 'Ghost eaten', when: 'Pac-Man eats a frightened ghost', cues: [voice([10, 11, 12])] },
+    { id: 'eatGhost', label: 'Ghost eaten', when: 'index = how many ghosts this power pellet has eaten so far (0 = first)', per: 'chain', cues: [voice([10, 11, 12], { mode: 'index' })] },
     { id: 'fruitAppears', label: 'Fruit appears', when: 'The fruit shows up in the maze', cues: [sfx([6]), voice([8, 9])] },
     { id: 'fruitGhost', label: 'Fruit taken by a ghost', when: 'index = the ghost player\'s seat', per: 'seat', cues: [sfx([13]), voice([4, 5, 6, 7], { mode: 'index', force: true })] },
     { id: 'fruitPac', label: 'Fruit taken by Pac-Man', when: 'Pac-Man reaches the fruit', cues: [sfx([13]), voice([26, 27], { force: true })] },
+    { id: 'twentyLeft', label: 'Twenty pellets left', when: 'Twenty pellets remain', cues: [voice([20])] },
     { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18, 19])] },
     { id: 'pts1000', label: '1000 points to the target', when: 'Anybody is within 1000 of winning', cues: [voice([28])] },
     { id: 'pts500', label: '500 points to the target', when: 'Anybody is within 500 of winning', cues: [voice([29])] },
