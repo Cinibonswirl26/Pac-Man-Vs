@@ -25,7 +25,7 @@
   const CFG = {
     tick: 1 / 30,
     pacSpeed: 0.5 * FPS / CELL,          // 3.73 cells/s
-    ghostSpeed: 0.5 * FPS / CELL,        // ghosts are exactly as fast as Pac-Man
+    ghostSpeed: (0.5 + 1 / 256) * FPS / CELL,   // a hair faster than Pac-Man: about 1 px more per 128 px
     frightSpeed: 0.375 * FPS / CELL,     // 2.80 cells/s
     eyeSpeed: 1.0 * FPS / CELL,          // not measured
     frightTime: 10, frightFlash: 2,

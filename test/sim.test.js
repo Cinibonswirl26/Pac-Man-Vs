@@ -25,9 +25,9 @@ for (let seed = 1; seed <= 20; seed++) {
   ok(moved > 30, `seed ${seed}: pac barely moved (${moved})`);
 }
 
-// 2. Measured speeds: 0.5 px/frame normal, 0.375 px/frame frightened, ghosts as fast as Pac-Man
-ok(near(S.CFG.pacSpeed, 3.733, 0.002) && S.CFG.ghostSpeed === S.CFG.pacSpeed, 'pac and ghost speed');
-ok(near(S.CFG.frightSpeed / S.CFG.ghostSpeed, 0.75, 1e-9), 'frightened speed is 3/4 of normal');
+// 2. Measured speeds: 0.5 px/frame normal, 0.375 px/frame frightened, ghosts a hair faster than Pac-Man
+ok(near(S.CFG.pacSpeed, 3.733, 0.002) && near(S.CFG.ghostSpeed / S.CFG.pacSpeed, 1.0078, 0.0005), 'ghosts gain slowly on Pac-Man');
+ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/4 of normal');
 { // a free-running Pac-Man covers one cell in 16 frames
   const s = S.newRound([1600, 0, 0, 0], 0);
   const px = Math.floor(s.pac.x), py = Math.floor(s.pac.y);

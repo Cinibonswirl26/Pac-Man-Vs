@@ -12,7 +12,7 @@ and what is still a best guess.
 | Pellets | 172 small + 4 power = **176**. Power pellets at (0,2), (18,2), (0,16), (18,16) | Counted in the tile map, matches the on-screen counter at the start of a round |
 | Start cells | Pac-Man (9,12); ghosts (6,6), (12,6), (9,8) | Sprite positions at round start |
 | Pac-Man speed | **0.5 px per frame** = 3.73 cells per second | Sprite tracked over hundreds of frames |
-| Ghost speed | **0.5 px per frame**, the same as Pac-Man | Straight runs of ghost sprites |
+| Ghost speed | **about 0.504 px per frame**, a slow gain of roughly 1% on Pac-Man (1 px per ~128 px run) | Pixel steps of ghosts on long straight runs: 2 frames per pixel with an extra 1-frame step every ~80 px, never a 3-frame step; Pac-Man's steps average exactly 2.00 frames. About 570 ghost steps, so the size of the gain is an estimate (0.3 to 0.8%) |
 | Frightened ghost speed | **0.375 px per frame** (3/4 of normal) = 2.80 cells per second | Straight runs during the effect |
 | Frightened time | **10 s** (598 frames). Last 2 s the ghosts blink every 8 frames | Sprite tile changes, frame by frame |
 | Pellet | 10 points | Score before and after |
