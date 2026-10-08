@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound Lab</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#07080f; --panel:#12142a; --line:#2a2f6b; --ink:#f2f3ff; --dim:#8f94c7; --pac:#ffd400; --good:#5dff9a; --cyan:#35c8ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 ui-monospace,Menlo,Consolas,monospace; padding:12px 16px 80px; }
+  h1 { font-size:22px; margin:8px 0; color:var(--pac); } h2 { font-size:13px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin:0 0 8px; }
+  a { color:var(--cyan); }
+  button, select, input { font:inherit; color:var(--ink); background:#0b0d20; border:2px solid var(--line); border-radius:6px; padding:6px 10px; min-height:36px; }
+  button { cursor:pointer; } button:hover { border-color:var(--pac); } button.p { background:var(--pac); color:#1a1500; border-color:var(--pac); font-weight:700; }
+  .card { background:var(--panel); border:2px solid var(--line); border-radius:8px; padding:12px; margin-bottom:14px; }
+  .cols { display:grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.6fr); gap:14px; align-items:start; }
+  @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+  .lib { display:grid; grid-template-columns: 1fr; gap:4px; max-height:70vh; overflow:auto; }
+  .snd { display:flex; gap:6px; align-items:center; border:1px solid var(--line); border-radius:6px; padding:3px 6px; }
+  .snd b { width:34px; color:var(--pac); } .snd input.nm { flex:1; min-width:0; border:0; background:transparent; padding:2px 4px; min-height:28px; }
+  .snd small { color:var(--dim); width:44px; text-align:right; }
+  .snd button { min-height:28px; padding:2px 8px; }
+  .ev { border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:10px; }
+  .ev h3 { margin:0; font-size:15px; } .ev p { margin:2px 0 6px; color:var(--dim); font-size:12px; }
+  .cue { display:grid; grid-template-columns: 70px 1fr 74px 66px 92px 86px 70px auto; gap:4px; align-items:center; margin-bottom:4px; }
+  .cue.sel { outline:2px solid var(--cyan); border-radius:6px; }
+  .cue input, .cue select { width:100%; min-width:0; padding:3px 6px; min-height:30px; }
+  .cue label { font-size:11px; color:var(--dim); display:flex; align-items:center; gap:3px; }
+  @media (max-width: 800px) { .cue { grid-template-columns: 1fr 1fr 1fr; } }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .ok { color:var(--good); } .dim { color:var(--dim); }
+  textarea { width:100%; height:120px; background:#0b0d20; color:var(--ink); border:2px solid var(--line); border-radius:6px; font:12px ui-monospace,monospace; }
+</style>
+</head>
+<body>
+<h1>Sound Lab</h1>
+<p class="dim">Listen to every sound on your disc, then say which one plays for each moment in the game. Your choices are saved in this browser and the game uses them straight away. Use <b>Copy settings</b> to send them back to me.</p>
+
+<div class="card" id="load">
+  <h2>1 &middot; Your disc</h2>
+  <div class="bar"><input type="file" id="file" accept=".iso,.ciso,.gcm,.gcz,.rvz"> <span id="stat" class="dim">Not loaded. If you already loaded it in the game, press "Use the disc from the game".</span> <button id="saved">Use the disc from the game</button></div>
+</div>
+
+<div class="cols">
+  <div>
+    <div class="card"><h2>2 &middot; Effects</h2><div class="lib" id="sfx"></div></div>
+    <div class="card"><h2>Announcer lines</h2><div class="lib" id="voice"></div></div>
+    <div class="card"><h2>Pac-Man's screen</h2>
+      <div class="snd"><b>waka</b><span style="flex:1">the "wa-ka" for each pellet</span><button data-hand="waka">&#9654;</button></div>
+      <div class="snd"><b>start</b><span style="flex:1">the sweep that starts a round</span><button data-hand="start">&#9654;</button></div>
+      <p class="dim">These are rebuilt from recordings, not read from the disc. Tell me how they differ from the real ones.</p></div>
+  </div>
+  <div>
+    <div class="card"><h2>3 &middot; What plays when</h2>
+      <p class="dim">Click a row's number box, then use <b>+</b> next to a sound to add it. <b>Test</b> plays the whole event the way the game would. <b>index</b> is the seat (0-3) used by "per seat" cues.</p>
+      <div class="bar" style="margin-bottom:8px"><button class="p" id="save">Save</button><button id="copy">Copy settings</button><button id="paste">Paste settings</button><button id="reset">Reset to defaults</button><span id="msg" class="ok"></span></div>
+      <textarea id="json" hidden></textarea>
+      <div id="events"></div>
+    </div>
+  </div>
+</div>
+<script src="/client/disc.js"></script>
+<script src="/client/sound.js"></script>
+<script src="/client/handsound.js"></script>
+<script src="/client/soundmap.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  let ac = null, master = null, snd = null, map = SoundMap.load(), focus = null, names = {};
+  try { names = JSON.parse(localStorage.getItem('pacvs.soundnames') || '{}'); } catch {}
+  const audio = () => { if (!ac) { ac = new AudioContext(); master = ac.createGain(); master.gain.value = 0.8; master.connect(ac.destination); } if (ac.state === 'suspended') ac.resume(); return ac; };
+  const flash = t => { $('msg').textContent = t; setTimeout(() => { $('msg').textContent = ''; }, 2500); };
+
+  function play(w, vol) { const a = audio(), src = a.createBufferSource(), g = a.createGain(); src.buffer = Sound.buffer(a, w); g.gain.value = vol == null ? 1 : vol; src.connect(g); g.connect(master); src.start(); return src; }
+  const engine = {
+    voice: (i, force, vol) => { if (snd.voice[i]) play(snd.voice[i], vol); }, sfx: (i, vol) => { if (snd.sfx[i]) play(snd.sfx[i], vol); },
+    hand: name => HandSound.play(audio(), master, name), ready: () => !!snd
+  };
+  const sm = () => SoundMap.create(engine, map);
+
+  function lib(kind) {
+    const box = $(kind); box.textContent = '';
+    snd[kind].forEach((w, i) => {
+      const row = document.createElement('div'); row.className = 'snd';
+      const key = kind + i, def = (kind === 'voice' ? SoundMap.VOICE_NAMES : SoundMap.SFX_NAMES)[i] || '';
+      row.innerHTML = `<b>${i}</b><input class="nm" placeholder="name it" value="${(names[key] != null ? names[key] : def).replace(/"/g, '&quot;')}"><small>${(w.samples / (w.rate || 32000)).toFixed(1)}s</small><button title="play">&#9654;</button><button title="add to the selected cue">+</button>`;
+      const [pl, add] = row.querySelectorAll('button');
+      pl.onclick = () => play(w);
+      add.onclick = () => { if (!focus) return flash('Click a cue first'); const c = focus.cue; if (c.kind !== kind) c.kind = kind; c.ids = (c.ids || []).filter(x => typeof x === 'number'); c.ids.push(i); draw(); };
+      row.querySelector('.nm').onchange = e => { names[key] = e.target.value; localStorage.setItem('pacvs.soundnames', JSON.stringify(names)); };
+      box.appendChild(row);
+    });
+  }
+
+  function draw() {
+    const box = $('events'); box.textContent = '';
+    for (const ev of SoundMap.EVENTS) {
+      const d = document.createElement('div'); d.className = 'ev';
+      d.innerHTML = `<h3>${ev.label}</h3><p>${ev.when}${ev.note ? ' &middot; ' + ev.note : ''}</p>`;
+      const cues = map[ev.id] = map[ev.id] || [];
+      cues.forEach((c, k) => {
+        const r = document.createElement('div'); r.className = 'cue' + (focus && focus.cue === c ? ' sel' : '');
+        const opt = (v, list) => list.map(x => `<option${x === v ? ' selected' : ''}>${x}</option>`).join('');
+        r.innerHTML = `<select data-f="kind">${opt(c.kind, ['voice', 'sfx', 'hand'])}</select>
+          <input data-f="ids" value="${(c.ids || []).join(', ')}" title="sound numbers, comma separated (waka or start for Pac-Man's screen)">
+          <select data-f="mode" title="one = random one of them, all = all of them, index = by seat">${opt(c.mode, ['one', 'all', 'index'])}</select>
+          <select data-f="who">${opt(c.who, ['all', 'pac', 'ghost'])}</select>
+          <label>ms<input data-f="delay" type="number" min="0" step="100" value="${c.delay || 0}"></label>
+          <label>vol<input data-f="vol" type="number" min="0" max="1" step="0.1" value="${c.vol == null ? 1 : c.vol}"></label>
+          <label><input data-f="force" type="checkbox"${c.force ? ' checked' : ''}>cut in</label><button title="remove">&times;</button>`;
+        r.addEventListener('focusin', () => { if (!focus || focus.cue !== c) { focus = { cue: c }; document.querySelectorAll('.cue.sel').forEach(x => x.classList.remove('sel')); r.classList.add('sel'); } });
+        r.querySelectorAll('[data-f]').forEach(el => el.onchange = () => {
+          const f = el.dataset.f;
+          if (f === 'ids') c.ids = el.value.split(',').map(x => x.trim()).filter(Boolean).map(x => /^\d+$/.test(x) ? +x : x);
+          else if (f === 'force') c.force = el.checked; else if (f === 'delay' || f === 'vol') c[f] = +el.value; else c[f] = el.value;
+          if (f === 'kind') draw();
+        });
+        r.querySelector('button').onclick = () => { cues.splice(k, 1); draw(); };
+        d.appendChild(r);
+      });
+      const bar = document.createElement('div'); bar.className = 'bar';
+      bar.innerHTML = `<button>+ cue</button><label class="dim">index <select>${[0, 1, 2, 3].map(i => `<option>${i}</option>`).join('')}</select></label><label class="dim">heard by <select><option value="-1">Pac-Man</option><option value="0">a ghost</option></select></label><button class="p">&#9654; Test</button>`;
+      const [add, , , test] = [bar.querySelector('button'), 0, 0, bar.querySelector('button.p')];
+      const sel = bar.querySelectorAll('select');
+      add.onclick = () => { cues.push({ kind: 'voice', ids: [], mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }); draw(); };
+      test.onclick = () => { if (!snd) return flash('Load the disc first'); sm().fire(ev.id, { index: +sel[0].value, me: +sel[1].value }); };
+      d.appendChild(bar); box.appendChild(d);
+    }
+  }
+
+  async function ready(disc, label) {
+    $('stat').textContent = 'Reading sounds...';
+    try { snd = await Sound.load(disc); } catch (e) { $('stat').textContent = 'Could not read sounds: ' + e.message; return; }
+    $('stat').innerHTML = `<span class="ok">${label}: ${snd.sfx.length} effects, ${snd.voice.length} announcer lines</span>`;
+    lib('sfx'); lib('voice'); draw();
+  }
+  $('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; audio(); try { await ready(await Disc.open(f), f.name); } catch (err) { $('stat').textContent = 'Not a disc image I can read: ' + err.message; } };
+  $('saved').onclick = async () => {
+    audio();
+    try {
+      const db = await new Promise((res, rej) => { const r = indexedDB.open('pacvs', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      const blob = await new Promise((res, rej) => { const r = db.transaction('kv').objectStore('kv').get('disc'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      if (!blob) return $('stat').textContent = 'The game has no saved disc in this browser. Choose the file here instead.';
+      await ready(await Disc.open(blob), 'Disc from the game');
+    } catch (err) { $('stat').textContent = 'Could not use the saved disc: ' + err.message; }
+  };
+  document.querySelectorAll('[data-hand]').forEach(b => b.onclick = () => HandSound.play(audio(), master, b.dataset.hand));
+  $('save').onclick = () => flash(SoundMap.save(map) ? 'Saved. Reload the game to use it.' : 'Could not save in this browser');
+  $('reset').onclick = () => { map = SoundMap.defaults(); focus = null; draw(); flash('Defaults restored (press Save to keep)'); };
+  $('copy').onclick = async () => {
+    const t = JSON.stringify({ map, names }, null, 1);
+    try { await navigator.clipboard.writeText(t); flash('Copied. Paste it into the chat.'); } catch { $('json').hidden = false; $('json').value = t; $('json').select(); flash('Select all and copy'); }
+  };
+  $('paste').onclick = () => {
+    $('json').hidden = false;
+    if (!$('json').value.trim()) { $('json').placeholder = 'Paste settings here, then press Paste settings again'; return; }
+    try { const o = JSON.parse($('json').value); map = Object.assign(SoundMap.defaults(), o.map || o); if (o.names) names = o.names; $('json').hidden = true; if (snd) { lib('sfx'); lib('voice'); } draw(); flash('Loaded (press Save to keep)'); } catch { flash('That is not valid settings'); }
+  };
+  draw();
+})();
+</script>
+</body>
+</html>

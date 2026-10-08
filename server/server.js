@@ -10,7 +10,7 @@ const { Match } = require('../shared/match.js');
 const PORT = +process.env.PORT || 8080;
 const ROOT = path.join(__dirname, '..');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
-const STATIC = { '/': 'client/index.html' };
+const STATIC = { '/': 'client/index.html', '/soundlab': 'client/soundlab.html' };
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];

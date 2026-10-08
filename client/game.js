@@ -49,6 +49,7 @@
   let waka = 0, handWaka = null;
   function playEvents(ev) {
     for (const e of ev || []) {
+      if ((e === 'pellet' || e === 'power') && SM.handled('pellet')) { fire('pellet'); continue; }
       if (e === 'pellet' || (e === 'power' && art.handheld)) {
         // the "wa-ka" is Pac-Man's own screen's sound: with the disc loaded only Pac-Man hears it, as in the original
         if (art.handheld) { if (snap && snap.me < 0 && audio()) { if (handWaka) handWaka.stop(); handWaka = HandSound.play(ac, master, 'waka'); } }
@@ -91,11 +92,17 @@
   }
   const sfx = (i, vol) => { if (snd.sfx && snd.sfx[i]) playWave(snd.sfx[i], vol || 0.8); };
   /** The announcer speaks one line at a time; `force` cuts in on a line that is still playing. */
-  function say(i, force) {
+  function say(i, force, vol) {
     const w = snd.voice && snd.voice[i], a = w && audio(); if (!a) return;
     if (!force && a.currentTime < snd.busyUntil) return;
-    playWave(w, 1); snd.busyUntil = a.currentTime + w.samples / w.rate + 0.25;
+    playWave(w, vol == null ? 1 : vol); snd.busyUntil = a.currentTime + w.samples / w.rate + 0.25;
   }
+  const SM = SoundMap.create({
+    voice: (i, force, vol) => say(i, force, vol), sfx: (i, vol) => sfx(i, vol),
+    hand: name => { if (!art.handheld || !audio()) return; if (name === 'waka' && handWaka) handWaka.stop(); const h = HandSound.play(ac, master, name); if (name === 'waka') handWaka = h; },
+    ready: () => !!(snd.sfx && snd.voice)
+  });
+  const fire = (id, p) => SM.fire(id, Object.assign({ me: snap ? snap.me : 0 }, p));
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
 
   // ------------------------------------------------------------------ disc assets
@@ -361,8 +368,8 @@
     if (prev.fruitUp && !cur.fruitUp && cur.phase === 'play') {
       fx.sparkle = now;
       const f = prev.fruit, gi = f ? cur.ghosts.findIndex(g => g.m !== 'e' && near(g, f, 1.2)) : -1;
-      if (gi >= 0) { fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(CFG.fruitPts), t0: now }); sfx(13); say(4 + S.playerOfGhost({ pacPlayer: cur.pacPlayer }, gi), true); }
-      else if (f && near(cur.pac, f, 1.2)) { fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.fruitPts), t0: now }); sfx(13); say(pick([26, 27]), true); }
+      if (gi >= 0) { fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(CFG.fruitPts), t0: now }); fire('fruitGhost', { index: S.playerOfGhost({ pacPlayer: cur.pacPlayer }, gi) }); }
+      else if (f && near(cur.pac, f, 1.2)) { fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.fruitPts), t0: now }); fire('fruitPac'); }
     }
     cur.ghosts.forEach((g, i) => {
       const p = prev.ghosts[i];
@@ -376,19 +383,19 @@
   // The announcer's lines, picked from changes between two snapshots (the same on every client).
   function announce(prev, cur) {
     if (cur.phase !== prev.phase) {
-      if (cur.phase === 'countdown') { snd.said.clear(); say(32, true); }
-      else if (cur.phase === 'play' && prev.phase === 'countdown') { say(31, true); if (art.handheld && cur.me < 0 && audio()) HandSound.play(ac, master, 'start'); }
-      else if (cur.phase === 'roundover' && cur.why === 'caught') say(13 + cur.catcher, true);
-      else if (cur.phase === 'final') { say(17, true); setTimeout(() => say(22 + (cur.winner >= 0 ? cur.winner : 0), true), 1700); }
+      if (cur.phase === 'countdown') { snd.said.clear(); fire('ready'); }
+      else if (cur.phase === 'play' && prev.phase === 'countdown') fire('go');
+      else if (cur.phase === 'roundover' && cur.why === 'caught') fire('caught', { index: cur.catcher });
+      else if (cur.phase === 'final') { fire('final'); fire('champion', { index: cur.winner >= 0 ? cur.winner : 0 }); }
     }
     if (cur.phase !== 'play') return;
-    if (!prev.fruitUp && cur.fruitUp) { sfx(6); say(pick([8, 9])); }
-    if (cur.frightLeft > prev.frightLeft + 5) say(snap && snap.me >= 0 ? pick([1, 3]) : pick([0, 2]), true);
-    cur.ghosts.forEach((g, i) => { if (prev.ghosts[i] && prev.ghosts[i].m === 'f' && g.m === 'e') say(pick([10, 11, 12])); });
-    if (cur.left <= 10 && prev.left > 10) say(pick([18, 19]));
+    if (!prev.fruitUp && cur.fruitUp) fire('fruitAppears');
+    if (cur.frightLeft > prev.frightLeft + 5) fire(snap && snap.me >= 0 ? 'powerGhost' : 'powerPac');
+    cur.ghosts.forEach((g, i) => { if (prev.ghosts[i] && prev.ghosts[i].m === 'f' && g.m === 'e') fire('eatGhost'); });
+    if (cur.left <= 10 && prev.left > 10) fire('tenLeft');
     const top = Math.max(...cur.scores), toGo = cur.target - top;
-    if (toGo <= 500 && !snd.said.has(500)) { snd.said.add(500); snd.said.add(1000); say(29); }
-    else if (toGo <= 1000 && !snd.said.has(1000)) { snd.said.add(1000); say(28); }
+    if (toGo <= 500 && !snd.said.has(500)) { snd.said.add(500); snd.said.add(1000); fire('pts500'); }
+    else if (toGo <= 1000 && !snd.said.has(1000)) { snd.said.add(1000); fire('pts1000'); }
   }
   function fxViews(now) {
     fx.pops = fx.pops.filter(p => now - p.t0 < FX_POP * 1000);
