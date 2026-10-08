@@ -198,7 +198,7 @@
       art.logo = tex('pactitle_06.bti'); art.press = tex('press_start.bti');
       if (art.logo) { $('logo').src = art.logo.toDataURL(); $('logo').classList.remove('hidden'); $('title').classList.add('hidden'); }
       music.disc = d; music.bufs.clear();
-      try { const w = await Sound.load(d); snd.sfx = w.sfx; snd.voice = w.voice; } catch (e) { console.warn('sound', e); snd.sfx = snd.voice = null; }
+      try { const w = await Sound.load(d); snd.sfx = w.sfx; snd.voice = w.voice; fire('title'); } catch (e) { console.warn('sound', e); snd.sfx = snd.voice = null; }
       try {   // the original stage 1 maze, read from the disc's maze data
         art.mazes = MazeData.all(await d.read(MazeData.PATH), PacSim.makeMaze);
         fillMazes();

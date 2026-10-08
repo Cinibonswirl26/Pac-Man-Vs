@@ -38,7 +38,7 @@
     // Fruit: appears in the middle of the maze once enough pellets are gone (documented: both sides may take it,
     // ghosts get 400 points and a wider view for a while). The numbers below are guesses.
     fruitPts: 400, fruitFirst: 6, fruitEvery: 70, fruitStay: 10, fruitSightMult: 1.6, fruitSightTime: 10,
-    clearBonus: 1600,
+    clearBonus: 1600, hideAt: 20,          // at 20 pellets left the ghosts' screens stop showing pellets (stated by a player who knows the original)
     pelletPts: 10, powerPts: 110,
     ghostChain: [200, 400, 800, 1600],   // not measured
     stealPts: 1600, startPts: 1600,
@@ -286,7 +286,8 @@
     if (gi < 0) out.pellets = Array.from(s.pellets);
     else {
       const p = new Array(W * H).fill(0);
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      // with CFG.hideAt pellets or fewer left, the ghosts' screens show none, so they cannot wait beside the last ones
+      if (s.left > CFG.hideAt) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const v = s.pellets[y * W + x];
         if (v && seen(x + 0.5, y + 0.5)) p[y * W + x] = v;
       }
@@ -537,13 +538,14 @@
       const cur = tm.patrol[gi];
       const arrived = cur >= 0 && Math.abs(cur % W + 0.5 - g.x) + Math.abs(Math.floor(cur / W) + 0.5 - g.y) <= 1;
       if (arrived) tm.visit.set(cur, s.time);
-      if (cur >= 0 && s.pellets[cur] && !arrived) { tx = cur % W; ty = Math.floor(cur / W); }
+      if (cur >= 0 && (s.pellets[cur] || s.left <= CFG.hideAt) && !arrived) { tx = cur % W; ty = Math.floor(cur / W); }
       else {
         const dm = distMap(g.x, g.y, 'ghost'); let bi = -1, bv = -1e9;
         for (let i = 0; i < T; i++) {
-          if (!s.pellets[i] || dm[i] < 0) continue;
+          const blind = s.left <= CFG.hideAt;             // pellets are not shown to ghosts any more: roam instead
+          if ((!blind && !s.pellets[i]) || dm[i] < 0 || (blind && dm[i] < 3)) continue;
           const x = i % W, y = Math.floor(i / W);
-          let near = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const yy = y + dy; if (yy >= 0 && yy < H && s.pellets[tileIdx(x + dx, yy)]) near++; }
+          let near = 0; if (!blind) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const yy = y + dy; if (yy >= 0 && yy < H && s.pellets[tileIdx(x + dx, yy)]) near++; }
           let v = near * 0.5 - dm[i] * 0.25 + (s.pellets[i] === 2 ? 3 : 0) + rng() * 0.8;
           const vt = tm.visit.get(i); if (vt != null && s.time - vt < 30) v -= 10 - (s.time - vt) / 4;     // swept recently
           if (tm.seen > -1e8) v -= Math.hypot(x - tm.px, y - tm.py) * 0.35;     // Pac-Man was last seen over there

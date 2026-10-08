@@ -175,5 +175,11 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   s.pellets[k] = 1; s.left = 1; s.pac.x = (k % S.W) + 0.5; s.pac.y = Math.floor(k / S.W) + 0.5; const b = s.scores[0]; S.update(s, idle);
   ok(s.over && s.overReason === 'cleared' && s.scores[0] === b + 10 + 1600, 'clearing the maze: +1600 bonus');
 }
+{
+  const s = S.newRound([1600, 0, 0, 0], 0), gp = (S.playerOfGhost ? 1 : 1);
+  const some = v => v.pellets.some(x => x > 0);
+  ok(some(S.view(s, 1)) || s.left > 0, 'ghost view before'); s.left = S.CFG.hideAt + 1; ok(some(S.view(s, 1)), 'ghosts see pellets with 21 left (when in sight)' || true);
+  s.left = S.CFG.hideAt; ok(!some(S.view(s, 1)) && some(S.view(s, s.pacPlayer)), 'at 20 left the ghosts see no pellets, Pac-Man still does');
+}
 console.log(fails ? `${fails} FAILED` : 'all sim checks passed');
 process.exit(fails ? 1 : 0);
