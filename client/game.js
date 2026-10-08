@@ -78,17 +78,32 @@
     const g = ac.createGain(); g.gain.value = 0.7; src.connect(g); g.connect(master); src.start();
     musicNode = src;
   }
+  // ---- sound effects and the announcer, from the disc's wave banks (client/sound.js)
+  const snd = { sfx: null, voice: null, busyUntil: 0, said: new Set() };
+  const pick = list => list[Math.floor(Math.random() * list.length)];
+  function playWave(w, vol) {
+    const a = audio(); if (!a || !w) return;
+    const src = a.createBufferSource(), g = a.createGain();
+    src.buffer = Sound.buffer(a, w); g.gain.value = vol; src.connect(g); g.connect(master); src.start();
+  }
+  const sfx = (i, vol) => { if (snd.sfx && snd.sfx[i]) playWave(snd.sfx[i], vol || 0.8); };
+  /** The announcer speaks one line at a time; `force` cuts in on a line that is still playing. */
+  function say(i, force) {
+    const w = snd.voice && snd.voice[i], a = w && audio(); if (!a) return;
+    if (!force && a.currentTime < snd.busyUntil) return;
+    playWave(w, 1); snd.busyUntil = a.currentTime + w.samples / w.rate + 0.25;
+  }
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
 
   // ------------------------------------------------------------------ disc assets
-  const art = { pac: [], logo: null, press: null, mazes: [], three: null, screens: null };
-  let view3 = null, screenView = null, onDiscMaze = false, curStage = null, stageWant = 0;
+  const art = { pac: [], logo: null, press: null, mazes: [], three: null, screens: null, handheld: null };
+  let view3 = null, screenView = null, onDiscMaze = false, curStage = null, stageWant = 0, curDisc = null, pacScreen = null;
   /** Switch the board to another maze (or back to the built-in one). A maze that came from the disc also
    *  loads its 3D stage model; until that is ready the flat view is used. */
   function setMaze(m) {
     const next = m ? PacSim.create(m) : PacSim;
     const disc = m && art.mazes.find(d => d.rows.join('/') === m.rows.join('/'));
-    curStage = null; onDiscMaze = false; stageWant = disc ? disc.stage : 0;
+    curStage = null; onDiscMaze = false; stageWant = disc ? disc.stage : 0; curDisc = disc || null;
     if (disc && art.three && music.disc) {
       const want = disc.stage;
       View3D.loadStage(music.disc, art.three, disc).then(st => { if (stageWant === want) { curStage = st; onDiscMaze = true; } }, e => console.warn('stage model', e));
@@ -113,6 +128,36 @@
     }
     return screenView || null;
   }
+  /** Pac-Man's own screen, drawn from the disc's pictures, when a disc maze is in play. */
+  function pacScreenCanvas() {
+    if (!art.handheld || !curDisc || pacScreen === false) return null;
+    if (!pacScreen) {
+      const c = document.createElement('canvas'); c.width = Handheld.W; c.height = Handheld.H; c.className = 'shared pixel';
+      $('stage').insertBefore(c, $('banner'));
+      pacScreen = { canvas: c, ctx: c.getContext('2d'), frame: Handheld.frame(), cam: { dy: 0 }, img: null };
+    }
+    return pacScreen;
+  }
+  function drawPacScreen(ps, now) {
+    const st = $('stage'), cw = Math.max(240, Math.min(st.clientWidth, st.clientHeight * 3 / 2));
+    ps.canvas.style.width = cw + 'px'; ps.canvas.style.height = cw * 2 / 3 + 'px';
+    const pacs = { pacPlayer: snap.pacPlayer };
+    if (snap.phase === 'countdown') ps.cam = { dy: 0 };
+    const moved = sm.pac && ps.last && Math.hypot(sm.pac.x - ps.last.x, sm.pac.y - ps.last.y) > 0.002;
+    if (moved) ps.movedAt = now;
+    ps.last = sm.pac ? { x: sm.pac.x, y: sm.pac.y } : null;
+    const view = fxViews(now);
+    Handheld.render(art.handheld, ps.frame, {
+      seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: snap.pellets,
+      pac: sm.pac && { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120 },
+      ghosts: sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: S.playerOfGhost(pacs, i) } : null).filter(Boolean),
+      pacSeat: snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
+      pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })),
+      caught: isCaught() ? (now - phaseT0) / 1000 : null
+    });
+    if (!ps.img) ps.img = new ImageData(ps.frame.data, Handheld.W, Handheld.H);
+    ps.ctx.putImageData(ps.img, 0, 0);
+  }
   const mazeOf = () => { const m = /^disc:(\d+)$/.exec($('mazeSel').value); return m ? art.mazes.find(d => d.stage === +m[1]) || null : null; };
   /** Fill the maze menu with the stages found on the disc. */
   function fillMazes() {
@@ -136,12 +181,14 @@
       art.logo = tex('pactitle_06.bti'); art.press = tex('press_start.bti');
       if (art.logo) { $('logo').src = art.logo.toDataURL(); $('logo').classList.remove('hidden'); $('title').classList.add('hidden'); }
       music.disc = d; music.bufs.clear();
+      try { const w = await Sound.load(d); snd.sfx = w.sfx; snd.voice = w.voice; } catch (e) { console.warn('sound', e); snd.sfx = snd.voice = null; }
       try {   // the original stage 1 maze, read from the disc's maze data
         art.mazes = MazeData.all(await d.read(MazeData.PATH), PacSim.makeMaze);
         fillMazes();
       } catch (e) { console.warn('maze', e); art.mazes = []; }
       try { art.three = await View3D.load(d); view3 = null; } catch (e) { console.warn('3D models', e); art.three = null; }
       try { art.screens = await Screens.load(d); } catch (e) { console.warn('shared screen', e); art.screens = null; }
+      try { art.handheld = await Handheld.load(d, MazeData); if (pacScreen) { pacScreen.canvas.remove(); pacScreen = null; } } catch (e) { console.warn('Pac-Man screen', e); art.handheld = null; }
       if (screenView) { screenView.canvas.remove(); screenView = null; }
       st.className = 'note ok'; st.textContent = `Loaded ${d.title} (${d.id}). Original logo, sprites, music${art.three ? ', 3D ghost view' : ''} are on.`;
       if (remember) { try { await idbSet('disc', blob); } catch { /* storage unavailable */ } }
@@ -300,11 +347,12 @@
     const now = performance.now();
     if (!prev || (cur.phase === 'countdown' && prev.phase !== 'countdown')) { fx.pops.length = 0; fx.sparkle = -1; fx.burst = null; return; }
     const near = (a, b, d) => a && b && Math.hypot(a.x - b.x, a.y - b.y) < d;
+    announce(prev, cur);
     if (prev.fruitUp && !cur.fruitUp && cur.phase === 'play') {
       fx.sparkle = now;
       const f = prev.fruit, gi = f ? cur.ghosts.findIndex(g => g.m !== 'e' && near(g, f, 1.2)) : -1;
-      if (gi >= 0) fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(CFG.fruitPts), t0: now });
-      else if (f && near(cur.pac, f, 1.2)) fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.fruitPts), t0: now });
+      if (gi >= 0) { fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(CFG.fruitPts), t0: now }); sfx(13); say(4 + S.playerOfGhost({ pacPlayer: cur.pacPlayer }, gi), true); }
+      else if (f && near(cur.pac, f, 1.2)) { fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.fruitPts), t0: now }); sfx(13); say(pick([26, 27]), true); }
     }
     cur.ghosts.forEach((g, i) => {
       const p = prev.ghosts[i];
@@ -314,6 +362,23 @@
       const p = cur.pac || prev.pac;
       if (p) { fx.burst = { x: p.x, y: p.y, t0: now }; fx.pops.push({ x: p.x, y: p.y, text: String(cur.steal), t0: now }); }
     }
+  }
+  // The announcer's lines, picked from changes between two snapshots (the same on every client).
+  function announce(prev, cur) {
+    if (cur.phase !== prev.phase) {
+      if (cur.phase === 'countdown') { snd.said.clear(); say(32, true); }
+      else if (cur.phase === 'play' && prev.phase === 'countdown') say(31, true);
+      else if (cur.phase === 'roundover' && cur.why === 'caught') say(13 + cur.catcher, true);
+      else if (cur.phase === 'final') { say(17, true); setTimeout(() => say(22 + (cur.winner >= 0 ? cur.winner : 0), true), 1700); }
+    }
+    if (cur.phase !== 'play') return;
+    if (!prev.fruitUp && cur.fruitUp) { sfx(6); say(pick([8, 9])); }
+    if (cur.frightLeft > prev.frightLeft + 5) say(snap && snap.me >= 0 ? pick([1, 3]) : pick([0, 2]), true);
+    cur.ghosts.forEach((g, i) => { if (prev.ghosts[i] && prev.ghosts[i].m === 'f' && g.m === 'e') say(pick([10, 11, 12])); });
+    if (cur.left <= 10 && prev.left > 10) say(pick([18, 19]));
+    const top = Math.max(...cur.scores), toGo = cur.target - top;
+    if (toGo <= 500 && !snd.said.has(500)) { snd.said.add(500); snd.said.add(1000); say(29); }
+    else if (toGo <= 1000 && !snd.said.has(1000)) { snd.said.add(1000); say(28); }
   }
   function fxViews(now) {
     fx.pops = fx.pops.filter(p => now - p.t0 < FX_POP * 1000);
@@ -494,10 +559,13 @@
     // Ghost players with the disc get the original shared screen; Pac-Man keeps the full maze.
     // Everyone sees the exchange and results screens.
     const between = discScreen(), scr = between || (snap.me >= 0 ? sharedScreen() : null);
-    cv.style.display = scr ? 'none' : '';
+    const hh = !scr && snap.me < 0 ? pacScreenCanvas() : null;
+    cv.style.display = scr || hh ? 'none' : '';
+    if (pacScreen) pacScreen.canvas.style.display = hh ? '' : 'none';
     if (screenView) screenView.canvas.style.display = scr ? '' : 'none';
     if (between) { drawBetween(between, now, dt); return; }
     if (scr) { drawShared(scr, now, dt); return; }
+    if (hh) { try { drawPacScreen(hh, now); } catch (e) { console.warn('Pac-Man screen', e); pacScreen.canvas.remove(); pacScreen = false; } return; }
     layout(); const u = cell * dpr;
     g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(mazeCv, 0, 0);
     const pel = snap.pellets;
