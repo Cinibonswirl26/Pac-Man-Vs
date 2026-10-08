@@ -23,7 +23,7 @@
   .snd button { min-height:28px; padding:2px 8px; }
   .ev { border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:10px; }
   .ev h3 { margin:0; font-size:15px; } .ev p { margin:2px 0 6px; color:var(--dim); font-size:12px; }
-  .cue { display:grid; grid-template-columns: 70px 1fr 74px 66px 92px 86px 70px auto; gap:4px; align-items:center; margin-bottom:4px; }
+  .cue { display:grid; grid-template-columns: 70px 1fr 74px 66px 92px 86px 96px 70px auto; gap:4px; align-items:center; margin-bottom:4px; }
   .cue.sel { outline:2px solid var(--cyan); border-radius:6px; }
   .cue input, .cue select { width:100%; min-width:0; padding:3px 6px; min-height:30px; }
   .cue label { font-size:11px; color:var(--dim); display:flex; align-items:center; gap:3px; }
@@ -108,13 +108,14 @@
           <select data-f="mode" title="one = random one of them, all = all of them, index = by seat">${opt(c.mode, ['one', 'all', 'index'])}</select>
           <select data-f="who">${opt(c.who, ['all', 'pac', 'ghost'])}</select>
           <label>ms<input data-f="delay" type="number" min="0" step="100" value="${c.delay || 0}"></label>
+          <label>chance<input data-f="chance" type="number" min="0" max="1" step="0.1" value="${c.chance == null ? 1 : c.chance}"></label>
           <label>vol<input data-f="vol" type="number" min="0" max="1" step="0.1" value="${c.vol == null ? 1 : c.vol}"></label>
           <label><input data-f="force" type="checkbox"${c.force ? ' checked' : ''}>cut in</label><button title="remove">&times;</button>`;
         r.addEventListener('focusin', () => { if (!focus || focus.cue !== c) { focus = { cue: c }; document.querySelectorAll('.cue.sel').forEach(x => x.classList.remove('sel')); r.classList.add('sel'); } });
         r.querySelectorAll('[data-f]').forEach(el => el.onchange = () => {
           const f = el.dataset.f;
           if (f === 'ids') c.ids = el.value.split(',').map(x => x.trim()).filter(Boolean).map(x => /^\d+$/.test(x) ? +x : x);
-          else if (f === 'force') c.force = el.checked; else if (f === 'delay' || f === 'vol') c[f] = +el.value; else c[f] = el.value;
+          else if (f === 'force') c.force = el.checked; else if (f === 'delay' || f === 'vol' || f === 'chance') c[f] = +el.value; else c[f] = el.value;
           if (f === 'kind') draw();
         });
         r.querySelector('button').onclick = () => { cues.splice(k, 1); draw(); };

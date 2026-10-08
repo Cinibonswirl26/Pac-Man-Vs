@@ -386,6 +386,7 @@
       if (cur.phase === 'countdown') { snd.said.clear(); fire('ready'); }
       else if (cur.phase === 'play' && prev.phase === 'countdown') fire('go');
       else if (cur.phase === 'roundover' && cur.why === 'caught') fire('caught', { index: cur.catcher });
+      else if (cur.phase === 'roundover' && cur.why === 'cleared') fire('mazeCleared');
       else if (cur.phase === 'final') { fire('final'); fire('champion', { index: cur.winner >= 0 ? cur.winner : 0 }); }
     }
     if (cur.phase !== 'play') return;
