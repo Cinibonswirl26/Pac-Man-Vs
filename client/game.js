@@ -389,7 +389,11 @@
       else if (cur.phase === 'roundover' && cur.why === 'cleared') fire('mazeCleared');
       else if (cur.phase === 'final') { fire('final'); fire('champion', { index: cur.winner >= 0 ? cur.winner : 0 }); }
     }
-    if (cur.phase !== 'play') return;
+    if (cur.phase !== 'play') { snd.round = null; return; }
+    // timed encouragement, counted from the start of each round (so it begins again after a clear or a catch)
+    if (!snd.round || cur.tick < snd.round.tick0) snd.round = { tick0: cur.tick, done: new Set() };
+    const played = (cur.tick - snd.round.tick0) / 30;
+    for (const ev of SoundMap.EVENTS) if (ev.after && played >= ev.after && !snd.round.done.has(ev.id)) { snd.round.done.add(ev.id); fire(ev.id); }
     if (!prev.fruitUp && cur.fruitUp) fire('fruitAppears');
     if (cur.frightLeft > prev.frightLeft + 5) fire(snap && snap.me >= 0 ? 'powerGhost' : 'powerPac');
     if (cur.frightLeft > prev.frightLeft + 5) snd.chain = 0;
