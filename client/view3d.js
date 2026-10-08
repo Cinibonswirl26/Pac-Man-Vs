@@ -34,6 +34,9 @@
     const k = maze.stage;
     if (assets.stages.has(k)) return assets.stages.get(k);
     const bmd = J3D.parseBMD(await disc.read('PROOT/Map/PacField_' + k + '.bmd'));
+    // The original stage's floor texture is a sheet of wall-edge art; its floor strips use coordinates outside 0..1 and
+    // the original shows plain dark floor there, so the edge pixel is held instead of repeating the sheet.
+    if (k === 1) for (const t of bmd.textures) if (t.name === 'yuka15') t.wrapS = t.wrapT = 0;
     let btk = null; try { btk = J3D.parseBTK(await disc.read('PROOT/Map/PacField_' + k + '.btk')); } catch (e) { /* no scrolling */ }
     const st = { k, bmd, btk, colOff: maze.colOffset, rowOff: maze.rowOffset, floor: floorHeight(bmd, maze) };
     assets.stages.set(k, st);
