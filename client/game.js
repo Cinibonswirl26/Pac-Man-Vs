@@ -46,11 +46,14 @@
     g.gain.setValueAtTime(vol || 0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
   }
-  let waka = 0;
+  let waka = 0, handWaka = null;
   function playEvents(ev) {
     for (const e of ev || []) {
-      if (e === 'pellet') tone((waka++ & 1) ? 440 : 330, 0.07, 'square', 0.07);
-      else if (e === 'power') tone(180, 0.35, 'sawtooth', 0.12, 720);
+      if (e === 'pellet' || (e === 'power' && art.handheld)) {
+        // the "wa-ka" is Pac-Man's own screen's sound: with the disc loaded only Pac-Man hears it, as in the original
+        if (art.handheld) { if (snap && snap.me < 0 && audio()) { if (handWaka) handWaka.stop(); handWaka = HandSound.play(ac, master, 'waka'); } }
+        else tone((waka++ & 1) ? 440 : 330, 0.07, 'square', 0.07);
+      } else if (e === 'power') tone(180, 0.35, 'sawtooth', 0.12, 720);
       else if (e === 'eatghost') { tone(900, 0.12, 'square', 0.12, 300); setTimeout(() => tone(300, 0.2, 'square', 0.1, 1200), 90); }
       else if (e === 'pacdeath') tone(700, 0.9, 'sawtooth', 0.16, 70);
       else if (e === 'fruit' || e === 'fruitghost') { tone(660, 0.08, 'square', 0.1); setTimeout(() => tone(990, 0.12, 'square', 0.1), 80); }
@@ -138,6 +141,11 @@
     }
     return pacScreen;
   }
+  const freshCache = new WeakMap();
+  function freshPellets() {   // the stage's pellets as they are at the start of a round
+    if (!freshCache.has(curDisc)) { const a = new Uint8Array(W * H); curDisc.rows.forEach((row, y) => [...row].forEach((ch, x) => { a[y * W + x] = ch === '.' ? 1 : ch === 'o' ? 2 : 0; })); freshCache.set(curDisc, a); }
+    return freshCache.get(curDisc);
+  }
   function drawPacScreen(ps, now) {
     const st = $('stage'), cw = Math.max(240, Math.min(st.clientWidth, st.clientHeight * 3 / 2));
     ps.canvas.style.width = cw + 'px'; ps.canvas.style.height = cw * 2 / 3 + 'px';
@@ -147,11 +155,13 @@
     if (moved) ps.movedAt = now;
     ps.last = sm.pac ? { x: sm.pac.x, y: sm.pac.y } : null;
     const view = fxViews(now);
+    const waiting = myHandoff();
     Handheld.render(art.handheld, ps.frame, {
-      seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: snap.pellets,
-      pac: sm.pac && { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120 },
-      ghosts: sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: S.playerOfGhost(pacs, i) } : null).filter(Boolean),
-      pacSeat: snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
+      banner: waiting,
+      seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: waiting ? freshPellets() : snap.pellets,
+      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120 } : null,
+      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: S.playerOfGhost(pacs, i) } : null).filter(Boolean),
+      pacSeat: waiting ? snap.next : snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: waiting ? null : snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
       pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })),
       caught: isCaught() ? (now - phaseT0) / 1000 : null
     });
@@ -367,7 +377,7 @@
   function announce(prev, cur) {
     if (cur.phase !== prev.phase) {
       if (cur.phase === 'countdown') { snd.said.clear(); say(32, true); }
-      else if (cur.phase === 'play' && prev.phase === 'countdown') say(31, true);
+      else if (cur.phase === 'play' && prev.phase === 'countdown') { say(31, true); if (art.handheld && cur.me < 0 && audio()) HandSound.play(ac, master, 'start'); }
       else if (cur.phase === 'roundover' && cur.why === 'caught') say(13 + cur.catcher, true);
       else if (cur.phase === 'final') { say(17, true); setTimeout(() => say(22 + (cur.winner >= 0 ? cur.winner : 0), true), 1700); }
     }
@@ -558,8 +568,10 @@
     snap.ghosts.forEach((gh, i) => { sm.ghosts[i] = approach(sm.ghosts[i], gh, dt); });
     // Ghost players with the disc get the original shared screen; Pac-Man keeps the full maze.
     // Everyone sees the exchange and results screens.
-    const between = discScreen(), scr = between || (snap.me >= 0 ? sharedScreen() : null);
-    const hh = !scr && snap.me < 0 ? pacScreenCanvas() : null;
+    // the next Pac-Man, while the game waits for them, gets Pac-Man's own screen with its "Press START!" sign
+    const waiting = myHandoff() && art.handheld && curDisc && pacScreenCanvas();
+    const between = waiting ? null : discScreen(), scr = between || (!waiting && snap.me >= 0 ? sharedScreen() : null);
+    const hh = waiting || (!scr && snap.me < 0 ? pacScreenCanvas() : null);
     cv.style.display = scr || hh ? 'none' : '';
     if (pacScreen) pacScreen.canvas.style.display = hh ? '' : 'none';
     if (screenView) screenView.canvas.style.display = scr ? '' : 'none';

@@ -76,6 +76,7 @@
   const FRIGHT = [132, 134], EYES = [140, 136, 142, 138];
   const CHERRY = 384, DIGIT0 = 388, BADGE = 420;      // BADGE: the player-number badge (two tiles per player) shown over frightened ghosts
   const FPS = 59.7275;
+  const START_BANNER = 448;                        // "Press START!" is 11 tiles across and 2 down at (40, 88); it blinks, 32 frames on and 32 off
 
   /** The panel map with the current scores, target and roles written in. */
   function panelMap(hw, st) {
@@ -159,6 +160,9 @@
     for (const p of st.pops || []) {
       const t = String(p.text), x0 = Math.round(8 * p.x - 2 * t.length - 4), y0 = sy(p.y) - 4;
       for (let i = t.length - 1; i >= 0; i--) sprites.push({ tile: DIGIT0 + t.charCodeAt(i) - 48, pal: 0, x: x0 + 4 * i, y: y0, hf: 0, vf: 0 });
+    }
+    if (st.banner && Math.floor(fr / 32) % 2 === 0) {
+      for (let r = 0; r < 2; r++) for (let c = 0; c < 11; c++) sprites.unshift({ tile: START_BANNER + 32 * r + c, pal: 0, x: 40 + 8 * c, y: 88 + 8 * r, hf: 0, vf: 0 });
     }
     sprites.reverse();
     drawSprites(f, hw, sprites);
