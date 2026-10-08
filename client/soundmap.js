@@ -13,7 +13,7 @@
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v5';
+  const KEY = 'pacvs.soundmap.v6';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
@@ -30,13 +30,17 @@
     26: 'Pac-Man ate the fruit', 27: 'Pac-Man ate the fruit (other)', 28: 'One thousand points left', 29: 'Five hundred points left',
     30: 'End of the game', 31: 'Go', 32: 'Ready', 33: 'Go go go!', 34: 'You can do it!', 35: 'Title'
   };
-  const SFX_NAMES = { 6: 'fruit appears chime', 13: 'fruit taken' };
+  const SFX_NAMES = { 6: 'fruit appears chime', 8: 'power pellet eaten', 9: 'pellet eaten', 10: 'frightened ghosts (loops)', 11: 'ghost eaten (rising sweep)', 12: 'ghost "wee-woo" siren (loops)', 13: 'fruit taken / ghost eaten thump', 1: 'beep' };
 
   // Every moment the game can make a sound for. `per` says what the index means for 'index' cues.
   const EVENTS = [
     { id: 'ready', label: 'Round is about to start', when: 'Countdown begins', cues: [voice([32], { force: true })] },
     { id: 'go', label: 'Round starts', when: 'Countdown ends', cues: [voice([31], { force: true }), hand('start')] },
-    { id: 'pellet', label: 'Pellet eaten (Pac-Man)', when: 'Each pellet, and each power pellet', cues: [hand('waka')], note: 'When this has a cue and the disc is loaded, the old beeps are not used' },
+    { id: 'pellet', label: 'Pellet eaten', when: 'Each pellet and each power pellet: the "wa-ka" on Pac-Man\'s screen, and the pellet sound for everybody', cues: [hand('waka'), sfx([9], { vol: 0.7 })], note: 'When this has a cue and the disc is loaded, the old beeps are not used' },
+    { id: 'powerPellet', label: 'Power pellet sound', when: 'Pac-Man eats a power pellet', cues: [sfx([8], { vol: 0.9 })] },
+    { id: 'frightLoop', loop: true, label: 'Frightened ghosts loop', when: 'Plays over and over while the ghosts are frightened', cues: [sfx([10], { vol: 0.35 })] },
+    { id: 'eyesLoop', loop: true, label: 'Ghost "wee-woo" siren', when: 'Plays over and over while an eaten ghost is flying home', cues: [sfx([12], { vol: 0.35 })] },
+    { id: 'ghostEatenSfx', label: 'Ghost eaten sound', when: 'Pac-Man eats a frightened ghost (the rising sweep and the thump)', cues: [sfx([11, 13], { mode: 'all', vol: 0.8 })] },
     { id: 'powerPac', label: 'Power pellet - Pac-Man side', when: 'Pac-Man eats a power pellet (said to Pac-Man); the original spoke after about 3 in 5', cues: [voice([0, 2], { force: true, who: 'pac', chance: 0.6 })] },
     { id: 'powerGhost', label: 'Power pellet - ghost side', when: 'Pac-Man eats a power pellet (said to the ghosts)', cues: [voice([1, 3], { force: true, chance: 0.6 })] },
     { id: 'eatGhost', label: 'Ghost eaten', when: 'index = how many ghosts this power pellet has eaten so far (0 = first)', per: 'chain', cues: [voice([10, 11, 12], { mode: 'index' })] },

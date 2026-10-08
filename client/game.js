@@ -49,7 +49,9 @@
   let waka = 0, handWaka = null;
   function playEvents(ev) {
     for (const e of ev || []) {
-      if ((e === 'pellet' || e === 'power') && SM.handled('pellet')) { fire('pellet'); continue; }
+      if ((e === 'pellet' || e === 'power') && SM.handled('pellet')) { fire('pellet'); if (e === 'power') fire('powerPellet'); continue; }
+      if (e === 'eatghost' && SM.handled('ghostEatenSfx')) { fire('ghostEatenSfx'); continue; }
+      if ((e === 'fruit' || e === 'fruitghost') && SM.handled('fruitPac')) continue;      // fxDetect plays the fruit sound
       if (e === 'pellet' || (e === 'power' && art.handheld)) {
         // the "wa-ka" is Pac-Man's own screen's sound: with the disc loaded only Pac-Man hears it, as in the original
         if (art.handheld) { if (snap && snap.me < 0 && audio()) { if (handWaka) handWaka.stop(); handWaka = HandSound.play(ac, master, 'waka'); } }
@@ -102,6 +104,21 @@
     hand: name => { if (!art.handheld || !audio()) return; if (name === 'waka' && handWaka) handWaka.stop(); const h = HandSound.play(ac, master, name); if (name === 'waka') handWaka = h; },
     ready: () => !!(snd.sfx && snd.voice)
   });
+  // Loops that run while a state lasts (frightened ghosts, eaten ghosts flying home).
+  const loops = {};
+  function setLoop(id, on) {
+    if (!on) { if (loops[id]) { loops[id].forEach(n => { try { n.stop(); } catch { /* ended */ } }); delete loops[id]; } return; }
+    if (loops[id] || !SM.handled(id)) return;
+    const a = audio(); if (!a) return;
+    loops[id] = [];
+    for (const c of SM.map[id]) if (c.kind === 'sfx') for (const i of c.ids) {
+      const w = snd.sfx[+i]; if (!w) continue;
+      const src = a.createBufferSource(), g = a.createGain();
+      src.buffer = Sound.buffer(a, w); src.loop = true; if (src.buffer.loopRange) { src.loopStart = src.buffer.loopRange[0]; src.loopEnd = src.buffer.loopRange[1]; }
+      g.gain.value = c.vol == null ? 0.4 : c.vol; src.connect(g); g.connect(master); src.start(); loops[id].push(src);
+    }
+  }
+  const stopLoops = () => Object.keys(loops).forEach(id => setLoop(id, false));
   const fire = (id, p) => SM.fire(id, Object.assign({ me: snap ? snap.me : 0 }, p));
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
 
@@ -239,6 +256,7 @@
   // ------------------------------------------------------------------ menu / lobby
   function playerName() { const n = $('name').value.trim() || 'Player'; store.set('pacvs.name', n); return n; }
   function toMenu(msg) {
+    stopLoops();
     if (ws) { try { send({ t: 'leave' }); ws.close(); } catch { /* closing */ } }
     mode = null; room = null; offline = null; snap = null; stopMusic(); screen('menu'); setMaze(null);
     $('menuErr').textContent = msg || '';
@@ -389,7 +407,9 @@
       else if (cur.phase === 'roundover' && cur.why === 'cleared') fire('mazeCleared');
       else if (cur.phase === 'final') { fire('final'); fire('champion', { index: cur.winner >= 0 ? cur.winner : 0 }); }
     }
-    if (cur.phase !== 'play') { snd.round = null; return; }
+    if (cur.phase !== 'play') { snd.round = null; stopLoops(); return; }
+    setLoop('frightLoop', cur.frightLeft > 0 && cur.ghosts.some(g => g.m === 'f'));
+    setLoop('eyesLoop', cur.ghosts.some(g => g.m === 'e'));
     // timed encouragement, counted from the start of each round (so it begins again after a clear or a catch)
     if (!snd.round || cur.tick < snd.round.tick0) snd.round = { tick0: cur.tick, done: new Set() };
     const played = (cur.tick - snd.round.tick0) / 30;
