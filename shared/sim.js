@@ -362,6 +362,7 @@
     return best;
   }
 
+  const pacMemo = new WeakMap();
   function cpuPac(s, rng, level) {
     level = level == null ? 1 : level;
     const p = s.pac;
@@ -380,20 +381,31 @@
 
     const pd = distMap(p.x, p.y, 'pac');
     const ga = ghostArrival(s);
-    const margin = level === 0 ? 0.9 : level === 1 ? 0.45 : 0.6;
+    // Pac-Man gets bolder the longer he goes without eating: hiding for ever never wins a round.
+    let st = pacMemo.get(s); if (!st) pacMemo.set(s, st = { left: s.left, t: s.time });
+    if (st.left !== s.left || s.time < st.t) { st.left = s.left; st.t = s.time; }
+    const idle = s.time - st.t, nerve = idle < 6 ? 1 : Math.max(0.15, 1 - (idle - 6) / 12);
+    const margin = (level === 0 ? 0.9 : level === 1 ? 0.45 : 0.6) * nerve;
     const safe = i => ga[i] - pd[i] / CFG.pacSpeed > margin;
     const sx = Math.floor(p.x), sy = Math.floor(p.y);
     const skip = (x, y) => !safe(tileIdx(x, y)) && !(x === sx && y === sy);
 
-    // 1. Hunt a frightened ghost if there is time to reach it.
+    // 1. While the ghosts are scared: hunt them, or keep clearing the maze, whichever pays more per second.
     if (level >= 1 && s.frightLeft > 1.5) {
-      let bestG = null, bt = 1e9;
+      let bestG = null, bRate = 0;
+      const pts = CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)];
       for (const g of s.ghosts) {
         if (g.mode !== 'fright') continue;
         const gi = tileIdx(g.x, g.y), t = pd[gi] >= 0 ? pd[gi] / (CFG.pacSpeed - CFG.frightSpeed * 0.5) : 1e9;
-        if (t < s.frightLeft - 0.8 && t < bt) { bt = t; bestG = g; }
+        if (t < s.frightLeft - 0.8) { const rate = pts / Math.max(t, 1.5); if (rate > bRate) { bRate = rate; bestG = g; } }
       }
-      if (bestG) { const tx = Math.floor(bestG.x), ty = Math.floor(bestG.y); const d = pathStep(p.x, p.y, 'pac', (x, y) => x === tx && y === ty); if (d != null) return keepHeading(p, d, ga, pd, margin); }
+      if (bestG) {
+        // what clearing the rest would pay: the pellets plus the bonus, over the time a tour of them takes
+        const tour = clearTime(s, pd), clearRate = (s.left * CFG.pelletPts + CFG.clearBonus) / Math.max(tour, 1);
+        if (bRate >= clearRate || tour > s.frightLeft + 25) {
+          const tx = Math.floor(bestG.x), ty = Math.floor(bestG.y); const d = pathStep(p.x, p.y, 'pac', (x, y) => x === tx && y === ty); if (d != null) return keepHeading(p, d, ga, pd, margin);
+        }
+      }
     }
     // 2. Close ghost and a power pellet we can safely reach: take it.
     const nearest = ga.reduce((m, v, i) => (pd[i] >= 0 && pd[i] < 1 ? Math.min(m, v) : m), 1e9);
@@ -409,7 +421,7 @@
         const i = y * W + x; if (!s.pellets[i] || pd[i] < 0) continue;
         if (!(safe(i) && ga[i] - pd[i] / CFG.pacSpeed > margin + 0.3)) continue;
         let near = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const yy = y + dy; if (yy >= 0 && yy < H && s.pellets[tileIdx(x + dx, yy)]) near++; }
-        cands.push([near * 0.6 - pd[i] * 1.0 + (s.pellets[i] === 2 ? (nearest < 7 ? 8 : -6) : 0), i]);
+        cands.push([near * 0.6 - pd[i] * 1.0 + (s.pellets[i] === 2 ? powerValue(s, pd, nearest) : 0), i]);
       }
       cands.sort((a, b) => b[0] - a[0]);
       for (let k = 0; k < Math.min(cands.length, 10); k++) {
@@ -418,6 +430,12 @@
         const d = pathStep(p.x, p.y, 'pac', (x, y) => x === tx && y === ty, skip);
         if (d != null) return keepHeading(p, d, ga, pd, margin);
       }
+    }
+    // 3b. Nothing eaten for a long time: stop hiding and go for the nearest pellet that is not about to be cut off.
+    if (idle > 8 && level >= 0) {
+      const slack = idle > 20 ? -3 : 0.25;      // after a long wait, run the gauntlet
+      const d = pathStep(p.x, p.y, 'pac', (x, y) => s.pellets[y * W + x] > 0, (x, y) => ga[tileIdx(x, y)] - pd[tileIdx(x, y)] / CFG.pacSpeed < slack && !(x === sx && y === sy));
+      if (d != null) return keepHeading(p, d, ga, pd, 0.1);
     }
     // 4. Nothing safe to eat: run to the neighbouring area with the most room, away from ghosts.
     let bestD = null, bv = -1e9;
@@ -430,6 +448,27 @@
       if (v > bv) { bv = v; bestD = d; }
     }
     return bestD;
+  }
+  /** How much a power pellet is worth right now: a lot when ghosts are close enough to be chased down. */
+  function powerValue(s, pd, nearest) {
+    if (s.frightLeft > 4) return -8;
+    let near = 0;
+    for (const g of s.ghosts) if (g.mode === 'normal') { const d = pd[tileIdx(Math.floor(g.x), Math.floor(g.y))]; if (d >= 0 && d <= 14) near++; }
+    if (nearest < 7) return 8 + 2 * near;
+    return near >= 2 ? 3 * near : -6;
+  }
+  /** Rough time (s) to eat every pellet left: nearest-neighbour gaps summed, plus the walk to the first one. */
+  function clearTime(s, pd) {
+    const xs = [], ys = [];
+    for (let i = 0; i < T; i++) if (s.pellets[i]) { xs.push(i % W); ys.push(Math.floor(i / W)); }
+    const n = xs.length; if (!n) return 1;
+    let gap = 0, first = 1e9;
+    for (let a = 0; a < n; a++) {
+      let m = 1e9; for (let b = 0; b < n; b++) if (b !== a) { const d = Math.abs(xs[a] - xs[b]) + Math.abs(ys[a] - ys[b]); if (d < m) m = d; }
+      gap += n > 1 ? m : 0;
+      const pdi = pd[ys[a] * W + xs[a]]; if (pdi >= 0 && pdi < first) first = pdi;
+    }
+    return (gap * 1.25 + (first < 1e9 ? first : 0)) / CFG.pacSpeed;
   }
   /** After reaching (gx,gy) at time t0, can Pac-Man keep going through tiles it reaches before any ghost? */
   function hasEscape(gx, gy, t0, ga, margin, level) {
@@ -480,22 +519,78 @@
       const fx = Math.floor(s.fruit.x), fy = Math.floor(s.fruit.y), d = pathStep(g.x, g.y, 'ghost', (x, y) => x === fx && y === fy);
       if (d != null && distMap(g.x, g.y, 'ghost')[tileIdx(fx, fy)] <= 9) return d;
     }
-    const sight = level === 0 ? CFG.ghostSight : level === 1 ? CFG.ghostSight * CFG.fruitSightMult : 99;
-    const near = dist(g, s.pac) <= sight;
-    if (near && rng() > (level === 0 ? 0.35 : 0.05)) {
-      // Three roles so the pack does not simply queue behind each other.
-      let tx = Math.floor(s.pac.x), ty = Math.floor(s.pac.y);
-      if (gi === 1 || (gi === 2 && dist(g, s.pac) < 5)) {
-        for (let k = gi === 1 ? 4 : 2; k > 0; k--) { const nx = tx + DIRS[s.pac.dir][0] * k, ny = ty + DIRS[s.pac.dir][1] * k; if (ny >= 0 && ny < H && !blocked(nx, ny, 'ghost')) { tx = ((nx % W) + W) % W; ty = ny; break; } }
+    const tm = team(s, level), me = tm.rank[gi];
+    let tx = -1, ty = -1;
+    if (tm.has && !(level === 0 && rng() < 0.2)) {
+      // Pac-Man is known (seen now, or just out of sight). The nearest ghost chases; the others cut him off ahead.
+      const px = Math.floor(tm.px), py = Math.floor(tm.py);
+      tx = px; ty = py;
+      if (tm.live && me > 0 && level >= 1) {
+        const dm = distMap(g.x, g.y, 'ghost'), route = tm.route, reach = me === 1 ? 5 : 11;
+        for (let j = Math.min(reach, route.length) - 1; j >= 0; j--) {
+          const i = tileIdx(route[j][0], route[j][1]);
+          if (dm[i] > 0 && dm[i] / CFG.ghostSpeed < (j + 1) / CFG.pacSpeed - 0.15) { tx = route[j][0]; ty = route[j][1]; break; }
+        }
       }
-      const skip = gi === 2 ? null : null;
-      const d = pathStep(g.x, g.y, 'ghost', (x, y) => x === tx && y === ty, skip);
-      if (d != null && !(d === OPP[g.dir] && fwd.length && rng() < 0.7)) return d;
+    } else {
+      // Pac-Man is not in sight: patrol where pellets remain, each ghost its own part of the maze.
+      const cur = tm.patrol[gi];
+      const arrived = cur >= 0 && Math.abs(cur % W + 0.5 - g.x) + Math.abs(Math.floor(cur / W) + 0.5 - g.y) <= 1;
+      if (arrived) tm.visit.set(cur, s.time);
+      if (cur >= 0 && s.pellets[cur] && !arrived) { tx = cur % W; ty = Math.floor(cur / W); }
+      else {
+        const dm = distMap(g.x, g.y, 'ghost'); let bi = -1, bv = -1e9;
+        for (let i = 0; i < T; i++) {
+          if (!s.pellets[i] || dm[i] < 0) continue;
+          const x = i % W, y = Math.floor(i / W);
+          let near = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const yy = y + dy; if (yy >= 0 && yy < H && s.pellets[tileIdx(x + dx, yy)]) near++; }
+          let v = near * 0.5 - dm[i] * 0.25 + (s.pellets[i] === 2 ? 3 : 0) + rng() * 0.8;
+          const vt = tm.visit.get(i); if (vt != null && s.time - vt < 30) v -= 10 - (s.time - vt) / 4;     // swept recently
+          if (tm.seen > -1e8) v -= Math.hypot(x - tm.px, y - tm.py) * 0.35;     // Pac-Man was last seen over there
+          for (let o = 0; o < s.ghosts.length; o++) if (o !== gi && tm.patrol[o] >= 0 && Math.abs(tm.patrol[o] % W - x) + Math.abs(Math.floor(tm.patrol[o] / W) - y) < 7) v -= 6;
+          if (v > bv) { bv = v; bi = i; }
+        }
+        tm.patrol[gi] = bi; if (bi >= 0) { tx = bi % W; ty = Math.floor(bi / W); }
+      }
     }
-    // Wander, preferring to keep going and to head towards where pellets remain (Pac-Man must come for them).
+    if (tx >= 0) {
+      const dt = distMap(tx, ty, 'ghost'), val = d => { const i = tileIdx(Math.floor(g.x) + DIRS[d][0], Math.floor(g.y) + DIRS[d][1]); return dt[i] < 0 ? 1e6 : dt[i]; };
+      let best = -1, bv = 1e9;
+      for (const d of pool) { const v = val(d) + rng() * 0.3; if (v < bv) { bv = v; best = d; } }
+      const back = ex.includes(OPP[g.dir]) ? OPP[g.dir] : -1;
+      if (back >= 0 && val(back) < bv - 0.5) best = back;     // turn round only when that is much shorter
+      if (best >= 0) return best;
+    }
     if (!pool.length) return OPP[g.dir];
     if (pool.includes(g.dir) && rng() < 0.55) return g.dir;
     return pool[Math.floor(rng() * pool.length)];
+  }
+
+  // The ghosts play as a team: they share what any of them sees, and take turns being the chaser.
+  const teams = new WeakMap();
+  function team(s, level) {
+    let t = teams.get(s);
+    if (!t) teams.set(s, t = { tick: -1, seen: -1e9, px: 0, py: 0, patrol: s.ghosts.map(() => -1), visit: new Map() });
+    if (t.tick === s.tick) return t;
+    t.tick = s.tick;
+    const sight = level === 0 ? CFG.ghostSight : level === 1 ? CFG.ghostSight * CFG.fruitSightMult : 1e9;
+    t.live = s.ghosts.some(g => g.mode !== 'eyes' && dist(g, s.pac) <= sight);
+    if (t.live) { t.seen = s.time; t.px = s.pac.x; t.py = s.pac.y; }
+    t.has = t.live || s.time - t.seen < (level === 0 ? 4 : level === 1 ? 8 : 1e9);
+    t.route = [];
+    if (t.live) {
+      const p = s.pac; let x = Math.floor(p.x), y = Math.floor(p.y), d = p.dir;
+      for (let k = 0; k < 12; k++) {
+        const ok = e => !blocked((x + DIRS[e][0] + W) % W, y + DIRS[e][1], 'pac');
+        if (!ok(d)) { const opts = [0, 1, 2, 3].filter(e => e !== OPP[d] && ok(e)); d = opts.length ? opts[0] : OPP[d]; }
+        x = (x + DIRS[d][0] + W) % W; y += DIRS[d][1]; t.route.push([x, y]);
+      }
+    }
+    // ghosts ordered by how close they are to Pac-Man (0 = nearest = the chaser)
+    const pd = distMap(s.pac.x, s.pac.y, 'ghost');
+    const order = s.ghosts.map((g, i) => [i, g.mode === 'normal' ? (pd[tileIdx(Math.floor(g.x), Math.floor(g.y))] + 1e3) % 1e3 : 1e4]).sort((a, b) => a[1] - b[1]);
+    t.rank = []; order.forEach(([i], r) => { t.rank[i] = r; });
+    return t;
   }
 
   function mulberry(seed) {
