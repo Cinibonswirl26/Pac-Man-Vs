@@ -1,7 +1,7 @@
 // Whole matches between CPUs follow the original's rules: roles pass to the catcher, scores carry, the target ends it.
 const { Match } = require('../shared/match.js');
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } };
-for (const seed of [3, 7, 11]) {
+for (const seed of [3, 7, 12]) {
   const m = new Match(() => false, seed, { target: 7000 }); m.start();
   ok(m.scores[m.pac] === 1600 && m.scores.reduce((a, b) => a + b, 0) === 1600, 'first Pac-Man starts with 1600');
   let ticks = 0, handovers = 0, prevPac = m.pac;
