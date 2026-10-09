@@ -88,6 +88,27 @@
       }
       return { w: n, h: n, rgba, wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 };
     })());
+    // Arrangement levels: capsule pills (a two-tone pill with a white top half), a star for dizzy ghosts
+    const PILL_RGB = { red: [255, 40, 40], cyan: [60, 230, 255], pink: [255, 110, 200], orange: [255, 150, 30], gold: [255, 215, 40] };
+    const pills = {};
+    for (const k in PILL_RGB) {
+      const n = 32, rgba = new Uint8Array(n * n * 4), c = PILL_RGB[k];
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        // a capsule standing on its end, slightly tilted: a rounded bar 12 wide and 26 tall
+        const u = (x - 15.5) + (y - 15.5) * 0.35, v = y - 15.5, inside = Math.abs(u) <= 6 && Math.abs(v) <= 13 && (Math.abs(v) <= 7 || Math.hypot(u, Math.abs(v) - 7) <= 6);
+        const i = (y * n + x) * 4, top = v < 0, shade = 0.75 + 0.25 * Math.max(0, 1 - Math.abs(u + 2) / 6);
+        rgba[i] = (top ? 255 : c[0]) * shade; rgba[i + 1] = (top ? 255 : c[1]) * shade; rgba[i + 2] = (top ? 255 : c[2]) * shade; rgba[i + 3] = inside ? 255 : 0;
+      }
+      pills[k] = tex({ w: n, h: n, rgba, wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 });
+    }
+    const star = tex((() => {
+      const n = 32, rgba = new Uint8Array(n * n * 4);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        const dx = x - 15.5, dy = y - 15.5, a = Math.atan2(dy, dx), r = Math.hypot(dx, dy), edge = 6 + 9 * Math.max(0, Math.cos(5 * a)) ** 0.6;
+        const i = (y * n + x) * 4; rgba[i] = 255; rgba[i + 1] = 235; rgba[i + 2] = 80; rgba[i + 3] = r <= edge ? 255 : 0;
+      }
+      return { w: n, h: n, rgba, wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 };
+    })());
     // Measured on a recording of the original: each drop lives about 6 frames (0.2 s), two or three are in the air per
     // ghost, about 4 px wide on the 640 px picture (0.09 cell), and they fly out from where the ghost was when they
     // fell: sideways at about 1.4 cells/s in any direction and upwards at about 0.75 cells/s, so they trail a moving ghost.
@@ -146,16 +167,40 @@
         }
         R.ribbon(pts, 780, v.trailColor);
       }
-      if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), fl, wz(v.fruit.y), 0, 0.75));
+      // Arrangement pads: flat marks on the floor. A dash arrow is an orange bar with a head; a jump pad a ring in its pair's colour.
+      if (v.pads) for (const p of v.pads) {
+        const X = wx(p.x + 0.5), Z = wz(p.y + 0.5), h = fl + 60;
+        if (p.kind === 'dash') {
+          const dx = [0, 1, 0, -1][p.dir], dz = [-1, 0, 1, 0][p.dir], pulse = 0.75 + 0.25 * Math.sin(v.time * 6);
+          R.ribbon([[X - dx * 380, h, Z - dz * 380, pulse], [X + dx * 120, h, Z + dz * 120, pulse]], 260, [1, 0.55, 0.1]);
+          R.ribbon([[X + dx * 120, h, Z + dz * 120, pulse], [X + dx * 420, h, Z + dz * 420, pulse]], 560, [1, 0.55, 0.1]);
+        } else {
+          const col = [[1, 0.25, 0.25], [0.3, 0.9, 1], [0.6, 1, 0.3], [1, 0.8, 0.2]][p.colour || 0], pts = [];
+          for (let i = 0; i <= 16; i++) { const a = i / 16 * 2 * Math.PI; pts.push([X + Math.cos(a) * 320, h, Z + Math.sin(a) * 320, 0.85]); }
+          R.ribbon(pts, 110, col);
+          R.ribbon([[X, h, Z + 260, 0.85], [X, h, Z - 260, 0.85]], 90, col); R.ribbon([[X - 150, h, Z - 90, 0.85], [X, h, Z - 260, 0.85], [X + 150, h, Z - 90, 0.85]], 90, col);
+        }
+      }
+      if (v.big && v.big.length) R.sprites(dot, v.big.map(i => [wx((i % v.W) + 0.5), fl + 260, wz(Math.floor(i / v.W) + 0.5), 430]), [1, 0.6, 0.7, 1]);
+      if (v.fruit && v.fruit.k && v.fruit.k !== 'fruit') R.sprites(pills[v.fruit.k] || pills.gold, [[wx(v.fruit.x), fl + 330 + 40 * Math.sin(v.time * 4), wz(v.fruit.y), 520]]);
+      else if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), fl, wz(v.fruit.y), 0, 0.75));
+      // the arc of a flight: the sim moves the flyer along the ground line, the picture lifts it
+      const lift = e => e && e.a ? 1500 * Math.sin(Math.PI * e.a[4]) : 0;
       const dying = v.pac && v.pac.dying >= 0 ? v.pac.dying : -1, D = (v.pac && v.pac.death) || { spin: 0.22, shrink: 0.14, flatAt: 2 };
       // caught: two turns while shrinking to nothing, then out of sight until he reappears lying on his side
       const gone = dying >= D.spin + D.shrink && dying < D.flatAt, flat = dying >= D.flatAt;
       if (v.pac && v.pac.x < v.W && !gone) {     // out of sight in the hidden part of the tunnel otherwise
         let yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0, scale = 1;
         if (dying >= 0 && !flat) { yaw += Math.min(dying, D.spin + D.shrink) / D.spin * 2 * Math.PI; scale = dying < D.spin ? 1 : Math.max(0.001, 1 - (dying - D.spin) / D.shrink); }
-        let pm = m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380), wz(v.pac.y), yaw, scale);
+        let pm = m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380) + lift(v.pac), wz(v.pac.y), yaw, scale);
         if (flat) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
         R.draw(pac, pm);
+      }
+      // clones (Arrangement levels): the mirror of Pac-Man or of a ghost, drawn see-through
+      for (const c of v.clones || []) {
+        if (c.x >= v.W) continue;
+        if (c.of < 0) R.draw(pac, m4.trs(wx(c.x), fl + 380, wz(c.y), YAW[c.d] || 0, 0.95), { matColor: [0.8, 0.9, 1, 0.55] });
+        else { const col = c.c != null && c.c >= 0 ? skins[SKINS[c.c]] : skins.com; R.draw(ghost, m4.trs(wx(c.x), fl + 150, wz(c.y), YAW[c.d] || 0, 1.2), { textures: { ghost_r: c.m === 'f' ? skins.yowari : col, 'ghost_eye.0': eyes[0] }, matColor: [0.85, 0.95, 1, 0.55] }); }
       }
       // Frightened ghosts cry: glowing blue drops fly off them and are left behind (positions come from the time and the
       // ghost's recent path alone, so every circle agrees).
@@ -190,8 +235,12 @@
           if (g.m === 'e') skin = skins.toumei;
           opts = { textures: { ghost_r: skin, 'ghost_eye.0': eyes[blink] } };
         }
-        R.draw(ghost, m4.trs(wx(g.x), fl + 150, wz(g.y), g.yaw, scale), opts);
+        R.draw(ghost, m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw, scale), opts);
       }
+      // dizzy (knocked aside by a dash): three stars circling over the ghost
+      const stars = [];
+      for (const g of v.ghosts) if (g.st > 0 && g.x < v.W) for (let k = 0; k < 3; k++) { const a = v.time * 5 + k * 2.1; stars.push([wx(g.x) + Math.cos(a) * 380, fl + 900 + 60 * Math.sin(a * 2), wz(g.y) + Math.sin(a) * 380, 200]); }
+      if (stars.length) R.sprites(star, stars);
       // where a point on the floor lands in the view: -1..1 across and up the square
       const vp = m4.mul(proj, view);
       const project = (x, y, h) => {

@@ -207,7 +207,9 @@
    *  dash, and a pad does not fire again until the cell has been left. */
   function padCheck(s, e, who) {
     if (!ARR || e.x >= W) return;
-    const k = padAt[Math.floor(e.y) * W + Math.floor(e.x)];
+    const idx = Math.floor(e.y) * W + Math.floor(e.x);
+    if (!(idx >= 0 && idx < W * H)) return;
+    const k = padAt[idx];
     if (k === e.onPad) return;
     e.onPad = k;
     if (k < 0 || e.air) return;

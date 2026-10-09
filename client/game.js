@@ -51,6 +51,15 @@
     for (const e of ev || []) {
       if ((e === 'pellet' || e === 'power') && SM.handled('pellet')) { fire('pellet'); if (e === 'power') fire('powerPellet'); continue; }
       if (e === 'eatghost' && SM.handled('ghostEatenSfx')) { fire('ghostEatenSfx'); continue; }
+      const arrCue = { dash: 'dash', jump: 'jump', land: 'land', stun: 'stun', capsule: 'capsule', capsuleghost: 'capsuleGhost', pot: 'pot', hop: 'hop', bigpellet: 'bigPellet', clonegone: 'cloneGone' }[e];
+      if (arrCue) {
+        if (SM.handled(arrCue)) { fire(arrCue); continue; }
+        if (e === 'dash') tone(200, 0.3, 'sawtooth', 0.12, 900); else if (e === 'jump' || e === 'hop') tone(300, 0.25, 'triangle', 0.12, 1200);
+        else if (e === 'land') tone(500, 0.08, 'square', 0.08, 250); else if (e === 'stun') { tone(1200, 0.1, 'square', 0.1, 700); setTimeout(() => tone(900, 0.1, 'square', 0.1, 500), 100); }
+        else if (e === 'capsule' || e === 'capsuleghost') { tone(523, 0.08, 'square', 0.1); setTimeout(() => tone(784, 0.08, 'square', 0.1), 80); setTimeout(() => tone(1047, 0.14, 'square', 0.1), 160); }
+        else if (e === 'pot') tone(400, 0.5, 'sawtooth', 0.12, 80); else if (e === 'bigpellet') tone(220, 0.12, 'square', 0.09); else if (e === 'clonegone') tone(600, 0.2, 'triangle', 0.08, 150);
+        continue;
+      }
       if ((e === 'fruit' || e === 'fruitghost') && SM.handled('fruitPac')) continue;      // fxDetect plays the fruit sound
       if (e === 'pellet' || (e === 'power' && art.handheld)) {
         // the "wa-ka" is Pac-Man's own screen's sound: with the disc loaded only Pac-Man hears it, as in the original
@@ -474,9 +483,11 @@
     if (prev.fruitUp && !cur.fruitUp && cur.phase === 'play') {
       fx.sparkle = now;
       const f = prev.fruit, gi = f ? cur.ghosts.findIndex(g => g.m !== 'e' && near(g, f, 1.2)) : -1;
-      if (gi >= 0) { fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(CFG.fruitPts), t0: now }); fire('fruitGhost', { index: S.playerOfGhost(cur, gi) }); }
-      else if (f && near(cur.pac, f, 1.2)) { fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.fruitPts), t0: now }); fire('fruitPac'); }
+      const kind = (f && f.k) || 'fruit', pts = kind === 'fruit' ? CFG.fruitPts : kind === 'gold' ? CFG.goldPts : CFG.capsulePts;
+      if (gi >= 0) { fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(pts), t0: now }); if (kind === 'fruit') fire('fruitGhost', { index: S.playerOfGhost(cur, gi) }); }
+      else if (f && near(cur.pac, f, 1.2)) { fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(pts), t0: now }); if (kind === 'fruit') fire('fruitPac'); }
     }
+    if (cur.ev && cur.ev.includes('bigpellet') && cur.pac) fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.bigPts), t0: now });
     cur.ghosts.forEach((g, i) => {
       const p = prev.ghosts[i];
       if (p && p.m === 'f' && g.m === 'e') fx.pops.push({ x: g.x, y: g.y, text: String(Math.max(0, cur.scores[cur.pacPlayer] - prev.scores[cur.pacPlayer])), t0: now });
@@ -659,6 +670,35 @@
     }
     g.globalAlpha = 1;
   }
+  // Arrangement levels on the flat board: pads, capsules, the lift of a flight, dizzy stars
+  function drawPads(pads, u, now) {
+    for (const p of pads) {
+      const x = (p.x + 0.5) * u, y = (p.y + 0.5) * u;
+      if (p.kind === 'dash') {
+        const dx = [0, 1, 0, -1][p.dir], dy = [-1, 0, 1, 0][p.dir], k = 0.7 + 0.3 * Math.sin(now / 160);
+        g.strokeStyle = `rgba(255,140,30,${k})`; g.lineWidth = u * 0.22; g.lineCap = 'round'; g.beginPath();
+        g.moveTo(x - dx * u * 0.36, y - dy * u * 0.36); g.lineTo(x + dx * u * 0.36, y + dy * u * 0.36);
+        g.moveTo(x + dx * u * 0.36 - (dx + dy) * u * 0.28, y + dy * u * 0.36 - (dy - dx) * u * 0.28); g.lineTo(x + dx * u * 0.36, y + dy * u * 0.36); g.lineTo(x + dx * u * 0.36 - (dx - dy) * u * 0.28, y + dy * u * 0.36 - (dy + dx) * u * 0.28);
+        g.stroke();
+      } else {
+        g.strokeStyle = ['#ff5050', '#4fd8ff', '#9cff50', '#ffd040'][p.colour || 0]; g.lineWidth = u * 0.12; g.beginPath(); g.arc(x, y, u * 0.34, 0, 7); g.stroke();
+        g.beginPath(); g.moveTo(x, y + u * 0.22); g.lineTo(x, y - u * 0.22); g.moveTo(x - u * 0.14, y - u * 0.08); g.lineTo(x, y - u * 0.22); g.lineTo(x + u * 0.14, y - u * 0.08); g.stroke();
+      }
+    }
+  }
+  function drawCapsule(f, u, now) {
+    const col = { red: '#ff2828', cyan: '#3ce6ff', pink: '#ff6ec8', orange: '#ff961e', gold: '#ffd728' }[f.k] || '#ffd728';
+    const x = f.x * u, y = f.y * u + Math.sin(now / 250) * u * 0.05, w = u * 0.22, h = u * 0.5;
+    g.save(); g.translate(x, y); g.rotate(-0.5);
+    g.fillStyle = '#ffffff'; g.beginPath(); g.roundRect(-w / 2, -h / 2, w, h / 2, w / 2); g.fill();
+    g.fillStyle = col; g.beginPath(); g.roundRect(-w / 2, 0, w, h / 2, w / 2); g.fill();
+    g.restore();
+  }
+  const flight = (e, u) => { if (e && e.a) { const k = Math.sin(Math.PI * e.a[4]); g.translate(0, -k * u * 0.8); g.translate(e.x * u, e.y * u); g.scale(1 + 0.4 * k, 1 + 0.4 * k); g.translate(-e.x * u, -e.y * u); } };
+  function drawStars(gh, u, now) {
+    g.fillStyle = '#ffeb50';
+    for (let k = 0; k < 3; k++) { const a = now / 200 + k * 2.1, x = gh.x * u + Math.cos(a) * u * 0.5, y = gh.y * u - u * 0.45 + Math.sin(a) * u * 0.12; g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? u * 0.05 : u * 0.11, b = i / 10 * 2 * Math.PI; g.lineTo(x + Math.cos(b) * r, y + Math.sin(b) * r); } g.closePath(); g.fill(); }
+  }
   function drawFruit(f, u, now) {
     const x = f.x * u, y = f.y * u + Math.sin(now / 250) * u * 0.05, r = u * 0.2;
     g.strokeStyle = '#3fbf3f'; g.lineWidth = u * 0.08; g.beginPath(); g.moveTo(x - r * 0.9, y + r * 0.2); g.quadraticCurveTo(x - r * 0.4, y - r * 2.2, x + r * 1.1, y - r * 2.4); g.moveTo(x + r * 0.9, y + r * 0.2); g.quadraticCurveTo(x + r * 0.7, y - r * 1.6, x + r * 1.1, y - r * 2.4); g.stroke();
@@ -717,10 +757,13 @@
       g.fillStyle = '#ffd9b0'; g.beginPath();
       g.arc((x + 0.5) * u, (y + 0.5) * u, v === 2 ? u * (0.2 + 0.05 * Math.sin(now / 120)) : u * 0.09, 0, 7); g.fill();
     }
-    if (snap.fruit) drawFruit(snap.fruit, u, now);
-    sm.ghosts.forEach((gh, i) => { if (gh && snap.ghosts[i] && snap.ghosts[i].m !== 'r') drawGhost(gh, gcss(i), u, now, snap.me === i); });
+    if (arrPads()) drawPads(arrPads(), u, now);
+    for (const i of snap.big || []) { g.fillStyle = '#ff9ab0'; g.beginPath(); g.arc(((i % W) + 0.5) * u, (Math.floor(i / W) + 0.5) * u, u * 0.18, 0, 7); g.fill(); }
+    if (snap.fruit && snap.fruit.k && snap.fruit.k !== 'fruit') drawCapsule(snap.fruit, u, now); else if (snap.fruit) drawFruit(snap.fruit, u, now);
+    for (const c of snap.clones || []) { g.globalAlpha = 0.5; if (c.of < 0) drawPac(c, u, now, false); else drawGhost(c, c.c >= 0 ? SEAT_COLORS[c.c] : GREY, u, now, false); g.globalAlpha = 1; }
+    sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { g.save(); flight(sg, u); drawGhost(gh, gcss(i), u, now, snap.me === i); g.restore(); if (sg.st > 0) drawStars(gh, u, now); } });
     drawTrail(u);
-    if (sm.pac) drawPac(sm.pac, u, now, snap.me < 0);
+    if (sm.pac) { g.save(); flight(snap.pac, u); drawPac(sm.pac, u, now, snap.me < 0); g.restore(); }
     // Ghost players see a circular window around themselves, a minimap of the ghosts, and the pellet count.
     if (snap.me >= 0 && sm.ghosts[snap.me]) {
       const f = fogCv.getContext('2d'), me = sm.ghosts[snap.me], col = SEAT_COLORS[you];
@@ -747,12 +790,12 @@
       const target = View3D.YAW[gh.d] || 0;
       let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i) });
+      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
     try {
-      img = v3.render({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, size: 2 * R, me, zoom: R / u3() / CFG.ghostSight, ghosts, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000, burst: fxViews(now).burst });
+      img = v3.render({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, size: 2 * R, me, zoom: R / u3() / CFG.ghostSight, ghosts, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000, burst: fxViews(now).burst, pads: arrPads(), clones: snap.clones, big: snap.big });
     } catch (e) { console.warn('3D view', e); view3 = false; return; }
     g.save(); g.beginPath(); g.arc(me.x * u3(), me.y * u3(), R, 0, 7); g.clip();
     g.drawImage(img, me.x * u3() - R, me.y * u3() - R, 2 * R, 2 * R);
@@ -760,7 +803,8 @@
   }
   const u3 = () => cell * dpr;
   const caughtAge = () => isCaught() ? (performance.now() - phaseT0) / 1000 : -1;
-  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH });
+  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH, a: snap.pac && snap.pac.a });
+  const arrPads = () => (S.maze.arrange && S.maze.arrange.pads) || null;
   // the ghosts' circles pull back once Pac-Man reappears lying flat (like the fruit zoom, eased over half a second)
   const pullBack = () => { const a = caughtAge(); return a < DEATH.flatAt ? 1 : 1 + (DEATH.pullBack - 1) * Math.min(1, (a - DEATH.flatAt) / DEATH.pullTime); };
   function fitScreen(scr) {
@@ -790,12 +834,12 @@
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r' });
+      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
     const efx = fxViews(now);
-    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight * pullBack(), ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst }));
+    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight * pullBack(), ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst, pads: arrPads(), clones: snap.clones, big: snap.big }));
     try {
       scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, standin: standins(), fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }
