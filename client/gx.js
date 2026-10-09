@@ -260,6 +260,7 @@
     const quadCache = new WeakMap();
     // A flat ribbon on the ground following a path (Pac-Man's trail). pts: [[x, y, z, a, white]] head first, a = alpha at
     // that point and white (0-1, optional) how much the colour is paled towards white there; the ribbon is `width` wide in the ground plane and tinted `rgb`.
+    // A sixth value on a point overrides the width there (a tapering arrow head).
     let ribbonProg = null; const ribbonBuf = gl.createBuffer();
     function ribbon(pts, width, rgb) {
       if (pts.length < 2) return;
@@ -275,7 +276,7 @@
       for (let i = 0; i < n; i++) {
         const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
         let tx = b[0] - a[0], tz = b[2] - a[2]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
-        const nx = -tz * width / 2, nz = tx * width / 2, p = pts[i], w = p[4] || 0;
+        const p = pts[i], wd = p[5] !== undefined ? p[5] : width, nx = -tz * wd / 2, nz = tx * wd / 2, w = p[4] || 0;
         const c0 = rgb[0] + (1 - rgb[0]) * w, c1 = rgb[1] + (1 - rgb[1]) * w, c2 = rgb[2] + (1 - rgb[2]) * w;
         data.set([p[0] + nx, p[1], p[2] + nz, c0, c1, c2, p[3], p[0] - nx, p[1], p[2] - nz, c0, c1, c2, p[3]], i * 14);
       }

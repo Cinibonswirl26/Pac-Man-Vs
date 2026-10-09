@@ -251,11 +251,11 @@
     Handheld.render(art.handheld, ps.frame, {
       banner: waiting,
       seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: waiting ? freshPellets() : snap.pellets,
-      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a, sq: squashOf('pac', snap.pac, now) } : null,
-      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st, sq: squashOf('g' + i, snap.ghosts[i], now) } : null).filter(Boolean),
+      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a, ds: snap.pac && snap.pac.ds, sq: squashOf('pac', snap.pac, now) } : null,
+      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st, ds: snap.ghosts[i].ds, sq: squashOf('g' + i, snap.ghosts[i], now) } : null).filter(Boolean),
       pacSeat: waiting ? snap.next : snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: waiting ? null : snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
       pads: waiting ? null : arrPads(), clones: waiting ? [] : (snap.clones || []).map(c => Object.assign({}, c, { seat: c.of < 0 ? -1 : gcolor(c.of) })), big: waiting ? [] : snap.big,
-      pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })),
+      pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })), dust: waiting ? [] : view.dust, sparks: waiting ? [] : view.sparks,
       caught: isCaught() ? (now - phaseT0) / 1000 : null
     });
     if (!ps.img) ps.img = new ImageData(ps.frame.data, Handheld.W, Handheld.H);
@@ -477,7 +477,7 @@
     if (!raf) raf = requestAnimationFrame(frame);
   }
   // Effects on the shared screen: points floating over whoever scored, stars when the fruit goes, the catch impact.
-  const fx = { pops: [], sparkle: -1, burst: null }, FX_POP = 1.3, FX_BURST = 1.1, FX_SPARK = 0.8;
+  const fx = { pops: [], sparkle: -1, burst: null, dust: [], sparks: [], lastPuff: new Map() }, FX_POP = 1.3, FX_BURST = 1.1, FX_SPARK = 0.8, FX_DUST = 0.45, FX_DASH = 0.5;
   // Pac-Man's end as the ghosts see it (measured on the original, see FIDELITY.md): he spins round twice while shrinking
   // to nothing, the rays and the points come once he is gone, the circles pull back and show him lying flat at 2 s.
   const DEATH = { spin: 0.22, shrink: 0.14, burstAt: 0.5, flatAt: 2.0, pullBack: 1.6, pullTime: 0.5 };
@@ -486,7 +486,7 @@
     const prev = fxPrev; fxPrev = cur;
     const now = performance.now();
     if (!prev || (cur.phase === 'countdown' && prev.phase !== 'countdown')) {
-      fx.pops.length = 0; fx.sparkle = -1; fx.burst = null;
+      fx.pops.length = 0; fx.sparkle = -1; fx.burst = null; fx.dust.length = 0; fx.sparks.length = 0; fx.lastPuff.clear();
       if (cur.phase === 'countdown') { snd.said.clear(); fire('ready'); }     // "Ready?" as the countdown begins
       return;
     }
@@ -500,6 +500,11 @@
       else if (f && near(cur.pac, f, 1.2)) { fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(pts), t0: now }); if (kind === 'fruit') fire('fruitPac'); }
     }
     if (cur.ev && cur.ev.includes('bigpellet') && cur.pac) fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.bigPts), t0: now });
+    // a dash launch: a burst of green sparks where the dasher left the arrow (whoever just started dashing)
+    if (cur.ev && cur.ev.includes('dash')) {
+      const who = [cur.pac, ...cur.ghosts].filter((e, i) => e && e.ds && !([prev.pac, ...prev.ghosts][i] || {}).ds);
+      for (const e of who) fx.sparks.push({ x: e.x, y: e.y, t0: now });
+    }
     cur.ghosts.forEach((g, i) => {
       const p = prev.ghosts[i];
       if (p && p.m === 'f' && g.m === 'e') fx.pops.push({ x: g.x, y: g.y, text: String(Math.max(0, cur.scores[cur.pacPlayer] - prev.scores[cur.pacPlayer])), t0: now });
@@ -534,9 +539,25 @@
     if (toGo <= 500 && !snd.said.has(500)) { snd.said.add(500); snd.said.add(1000); fire('pts500'); }
     else if (toGo <= 1000 && !snd.said.has(1000)) { snd.said.add(1000); fire('pts1000'); }
   }
+  // The dust of a dash: a white puff is left every half cell behind each dashing body (smoothed positions, so the
+  // puffs sit on the path drawn), each fading out over FX_DUST seconds.
+  function dustStep(now) {
+    if (!snap || !sm.pac) return;
+    const bodies = [['pac', snap.pac, sm.pac], ...sm.ghosts.map((gh, i) => ['g' + i, snap.ghosts[i], gh])];
+    for (const [key, s, e] of bodies) {
+      if (!s || !e || !s.ds || e.x >= W) continue;
+      const last = fx.lastPuff.get(key);
+      if (last && Math.hypot(last[0] - e.x, last[1] - e.y) < 0.5) continue;
+      fx.lastPuff.set(key, [e.x, e.y]); fx.dust.push({ x: e.x, y: e.y, t0: now });
+    }
+    fx.dust = fx.dust.filter(d => now - d.t0 < FX_DUST * 1000);
+    fx.sparks = fx.sparks.filter(d => now - d.t0 < FX_DASH * 1000);
+  }
   function fxViews(now) {
     fx.pops = fx.pops.filter(p => now - p.t0 < FX_POP * 1000);
     return {
+      dust: fx.dust.map(d => ({ x: d.x, y: d.y, age: (now - d.t0) / FX_DUST / 1000 })),
+      sparks: fx.sparks.map(d => ({ x: d.x, y: d.y, age: (now - d.t0) / FX_DASH / 1000 })),
       pops: fx.pops.filter(p => now >= p.t0).map(p => ({ x: p.x, y: p.y, text: p.text, age: (now - p.t0) / 1000, life: FX_POP })),   // some start later (the points once Pac-Man is gone)
       burst: fx.burst && now >= fx.burst.t0 && now - fx.burst.t0 < FX_BURST * 1000 ? { x: fx.burst.x, y: fx.burst.y, age: (now - fx.burst.t0) / 1000 } : null
     };
@@ -709,9 +730,18 @@
   const flight = (e, u, key, now) => {
     if (!e) return;
     const sq = squashOf(key, e, now), k = e.a ? Math.sin(Math.PI * e.a[4]) : 0;
-    if (!sq && !k) return;
-    g.translate(0, -k * u * 0.8); g.translate(e.x * u, e.y * u); g.scale((1 + 0.3 * k) * (sq ? sq[0] : 1), (1 + 0.3 * k) * (sq ? sq[1] : 1)); g.translate(-e.x * u, -e.y * u);
+    if (!sq && !k && !e.ds) return;
+    g.translate(0, -k * u * 0.8); g.translate(e.x * u, e.y * u); g.scale((1 + 0.3 * k) * (sq ? sq[0] : 1), (1 + 0.3 * k) * (sq ? sq[1] : 1));
+    if (e.ds) g.rotate(now / 40);                   // a dasher spins
+    g.translate(-e.x * u, -e.y * u);
   };
+  function drawDust(efx, u) {
+    for (const d of efx.dust) { g.fillStyle = `rgba(255,255,255,${0.7 * (1 - d.age)})`; g.beginPath(); g.arc(d.x * u, d.y * u, u * (0.12 + 0.25 * d.age), 0, 7); g.fill(); }
+    for (const sp of efx.sparks) for (let k = 0; k < 8; k++) {
+      const a = k * Math.PI / 4 + 0.4, r = u * (0.2 + 0.9 * sp.age);
+      g.fillStyle = `rgba(90,255,120,${1 - sp.age})`; g.beginPath(); g.arc(sp.x * u + Math.cos(a) * r, sp.y * u + Math.sin(a) * r, u * 0.07 * (1 - sp.age) + 1, 0, 7); g.fill();
+    }
+  }
   function drawStars(gh, u, now) {
     g.fillStyle = '#ffeb50';
     for (let k = 0; k < 3; k++) { const a = now / 200 + k * 2.1, x = gh.x * u + Math.cos(a) * u * 0.5, y = gh.y * u - u * 0.45 + Math.sin(a) * u * 0.12; g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? u * 0.05 : u * 0.11, b = i / 10 * 2 * Math.PI; g.lineTo(x + Math.cos(b) * r, y + Math.sin(b) * r); } g.closePath(); g.fill(); }
@@ -755,6 +785,7 @@
       sm.pacAng += Math.atan2(Math.sin(want - sm.pacAng), Math.cos(want - sm.pacAng)) * Math.min(1, dt * 16);
     } else sm.pacAng = null;
     snap.ghosts.forEach((gh, i) => { sm.ghosts[i] = approach(sm.ghosts[i], gh, dt); });
+    if (S.maze.arrange) dustStep(now);
     // Ghost players with the disc get the original shared screen; Pac-Man keeps the full maze.
     // Everyone sees the exchange and results screens.
     // the next Pac-Man, while the game waits for them, gets Pac-Man's own screen with its "Press START!" sign
@@ -781,6 +812,7 @@
     for (const c of snap.clones || []) { g.globalAlpha = 0.5; if (c.of < 0) drawPac(c, u, now, false); else drawGhost(c, c.c >= 0 ? SEAT_COLORS[c.c] : GREY, u, now, false); g.globalAlpha = 1; }
     sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { g.save(); flight(sg, u, 'g' + i, now); drawGhost(gh, gcss(i), u, now, snap.me === i); g.restore(); if (sg.st > 0) drawStars(gh, u, now); } });
     drawTrail(u);
+    if (arrPads()) drawDust(fxViews(now), u);
     if (sm.pac) { g.save(); flight(snap.pac, u, 'pac', now); drawPac(sm.pac, u, now, snap.me < 0); g.restore(); }
     // Ghost players see a circular window around themselves, a minimap of the ghosts, and the pellet count.
     if (snap.me >= 0 && sm.ghosts[snap.me]) {
@@ -808,12 +840,12 @@
       const target = View3D.YAW[gh.d] || 0;
       let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st, sq: squashOf('g' + i, s, now) });
+      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st, ds: s.ds, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
     try {
-      img = v3.render({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, size: 2 * R, me, zoom: R / u3() / CFG.ghostSight, ghosts, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000, burst: fxViews(now).burst, pads: arrPads(), clones: snap.clones, big: snap.big });
+      img = v3.render({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, size: 2 * R, me, zoom: R / u3() / CFG.ghostSight, ghosts, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, time: now / 1000, burst: fxViews(now).burst, dust: fxViews(now).dust, sparks: fxViews(now).sparks, pads: arrPads(), clones: snap.clones, big: snap.big });
     } catch (e) { console.warn('3D view', e); view3 = false; return; }
     g.save(); g.beginPath(); g.arc(me.x * u3(), me.y * u3(), R, 0, 7); g.clip();
     g.drawImage(img, me.x * u3() - R, me.y * u3() - R, 2 * R, 2 * R);
@@ -821,8 +853,13 @@
   }
   const u3 = () => cell * dpr;
   const caughtAge = () => isCaught() ? (performance.now() - phaseT0) / 1000 : -1;
-  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH, a: snap.pac && snap.pac.a, sq: squashOf('pac', snap.pac, performance.now()) });
-  const arrPads = () => (S.maze.arrange && S.maze.arrange.pads) || null;
+  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH, a: snap.pac && snap.pac.a, ds: snap.pac && snap.pac.ds, sq: squashOf('pac', snap.pac, performance.now()) });
+  // the level's pads, less the dash arrows already used up this round (a snapshot lists them by index)
+  const arrPads = () => {
+    const pads = S.maze.arrange && S.maze.arrange.pads; if (!pads) return null;
+    const off = snap && snap.padsOff;
+    return off && off.length ? pads.filter((_, k) => !off.includes(k)) : pads;
+  };
   // Squash and stretch for a flight (Arrangement levels): a squat on take-off, a stretch on the way up and down, a squat on
   // landing that eases back. [wide, tall] scale factors from the flight's progress; landings are remembered per body.
   const SQ = [[0, 1.3, 0.7], [0.15, 0.8, 1.35], [0.5, 0.9, 1.15], [0.85, 0.8, 1.3], [1, 1.3, 0.7]], SQ_LAND = 0.18;
@@ -863,12 +900,12 @@
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, sq: squashOf('g' + i, s, now) });
+      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, ds: s.ds, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
     const efx = fxViews(now);
-    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight * pullBack(), ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst, pads: arrPads(), clones: snap.clones, big: snap.big }));
+    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight * pullBack(), ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst, dust: efx.dust, sparks: efx.sparks, pads: arrPads(), clones: snap.clones, big: snap.big }));
     try {
       scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, standin: standins(), fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }

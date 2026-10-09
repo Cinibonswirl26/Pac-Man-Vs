@@ -109,6 +109,11 @@
       }
       return { w: n, h: n, rgba, wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 };
     })());
+    const puff = tex((() => {       // a soft white disc: the dust of a dash
+      const n = 32, rgba = new Uint8Array(n * n * 4);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const r = Math.hypot(x - 15.5, y - 15.5) / 15; const i = (y * n + x) * 4; rgba[i] = rgba[i + 1] = rgba[i + 2] = 255; rgba[i + 3] = r < 0.55 ? 255 : r < 0.85 ? 200 : r < 1 ? 140 : 0; }
+      return { w: n, h: n, rgba, wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 };
+    })());
     // Measured on a recording of the original: each drop lives about 6 frames (0.2 s), two or three are in the air per
     // ghost, about 4 px wide on the 640 px picture (0.09 cell), and they fly out from where the ghost was when they
     // fell: sideways at about 1.4 cells/s in any direction and upwards at about 0.75 cells/s, so they trail a moving ghost.
@@ -167,13 +172,14 @@
         }
         R.ribbon(pts, 780, v.trailColor);
       }
-      // Arrangement pads: flat marks on the floor. A dash arrow is an orange bar with a head; a jump pad a ring in its pair's colour.
+      // Arrangement pads: flat marks on the floor. A dash arrow is an orange arrow (a shaft and a pointed head) the way it
+      // sends you; a jump pad a ring in its pair's colour. Used-up arrows are not in the list.
       if (v.pads) for (const p of v.pads) {
         const X = wx(p.x + 0.5), Z = wz(p.y + 0.5), h = fl + 60;
         if (p.kind === 'dash') {
           const dx = [0, 1, 0, -1][p.dir], dz = [-1, 0, 1, 0][p.dir], pulse = 0.75 + 0.25 * Math.sin(v.time * 6);
-          R.ribbon([[X - dx * 380, h, Z - dz * 380, pulse], [X + dx * 120, h, Z + dz * 120, pulse]], 260, [1, 0.55, 0.1]);
-          R.ribbon([[X + dx * 120, h, Z + dz * 120, pulse], [X + dx * 420, h, Z + dz * 420, pulse]], 560, [1, 0.55, 0.1]);
+          R.ribbon([[X - dx * 400, h, Z - dz * 400, pulse], [X + dx * 60, h, Z + dz * 60, pulse]], 220, [1, 0.55, 0.1]);
+          R.ribbon([[X + dx * 40, h, Z + dz * 40, pulse, 0, 640], [X + dx * 240, h, Z + dz * 240, pulse, 0, 320], [X + dx * 440, h, Z + dz * 440, pulse, 0, 0]], 640, [1, 0.55, 0.1]);
         } else {
           const col = [[1, 0.25, 0.25], [0.3, 0.9, 1], [0.6, 1, 0.3], [1, 0.8, 0.2]][p.colour || 0], pts = [];
           for (let i = 0; i <= 16; i++) { const a = i / 16 * 2 * Math.PI; pts.push([X + Math.cos(a) * 320, h, Z + Math.sin(a) * 320, 0.85]); }
@@ -192,6 +198,7 @@
       const gone = dying >= D.spin + D.shrink && dying < D.flatAt, flat = dying >= D.flatAt;
       if (v.pac && v.pac.x < v.W && !gone) {     // out of sight in the hidden part of the tunnel otherwise
         let yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0, scale = 1;
+        if (v.pac.ds) yaw += v.time * 24;             // a dasher spins
         if (dying >= 0 && !flat) { yaw += Math.min(dying, D.spin + D.shrink) / D.spin * 2 * Math.PI; scale = dying < D.spin ? 1 : Math.max(0.001, 1 - (dying - D.spin) / D.shrink); }
         let pm = squash(m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380) + lift(v.pac), wz(v.pac.y), yaw, scale), v.pac);
         if (flat) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
@@ -236,8 +243,11 @@
           if (g.m === 'e') skin = skins.toumei;
           opts = { textures: { ghost_r: skin, 'ghost_eye.0': eyes[blink] } };
         }
-        R.draw(ghost, squash(m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw, scale), g), opts);
+        R.draw(ghost, squash(m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw + (g.ds ? v.time * 24 : 0), scale), g), opts);
       }
+      // the dust of a dash (white puffs growing and fading behind the dasher) and the green sparks of its launch
+      if (v.dust) for (const d of v.dust) { const k = 0.95 - 0.6 * d.age; R.sprites(puff, [[wx(d.x), fl + 200 + 150 * d.age, wz(d.y), 220 + 300 * d.age]], [k, k, k, 1]); }
+      if (v.sparks) for (const sp of v.sparks) { const pts = []; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.4, r = 200 + 900 * sp.age; pts.push([wx(sp.x) + Math.cos(a) * r, fl + 300 + 500 * sp.age, wz(sp.y) + Math.sin(a) * r, 160 * (1 - sp.age) + 20]); } R.sprites(star, pts, [0.35, 1, 0.45, 1]); }
       // dizzy (knocked aside by a dash): three stars circling over the ghost
       const stars = [];
       for (const g of v.ghosts) if (g.st > 0 && g.x < v.W) for (let k = 0; k < 3; k++) { const a = v.time * 5 + k * 2.1; stars.push([wx(g.x) + Math.cos(a) * 380, fl + 900 + 60 * Math.sin(a * 2), wz(g.y) + Math.sin(a) * 380, 200]); }
