@@ -421,11 +421,11 @@
     if (mode === 'online') send({ t: 'in', d }); else if (offline) offline.inputs[0] = d;
     lastDir = d;
   }
-  /** Whether my ghost holds the hop (Arrangement levels, the pink capsule): the button then triggers a hop. */
-  const canHop = () => !!(snap && snap.phase === 'play' && snap.me >= 0 && snap.ghosts[snap.me] && snap.ghosts[snap.me].hp > 0);
-  function hop() {
-    if (!canHop()) return false;
-    if (mode === 'online') send({ t: 'act', a: 'hop' }); else if (offline) offline.acts[0] = true;
+  /** My ghost's power on the button (Arrangement levels): the hop (pink capsule) or the dash (red capsule), or null. */
+  const myPower = () => { const g = snap && snap.phase === 'play' && snap.me >= 0 && snap.ghosts[snap.me]; return g && g.hp > 0 ? 'hop' : g && g.dp > 0 ? 'dash' : null; };
+  function act() {
+    if (!myPower()) return false;
+    if (mode === 'online') send({ t: 'act' }); else if (offline) offline.acts[0] = true;
     return true;
   }
   // Hand-over: after a catch the new Pac-Man says when they are ready (the original's exchange screen asks them to press Start).
@@ -439,12 +439,12 @@
     if (e.target && e.target.tagName === 'INPUT') return;
     if (myHandoff() && e.code !== 'Escape' && e.code !== 'KeyM') { e.preventDefault(); ready(); return; }
     if (e.code in KEYS) { e.preventDefault(); if (mode) setDir(KEYS[e.code]); }
-    else if (e.code === 'Space' || e.code === 'KeyJ') { if (mode) { e.preventDefault(); hop(); } }
+    else if (e.code === 'Space' || e.code === 'KeyJ') { if (mode) { e.preventDefault(); act(); } }
     else if (e.code === 'KeyM') { music.enabled = !music.enabled; if (!music.enabled) stopMusic(); else onSnap(true); }
     else if (e.code === 'Escape' && mode) toMenu();
   });
   document.querySelectorAll('#pad button').forEach(b => { b.addEventListener('pointerdown', e => { e.preventDefault(); setDir(+b.dataset.d); }); });
-  $('hop').addEventListener('pointerdown', e => { e.preventDefault(); hop(); });
+  $('hop').addEventListener('pointerdown', e => { e.preventDefault(); act(); });
   let tx = 0, ty = 0;
   const cv = $('cv'), g = cv.getContext('2d');
   $('stage').addEventListener('pointerdown', () => { ready(); });
@@ -461,7 +461,7 @@
     for (const p of pads) {
       if (!p) continue;
       if (myHandoff() && ((p.buttons[0] && p.buttons[0].pressed) || (p.buttons[9] && p.buttons[9].pressed))) { ready(); break; }
-      const a = !!(p.buttons[0] && p.buttons[0].pressed); if (a && !padA) hop(); padA = a;
+      const a = !!(p.buttons[0] && p.buttons[0].pressed); if (a && !padA) act(); padA = a;
       let d = -1;
       if (p.buttons[12] && p.buttons[12].pressed) d = 0; else if (p.buttons[15] && p.buttons[15].pressed) d = 1;
       else if (p.buttons[13] && p.buttons[13].pressed) d = 2; else if (p.buttons[14] && p.buttons[14].pressed) d = 3;
@@ -784,7 +784,8 @@
     if (mode === 'offline' && offline) offlineFrame(now);
     pollPad();
     if (!snap) return;
-    { const h = $('hop'), on = canHop(); if (h.classList.contains('hidden') === on) h.classList.toggle('hidden', !on); if (on) h.textContent = 'HOP ' + Math.ceil(snap.ghosts[snap.me].hp) + 's'; }
+    { const h = $('hop'), pw = myPower(), on = !!pw; if (h.classList.contains('hidden') === on) h.classList.toggle('hidden', !on);
+      if (on) { const g = snap.ghosts[snap.me]; h.textContent = pw === 'hop' ? 'HOP ' + Math.ceil(g.hp) + 's' : 'DASH ' + Math.ceil(g.dp) + 's'; h.classList.toggle('cool', pw === 'dash' && g.dc > 0); } }
     sm.pac = approach(sm.pac, snap.respawning ? null : snap.pac, dt);
     // Pac-Man turns round smoothly instead of snapping to his new heading
     if (sm.pac) {

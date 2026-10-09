@@ -59,11 +59,12 @@
     // fades fast (about 4 walking speeds per second); holding the opposite direction brakes hard (about 17 walking
     // speeds per second), then you walk back; a wall stops it dead with a bonk that leaves you dizzy for 0.4 s.
     dashMult: 4, dashDecay: 1.5, dashTurnKeep: 0.65, dashTurnDecay: 4, dashBrake: 17, bonkTime: 0.4, stunTime: 5, jumpTime: 0.6,
-    // Capsules appear where the fruit does; which one (or the fruit) is a weighted draw. Red: double speed for 10 s;
+    // Capsules appear where the fruit does; which one (or the fruit) is a weighted draw. Red: double speed for 10 s
+    // (a ghost instead holds a dash for 10 s: each press of its button fires one like an arrow, 2 s apart at most);
     // cyan: a mirror clone for 10 s; pink: every ghost into the pot in the house for 4 s (a ghost taking it hops
     // about instead); orange: pellets digested without pausing for 10 s (a ghost drops big pellets that slow
     // Pac-Man); gold: 100 points and nothing else. Points are fruit-like here (the arcade gave 1000).
-    speedMult: 2, capsuleTime: 10, potTime: 4, capsulePts: 400, goldPts: 100, bigPause: 0.5, bigPts: 50, bigMax: 10,
+    speedMult: 2, capsuleTime: 10, dashCool: 2, potTime: 4, capsulePts: 400, goldPts: 100, bigPause: 0.5, bigPts: 50, bigMax: 10,
     itemOdds: [['fruit', 3], ['red', 2], ['cyan', 2], ['pink', 2], ['orange', 2], ['gold', 1]]
   };
 
@@ -120,7 +121,7 @@
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
       pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
-      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, speedLeft: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
@@ -291,7 +292,7 @@
       s.events.push(g ? 'fruitghost' : 'fruit'); award(s, who, CFG.fruitPts); return s.over;
     }
     s.events.push(g ? 'capsuleghost' : 'capsule'); s.lastItem = kind;
-    if (kind === 'red') (g || s.pac).speedLeft = CFG.capsuleTime;
+    if (kind === 'red') { if (g) { g.dashLeft = CFG.capsuleTime; g.dashCool = 0; } else s.pac.speedLeft = CFG.capsuleTime; }
     else if (kind === 'cyan') { const e = g || s.pac; e.clone = { x: mirrorX(e), y: e.y, dir: MIRDIR[e.dir], left: CFG.capsuleTime }; }
     else if (kind === 'pink') { if (g) g.hopLeft = CFG.capsuleTime; else potGhosts(s); }
     else if (kind === 'orange') { if (g) { g.dropLeft = CFG.capsuleTime; g.dropped = 0; g.dropAt = null; } else s.pac.digest = CFG.capsuleTime; }
@@ -321,7 +322,8 @@
     if (p.digest > 0) p.digest = Math.max(0, p.digest - dt);
     if (p.clone && (p.clone.left -= dt) <= 0) { p.clone = null; s.events.push('clonegone'); }
     for (const g of s.ghosts) {
-      if (g.speedLeft > 0) g.speedLeft = Math.max(0, g.speedLeft - dt);
+      if (g.dashLeft > 0) g.dashLeft = Math.max(0, g.dashLeft - dt);
+      if (g.dashCool > 0) g.dashCool = Math.max(0, g.dashCool - dt);
       if (g.dropLeft > 0) g.dropLeft = Math.max(0, g.dropLeft - dt);
       if (g.clone && (g.clone.left -= dt) <= 0) { g.clone = null; s.events.push('clonegone'); }
       if (g.hopLeft > 0) g.hopLeft = Math.max(0, g.hopLeft - dt);
@@ -393,7 +395,7 @@
     s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'caught';
   }
 
-  // inputs: {pac: dir|null, ghosts: [dir|null x3], hop: [bool x3] (the hop button, Arrangement levels)} already mapped from players
+  // inputs: {pac: dir|null, ghosts: [dir|null x3], act: [bool x3] (the action button, Arrangement levels: a hop or a dash)} already mapped from players
   function update(s, inputs, dt) {
     if (s.over) return;
     dt = dt || CFG.tick;
@@ -441,13 +443,17 @@
       if (g.stun > 0) { g.stun = Math.max(0, g.stun - dt); continue; }   // knocked dizzy by a dash: cannot move, catch or take anything
       if (g.bonk > 0) { g.bonk = Math.max(0, g.bonk - dt); continue; }   // dizzy from its own dash into a wall: the same
       if (g.potted) continue;                                            // held in the pot
-      if (g.hopLeft > 0 && inputs.hop && inputs.hop[i] && !g.grey) {       // the hop, on its player's button: off to a random cell
+      const pressed = !!(inputs.act && inputs.act[i]) && !g.grey;
+      if (g.hopLeft > 0 && pressed) {                                      // the hop, on its player's button: off to a random cell
         const t = hopTarget(s);
         if (t) { g.air = { x0: g.x, y0: g.y, x1: t[0] + 0.5, y1: t[1] + 0.5, t: 0, dur: CFG.jumpTime, to: -1 }; g.dash = 0; s.events.push('hop'); continue; }
       }
       const inp = inputs.ghosts[i];
       if (inp != null) g.want = inp;
-      moveEnt(s, g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1) * (g.speedLeft > 0 ? CFG.speedMult : 1), dt, 'ghost');
+      if (g.dashLeft > 0 && pressed && !g.dash && !(g.dashCool > 0)) {     // the red capsule's dash, on the button: fired the way it faces, then a cooldown
+        g.dash = CFG.dashMult; g.turned = false; g.dashCool = CFG.dashCool; s.events.push('dash');
+      }
+      moveEnt(s, g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1), dt, 'ghost');
       padCheck(s, g, 'ghost');
       if (ARR) { moveClone(g); if (g.dropLeft > 0) dropBig(s, g); }
       if (g.grey || g.air) continue;              // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
@@ -561,7 +567,8 @@
   }
   function q(e) { return { x: Math.round(e.x * 100) / 100, y: Math.round(e.y * 100) / 100, d: e.dir }; }
   /** The Arrangement extras of an entity, only the ones in play: a (airborne: from, to, progress), ds (dashing: the speed multiple
-   *  left), bk (bonked a wall: seconds of dizziness left), st (knocked dizzy: seconds left). */
+   *  left), bk (bonked a wall: seconds of dizziness left), st (knocked dizzy: seconds left), sp (Pac-Man's speed capsule: seconds
+   *  left), dg (digestion), hp (a ghost's hop: seconds left), dp/dc (a ghost's dash power: seconds left, cooldown left). */
   function qa(e) {
     const o = {};
     if (e.air) o.a = [e.air.x0, e.air.y0, e.air.x1, e.air.y1, Math.round(Math.min(1, e.air.t / e.air.dur) * 100) / 100];
@@ -571,6 +578,7 @@
     if (e.speedLeft > 0) o.sp = Math.round(e.speedLeft * 100) / 100;
     if (e.digest > 0) o.dg = Math.round(e.digest * 100) / 100;
     if (e.hopLeft > 0) o.hp = Math.round(e.hopLeft * 100) / 100;
+    if (e.dashLeft > 0) { o.dp = Math.round(e.dashLeft * 100) / 100; if (e.dashCool > 0) o.dc = Math.round(e.dashCool * 100) / 100; }
     return o;
   }
 
@@ -778,6 +786,17 @@
     return d;
   }
 
+  /** Whether a computer ghost presses its button this tick (dt seconds): a hop about every 3 s while it holds the hop; a dash
+   *  about once a second while it holds the dash, is free to fire it and has a clear run of at least 3 cells ahead. */
+  function cpuAct(s, gi, rng, dt) {
+    const g = s.ghosts[gi];
+    if (!ARR || g.grey || g.air || g.stun > 0 || g.bonk > 0 || g.potted || g.mode !== 'normal') return false;
+    if (g.hopLeft > 0) return rng() < dt / 3;
+    if (!(g.dashLeft > 0) || g.dash || g.dashCool > 0) return false;
+    const [dx, dy] = DIRS[g.dir]; let x = Math.floor(g.x), y = Math.floor(g.y);
+    for (let n = 0; n < 3; n++) { x += dx; y += dy; if (x < 0 || x >= W || blocked(x, y, 'ghost')) return false; }
+    return rng() < dt;
+  }
   function cpuGhost(s, gi, rng, level) {
     level = level == null ? 1 : level;
     const g = s.ghosts[gi];
@@ -883,7 +902,7 @@
     return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   }
 
-  return { W, H, ROWS, DIRS, OPP, CFG, START, maze, newRound, update, view, cpuGhost, cpuPac, ghostIndexOf, playerOfGhost, colorOf, mulberry, wallAt, dist };
+  return { W, H, ROWS, DIRS, OPP, CFG, START, maze, newRound, update, view, cpuGhost, cpuPac, cpuAct, ghostIndexOf, playerOfGhost, colorOf, mulberry, wallAt, dist };
   }
 
   const api = build(BUILTIN);

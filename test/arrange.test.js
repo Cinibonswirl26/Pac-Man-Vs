@@ -56,7 +56,7 @@ const run = (s, n, inp) => { for (let i = 0; i < n; i++) LV.update(s, inp || idl
   run(s, 20, inp(2));
   ok(!s.pac.dash && !s.pac.bonk, 'after a turn the rest fades out within two thirds of a second');
   // a straight run fades by itself before the far wall of row 13 (open from x=1 to x=21)
-  const s2 = LV.newRound([1600, 0, 0, 0], 0); park(s2); put(s2.pac, 1, 13, 1); LV.update(s2, inp(1));
+  const s2 = LV.newRound([1600, 0, 0, 0], 0, { rng: () => 0 }); park(s2); put(s2.pac, 1, 13, 1); LV.update(s2, inp(1));   // rng 0: any item is a fruit, so no capsule can speed him up
   ok(s2.pac.dash > 0, 'the arrow at (1,13) fires for Pac-Man walking right');
   let n = 0; while (s2.pac.dash && n++ < 400) LV.update(s2, inp(1));
   const ran = s2.pac.x - 1.5;
@@ -162,8 +162,15 @@ const give = (s, kind, e) => { spawn(s, kind); put(e, 11, 13, 1); LV.update(s, i
 // 9. Ghosts' capsules
 {
   let s = LV.newRound([1600, 0, 0, 0], 0); park(s); let g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'red', g);
-  ok(s.scores[S.playerOfGhost(s, 0)] === 400 && s.events.includes('capsuleghost') && near(g.speedLeft, S.CFG.capsuleTime, 0.05), 'red: 400 points and a speed timer for the ghost');
-  let x0 = g.x; run(s, 30, { pac: null, ghosts: [1, null, null] }); ok(near(g.x - x0, S.CFG.ghostSpeed * S.CFG.speedMult, 0.5), 'the ghost runs at double speed, steering as usual');
+  ok(s.scores[S.playerOfGhost(s, 0)] === 400 && s.events.includes('capsuleghost') && near(g.dashLeft, S.CFG.capsuleTime, 0.05), 'red: 400 points and a dash timer for the ghost');
+  put(g, 3, 13, 1); let x0 = g.x; run(s, 30, { pac: null, ghosts: [1, null, null] }); ok(near(g.x - x0, S.CFG.ghostSpeed, 0.3) && !g.dash, 'the ghost walks at its usual speed until the button is pressed');
+  const press = { pac: null, ghosts: [1, null, null], act: [true, false, false] };
+  LV.update(s, press); ok(near(g.dash, S.CFG.dashMult, 0.1) && s.events.includes('dash') && near(g.dashCool, S.CFG.dashCool, 0.05), 'the button fires a dash the way it faces, with a cooldown');
+  x0 = g.x; LV.update(s, press); ok(near((g.x - x0) / S.CFG.tick, S.CFG.ghostSpeed * S.CFG.dashMult, 0.6), 'it dashes at the arrow speed');
+  g.dash = 0; LV.update(s, press); ok(!g.dash, 'pressing again during the cooldown does nothing');
+  run(s, Math.ceil(S.CFG.dashCool / S.CFG.tick) + 1, { pac: null, ghosts: [3, null, null] }); ok(g.dashCool === 0 && !g.dash, 'the cooldown runs out');
+  put(g, 11, 13, 3); LV.update(s, { pac: null, ghosts: [3, null, null], act: [true, false, false] }); ok(near(g.dash, S.CFG.dashMult, 0.1) && g.dir === 3, 'then the button fires another one, the new way it faces');
+  run(s, 300); LV.update(s, press); ok(g.dashLeft === 0 && !g.dash, 'after 10 s the button does nothing');
   s = LV.newRound([1600, 0, 0, 0], 0); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'cyan', g);
   ok(g.clone && near(g.clone.x, 23 - g.x, 0.01), 'cyan: a mirror ghost');
   put(s.pac, Math.floor(g.clone.x), 13, 1); LV.update(s, idle);
@@ -175,10 +182,10 @@ const give = (s, kind, e) => { spawn(s, kind); put(e, 11, 13, 1); LV.update(s, i
   s = LV.newRound([1600, 0, 0, 0], 0, { rng: S.mulberry(3) }); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'pink', g);
   ok(near(g.hopLeft, S.CFG.capsuleTime, 0.05), 'pink: the ghost gets the hop');
   run(s, 30); ok(!g.air && !s.events.includes('hop'), 'nothing happens until the button is pressed');
-  LV.update(s, { pac: null, ghosts: [null, null, null], hop: [true, false, false] }); ok(g.air && s.events.includes('hop'), 'the button sends it off to a random cell');
-  const dest = [g.air.x1, g.air.y1]; LV.update(s, { pac: null, ghosts: [null, null, null], hop: [true, false, false] }); ok(g.air && g.air.x1 === dest[0], 'pressing again in the air does nothing');
+  LV.update(s, { pac: null, ghosts: [null, null, null], act: [true, false, false] }); ok(g.air && s.events.includes('hop'), 'the button sends it off to a random cell');
+  const dest = [g.air.x1, g.air.y1]; LV.update(s, { pac: null, ghosts: [null, null, null], act: [true, false, false] }); ok(g.air && g.air.x1 === dest[0], 'pressing again in the air does nothing');
   run(s, 20); ok(!g.air && Math.abs(g.x - dest[0]) < 0.4 && Math.abs(g.y - dest[1]) < 0.4, 'it lands where it was sent');
-  run(s, 300); LV.update(s, { pac: null, ghosts: [null, null, null], hop: [true, false, false] }); ok(g.hopLeft === 0 && !g.air, 'after 10 s the button does nothing');
+  run(s, 300); LV.update(s, { pac: null, ghosts: [null, null, null], act: [true, false, false] }); ok(g.hopLeft === 0 && !g.air, 'after 10 s the button does nothing');
   s = LV.newRound([1600, 0, 0, 0], 0); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'orange', g);
   for (let x = 1; x <= 21; x++) s.pellets[13 * 23 + x] = 0; put(g, 5, 13, 1); run(s, 100, { pac: null, ghosts: [1, null, null] });   // a cleared row
   const nb = s.big.reduce((a, b) => a + b, 0);

@@ -60,6 +60,7 @@
   #banner .handoff .sm { font-size: clamp(12px, 2.2vw, 15px); }
   #pad { display: none; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); gap: 6px; padding: 8px; }
   #pad button { padding: 0; font-size: 22px; }
+  #hop.cool { opacity: 0.45; }
   #hop { position: fixed; right: 16px; bottom: 16px; width: 92px; height: 92px; border-radius: 50%; border: 3px solid #ff6ec8; background: rgba(255,110,200,0.25); color: #fff; font-weight: 700; font-size: 16px; z-index: 5; }
   @media (pointer: coarse) { #pad { display: grid; } }
   @media (max-width: 520px) { #hud { grid-template-columns: repeat(2, 1fr); } #seats { grid-template-columns: 1fr; } }
@@ -137,7 +138,7 @@
   <div id="hud"></div>
   <div id="status"><span id="roleTxt"></span><span id="timeTxt"></span></div>
   <div id="stage"><canvas id="cv" aria-label="Game board"></canvas><div id="banner"></div></div>
-  <button id="hop" class="hidden" aria-label="Hop">HOP</button>
+  <button id="hop" class="hidden" aria-label="Action">HOP</button>
   <div id="pad"><span></span><button data-d="0" aria-label="Up">▲</button><span></span><button data-d="3" aria-label="Left">◀</button><button data-d="2" aria-label="Down">▼</button><button data-d="1" aria-label="Right">▶</button></div>
 </section>
 
