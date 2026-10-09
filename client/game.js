@@ -444,6 +444,9 @@
   }
   // Effects on the shared screen: points floating over whoever scored, stars when the fruit goes, the catch impact.
   const fx = { pops: [], sparkle: -1, burst: null }, FX_POP = 1.3, FX_BURST = 1.1, FX_SPARK = 0.8;
+  // Pac-Man's end as the ghosts see it (measured on the original, see FIDELITY.md): he spins round twice while shrinking
+  // to nothing, the rays and the points come once he is gone, the circles pull back and show him lying flat at 2 s.
+  const DEATH = { spin: 0.22, shrink: 0.14, burstAt: 0.5, flatAt: 2.0, pullBack: 1.6, pullTime: 0.5 };
   let fxPrev = null;
   function fxDetect(cur) {
     const prev = fxPrev; fxPrev = cur;
@@ -467,7 +470,7 @@
     });
     if (prev.phase === 'play' && cur.phase === 'roundover' && cur.why === 'caught') {
       const p = cur.pac || prev.pac;
-      if (p) { fx.burst = { x: p.x, y: p.y, t0: now }; fx.pops.push({ x: p.x, y: p.y, text: String(cur.steal), t0: now }); }
+      if (p) { fx.burst = { x: p.x, y: p.y, t0: now + DEATH.burstAt * 1000 }; fx.pops.push({ x: p.x, y: p.y, text: String(cur.steal), t0: now + DEATH.burstAt * 1000 }); }
     }
   }
   // The announcer's lines, picked from changes between two snapshots (the same on every client).
@@ -498,8 +501,8 @@
   function fxViews(now) {
     fx.pops = fx.pops.filter(p => now - p.t0 < FX_POP * 1000);
     return {
-      pops: fx.pops.map(p => ({ x: p.x, y: p.y, text: p.text, age: (now - p.t0) / 1000, life: FX_POP })),
-      burst: fx.burst && now - fx.burst.t0 < FX_BURST * 1000 ? { x: fx.burst.x, y: fx.burst.y, age: (now - fx.burst.t0) / 1000 } : null
+      pops: fx.pops.filter(p => now >= p.t0).map(p => ({ x: p.x, y: p.y, text: p.text, age: (now - p.t0) / 1000, life: FX_POP })),   // some start later (the points once Pac-Man is gone)
+      burst: fx.burst && now >= fx.burst.t0 && now - fx.burst.t0 < FX_BURST * 1000 ? { x: fx.burst.x, y: fx.burst.y, age: (now - fx.burst.t0) / 1000 } : null
     };
   }
   const isCaught = () => snap && snap.phase === 'roundover' && snap.why === 'caught';
@@ -743,7 +746,10 @@
     g.restore();
   }
   const u3 = () => cell * dpr;
-  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), hit: isCaught() });
+  const caughtAge = () => isCaught() ? (performance.now() - phaseT0) / 1000 : -1;
+  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH });
+  // the ghosts' circles pull back once Pac-Man reappears lying flat (like the fruit zoom, eased over half a second)
+  const pullBack = () => { const a = caughtAge(); return a < DEATH.flatAt ? 1 : 1 + (DEATH.pullBack - 1) * Math.min(1, (a - DEATH.flatAt) / DEATH.pullTime); };
   function fitScreen(scr) {
     const st = $('stage'), cw = Math.max(200, Math.min(st.clientWidth, st.clientHeight * 4 / 3));
     scr.canvas.style.width = cw + 'px'; scr.canvas.style.height = cw * 3 / 4 + 'px';
@@ -776,7 +782,7 @@
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
     const efx = fxViews(now);
-    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst }));
+    const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight * pullBack(), ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst }));
     try {
       scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, standin: standins(), fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }
