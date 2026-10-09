@@ -14,7 +14,7 @@ and what is still a best guess.
 | Pac-Man speed | **0.5 px per frame** = 3.73 cells per second on a cleared corridor; **eating a pellet holds him for one frame**, so over a row of pellets he averages 0.4725 px per frame | Sprite tracked over hundreds of frames; controlled run along the bottom row: 0.4725 px/frame eating 16 pellets, 0.503 back over the cleared row (the difference is 1 frame per pellet) |
 | Turning | Pac-Man turns at the cell centre: with the new direction held early he carries on to the centre, then moves off at right angles (no corner cutting) | Controlled run: UP held from 0.4 cell before a junction; x stayed on the junction's column while y changed |
 | Ghost speed | **about 0.504 px per frame**, a slow gain of roughly 1% on Pac-Man (1 px per ~128 px run) | Pixel steps of ghosts on long straight runs: 2 frames per pixel with an extra 1-frame step every ~80 px, never a 3-frame step; Pac-Man's steps average exactly 2.00 frames. About 570 ghost steps, so the size of the gain is an estimate (0.3 to 0.8%) |
-| Frightened ghost speed | **0.375 px per frame** (3/4 of normal) = 2.80 cells per second | Straight runs during the effect |
+| Frightened ghost speed | **0.375 px per frame** (3/4 of normal) = 2.80 cells per second | Straight runs during the effect; controlled run in the emulator: the same ghost driven along the bottom row read 0.502 px/frame before the power pellet and 0.378-0.383 px/frame while blue (two runs, 16 and 9 cells) |
 | Frightened time | **10 s** (598 frames). Last 2 s the ghosts blink every 8 frames | Sprite tile changes, frame by frame |
 | Pellet | 10 points | Score before and after |
 | Power pellet | 110 points | Score before and after, pellet counter 167 -> 166 |
