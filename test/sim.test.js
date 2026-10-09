@@ -247,5 +247,29 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   const lost = (b.pac.x - a.pac.x), expect = eaten * S.CFG.pelletPause * S.CFG.pacSpeed;
   ok(eaten >= 4 && lost > 0 && Math.abs(lost - expect) < 0.02, `pellets hold Pac-Man back: ate ${eaten}, ${lost.toFixed(3)} cells behind a cleared run (expected ${expect.toFixed(3)})`);
 }
+{
+  // The warp tunnel: ghosts (grey too) slow to three quarters near the edges and cross a hidden stretch out of sight; Pac-Man keeps his speed
+  const LEFT = S.DIRS.findIndex(d => d[0] === -1), idle = { pac: null, ghosts: [null, null, null] };
+  const row = S.ROWS.findIndex(r => !/[#=]/.test(r[0]) && !/[#=]/.test(r[S.W - 1]));
+  ok(row >= 0, 'the maze has a tunnel row');
+  const cross = (who, grey) => {
+    const s = S.newRound([1600, 0, 0, 0], 0, { standin: [grey, false, false] });
+    s.pellets.fill(0); s.left = 100;
+    s.ghosts.forEach((g, i) => { g.x = 17.5; g.y = 1.5 + i; }); s.pac.x = 9.5; s.pac.y = 13.5;
+    const e = who === 'pac' ? s.pac : s.ghosts[0];
+    Object.assign(e, { x: 0.5, y: row + 0.5, dir: LEFT, want: LEFT });
+    let n = 0, hidden = 0, maxx = 0;
+    while (n < 400) { S.update(s, who === 'pac' ? { pac: LEFT, ghosts: [null, null, null] } : { pac: null, ghosts: [LEFT, null, null] }); n++; if (e.x >= S.W) hidden++; maxx = Math.max(maxx, e.x); if (e.x <= S.W - 1 + 1e-6 && e.x > S.W - 2) break; }
+    return { n, hidden, maxx };
+  };
+  const g = cross('ghost', false), p = cross('pac', false), c = cross('ghost', true);
+  const path = 0.5 + S.CFG.tunnelHidden + 1;      // cells: to the edge, the hidden stretch, and into the last cell on the other side
+  const want = path * 8 / (0.5 * S.CFG.tunnelSlow) / 2;    // 30 Hz ticks, 0.5 px/frame ghost at three quarters
+  ok(Math.abs(g.n - want) <= 2 && g.hidden > 0 && g.maxx < S.W + S.CFG.tunnelHidden + 0.01, `a ghost takes ${g.n} ticks from the last cell on one side to the last cell on the other (expected about ${want.toFixed(0)}), ${g.hidden} of them out of sight`);
+  ok(p.n < g.n * 0.8 && Math.abs(p.n - path * 8 / 0.5 / 2) <= 2, `Pac-Man is not slowed: ${p.n} ticks`);
+  ok(c.n > g.n, `a grey stand-in is slower still: ${c.n} ticks`);
+  const s2 = S.newRound([1600, 0, 0, 0], 0); s2.ghosts[0].x = 10.5; s2.ghosts[0].y = row + 0.5;
+  ok(!s2.ghosts.some(gh => S.dist(gh, s2.pac) < S.CFG.catchDist), 'distance still sane away from the tunnel');
+}
 console.log(fails ? `${fails} FAILED` : 'all sim checks passed');
 process.exit(fails ? 1 : 0);

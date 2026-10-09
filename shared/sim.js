@@ -29,6 +29,11 @@
     ghostSpeed: (0.5 + 1 / 256) * FPS / CELL,   // a hair faster than Pac-Man: about 1 px more per 128 px
     frightSpeed: 0.375 * FPS / CELL,     // 2.80 cells/s
     greySpeed: FPS / CELL / 3,           // a grey stand-in wanders at a third of a pixel a frame: two thirds of ghost speed (measured on the original's radar)
+    // The warp tunnel (a row open at both edges) carries on out of sight: a ghost going off one edge comes back on the
+    // other after a hidden stretch, and every ghost (grey ones too, not Pac-Man) moves at three quarters speed within
+    // the outer cells and the hidden stretch. Measured on the original: 0.375 px/frame against 0.504 on the open row,
+    // 70 frames from the last cell's centre on one side to the last cell's centre on the other.
+    tunnelSlow: 0.75, tunnelEdge: 2.5, tunnelHidden: 2.3,
     eyeSpeed: 1.0 * FPS / CELL,          // not measured
     frightTime: 10, frightFlash: 2,
     // Pac-Man leaves a trail in his player's colour that ghosts can follow. Look (wide flat ribbon, paler by Pac-Man) is from the original; the length is a guess.
@@ -74,6 +79,10 @@
   function inHouse(x, y) { return x >= HOUSE.x0 && x <= HOUSE.x1 && y >= HOUSE.y0 && y <= HOUSE.y1; }
   function blocked(x, y, who) { return wallAt(x, y, who) || ((who === 'pac' || who === 'ghost') && inHouse(x, y)); }
   const cellAt = (x, y) => (y < 0 || y >= H) ? '#' : ROWS[y][((x % W) + W) % W];
+  // rows open at both edges wrap round through the hidden tunnel stretch; positions W..W+tunnelHidden are out of sight
+  const TROW = ROWS.map(r => !/[#=]/.test(r[0]) && !/[#=]/.test(r[W - 1]));
+  const ringOf = y => W + (TROW[Math.floor(y)] ? CFG.tunnelHidden : 0);
+  const inTunnel = e => TROW[Math.floor(e.y)] && (e.x < CFG.tunnelEdge || e.x > W - CFG.tunnelEdge);
 
   /** Start a round. `scores` (4 numbers) is kept and updated in place, so points carry over between rounds. */
   function newRound(scores, pacPlayer, opts) {
@@ -154,7 +163,8 @@
       const dn = ahead > 0 ? ahead : 1 + ahead;
       const m = Math.min(rem, dn || 1);
       e.x += dx * m; e.y += dy * m; rem -= m;
-      if (e.x < 0) e.x += W; else if (e.x >= W) e.x -= W;
+      const ring = ringOf(e.y);
+      if (e.x < 0) e.x += ring; else if (e.x >= ring) e.x -= ring;
       if (m >= (dn || 1) - 1e-9) {
         // landed on a centre: snap exactly
         e.x = Math.floor(e.x + 1e-7) + 0.5; e.y = Math.floor(e.y + 1e-7) + 0.5;
@@ -164,7 +174,8 @@
   }
 
   function dist(a, b) {
-    let dx = Math.abs(a.x - b.x); if (dx > W / 2) dx = W - dx;
+    const ring = W + CFG.tunnelHidden;
+    let dx = Math.abs(a.x - b.x); if (dx > ring / 2) dx = ring - dx;
     return Math.hypot(dx, a.y - b.y);
   }
 
@@ -188,7 +199,7 @@
     while (s.trail.length && s.time - s.trail[0].t > CFG.trailTime) s.trail.shift();
     const px = Math.floor(s.pac.x), py = Math.floor(s.pac.y);
     const pi = py * W + (((px % W) + W) % W);
-    if (s.pellets[pi]) {
+    if (s.pellets[pi] && s.pac.x < W) {        // nothing to eat in the hidden part of the tunnel
       const power = s.pellets[pi] === 2;
       s.pellets[pi] = 0; s.left--; s.eaten++; s.pac.pause += CFG.pelletPause;
       if (!s.fruit && s.eaten >= s.nextFruit && s.left > 8) s.fruit = { x: FRUIT[0] + 0.5, y: FRUIT[1] + 0.5, left: CFG.fruitStay };
@@ -226,7 +237,7 @@
       }
       const inp = inputs.ghosts[i];
       if (inp != null) g.want = inp;
-      step(g, g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed, dt, 'ghost');
+      step(g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1), dt, 'ghost');
       if (g.grey) continue;                       // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
       if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7) {
         s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; g.sightLeft = CFG.fruitSightTime; s.events.push('fruitghost');

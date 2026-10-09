@@ -297,7 +297,7 @@
       if (rd && st.W) {
         const b = box(rd, 0, 0);
         for (const g of st.ghosts) {
-          const c = g.c != null && g.c < 0 ? GREY : seatColor[g.c != null ? g.c : g.seat], gx = b.x + 4 + (g.x - 1) / (st.W - 2) * (b.w - 8), gy = b.y + 4 + g.y / st.H * (b.h - 8);
+          const c = g.c != null && g.c < 0 ? GREY : seatColor[g.c != null ? g.c : g.seat], gx = b.x + 4 + (Math.min(g.x, st.W - 1) - 1) / (st.W - 2) * (b.w - 8), gy = b.y + 4 + g.y / st.H * (b.h - 8);
           R.poly([[tvx(gx - 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy + 4)], [tvx(gx - 4), tvy(gy + 4)]], [c[0], c[1], c[2], 1]);
         }
       }

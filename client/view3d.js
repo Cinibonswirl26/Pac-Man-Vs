@@ -141,13 +141,13 @@
         if (last) pts.push([wx(last[0]), fl + 45, wz(last[1]), 0.92, 0.45]);
         for (let i = v.trail.length - 1; i >= 0; i--) {
           const [x, y, age] = v.trail[i];
-          if (last && Math.abs(x - last[0]) > v.W / 2) break;       // through the tunnel: the line ends here
+          if (x >= v.W || (last && Math.abs(x - last[0]) > v.W / 2)) break;       // through the tunnel: the line ends here
           pts.push([wx(x), fl + 45, wz(y), 0.92 * Math.min(1, (1 - k(age)) / 0.4), 0.45 * (1 - k(age)) ** 2]); last = [x, y];
         }
         R.ribbon(pts, 780, v.trailColor);
       }
       if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), fl, wz(v.fruit.y), 0, 0.75));
-      if (v.pac) {
+      if (v.pac && v.pac.x < v.W) {              // out of sight in the hidden part of the tunnel otherwise
         const yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0;
         let pm = m4.trs(wx(v.pac.x), fl + (v.pac.hit ? 250 : 380), wz(v.pac.y), yaw, 1);
         if (v.pac.hit) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
@@ -174,6 +174,7 @@
       // Ghosts last: their bodies are blended.
       const blink = J3D.animatePattern(assets.ghostBlink, f * 0.5).e || 0;       // the blink runs at half speed
       for (const g of v.ghosts) {
+        if (g.x >= v.W) continue;                 // in the hidden part of the tunnel
         const col = g.c != null ? g.c : g.seat;      // the colour it wears: its player's, the colour of the ghost that woke it, or -1 = grey stand-in
         let skin = col < 0 ? skins.com : skins[SKINS[col]], scale = 1.25, opts;
         if (g.m === 'f') {

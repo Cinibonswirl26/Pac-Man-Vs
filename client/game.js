@@ -730,7 +730,7 @@
     snap.ghosts.forEach((gh, i) => {
       if (!gh) return;
       g.fillStyle = gcss(i);
-      g.fillRect(x0 + (gh.x / W) * w - 0.28 * u, y0 + (gh.y / H) * h - 0.28 * u, 0.56 * u, 0.56 * u);
+      g.fillRect(x0 + (Math.min(gh.x, W - 0.5) / W) * w - 0.28 * u, y0 + (gh.y / H) * h - 0.28 * u, 0.56 * u, 0.56 * u);
     });
     g.textAlign = 'start'; g.textBaseline = 'alphabetic';
   }
