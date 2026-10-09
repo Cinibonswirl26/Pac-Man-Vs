@@ -35,7 +35,7 @@ const idle = { pac: null, ghosts: [null, null, null] };
 const LV = S.create(A.apply(S.BUILTIN, A.byId('arr:0')));
 const put = (e, x, y, d) => { e.x = x + 0.5; e.y = y + 0.5; e.dir = e.want = d == null ? e.dir : d; };
 const park = s => { s.ghosts.forEach(g => put(g, 11, 6, 1)); };     // ghosts out of the way, in the top corridor
-const run = (s, n, inp) => { for (let i = 0; i < n; i++) S.update(s, inp || idle); };
+const run = (s, n, inp) => { for (let i = 0; i < n; i++) LV.update(s, inp || idle); };
 // 3. A dash arrow: entering its cell hurls Pac-Man along the row at dashMult speed, steering is ignored, it ends at the far arrow and does not fire again until he leaves
 {
   const s = LV.newRound([1600, 0, 0, 0], 0); park(s); put(s.pac, 2, 4, 3);
@@ -85,5 +85,74 @@ const run = (s, n, inp) => { for (let i = 0; i < n; i++) S.update(s, inp || idle
   run(s, 30, { pac: 2, ghosts: [null, null, null] }); t = 0; while (!s.pac.air && t++ < 60) LV.update(s, { pac: 0, ghosts: [null, null, null] });
   ok(s.pac.air && Math.floor(s.pac.air.x1) === 1, 'coming back onto it jumps back');
   const v = LV.view(s, 0); ok(v.arr === 1 && v.pac.a && v.pac.a.length === 5, 'the view carries the flight');
+}
+// 7. Items: on a level the fruit spot draws fruit or a capsule with a seeded roulette; every kind shows up, gold least
+{
+  const seen = {}; const s = LV.newRound([1600, 0, 0, 0], 0, { rng: S.mulberry(5) }); park(s);
+  for (let n = 0; n < 400; n++) { s.fruit = null; s.eaten = s.nextFruit; s.left = 100; s.pellets[0] = 1; s.pac.x = 0.5; s.pac.y = 0.5; s.pac.air = null; LV.update(s, idle); if (s.fruit) seen[s.fruit.kind] = (seen[s.fruit.kind] || 0) + 1; s.fruit = null; }
+  const kinds = Object.keys(seen);
+  ok(['fruit', 'red', 'cyan', 'pink', 'orange', 'gold'].every(k => seen[k] > 0), 'every item kind appears: ' + JSON.stringify(seen));
+  ok(seen.gold < seen.fruit && Object.values(seen).every(v => v < seen.fruit + 1) && seen.gold === Math.min(...Object.values(seen)), 'gold is the rarest, fruit the commonest');
+  const a = LV.newRound([1600, 0, 0, 0], 0, { rng: S.mulberry(9) }), b = LV.newRound([1600, 0, 0, 0], 0, { rng: S.mulberry(9) });
+  a.eaten = b.eaten = 5; a.pellets[0] = b.pellets[0] = 1; a.pac.x = b.pac.x = 0.5; a.pac.y = b.pac.y = 0.5; LV.update(a, idle); LV.update(b, idle);
+  ok(a.fruit && b.fruit && a.fruit.kind === b.fruit.kind, 'the draw follows the seed');
+}
+const spawn = (s, kind) => { s.fruit = { x: 11.5, y: 13.5, left: 10, kind }; };
+const give = (s, kind, e) => { spawn(s, kind); put(e, 11, 13, 1); LV.update(s, idle); };
+// 8. Pac-Man's capsules
+{
+  let s = LV.newRound([1600, 0, 0, 0], 0); park(s); give(s, 'red', s.pac);
+  ok(!s.fruit && s.scores[0] === 2000 && s.events.includes('capsule') && near(s.pac.speedLeft, S.CFG.capsuleTime, 0.05), 'red: 400 points and a speed timer');
+  const x0 = s.pac.x; run(s, 30, { pac: 1, ghosts: [null, null, null] });
+  ok(near((s.pac.x - x0) / 1, S.CFG.pacSpeed * S.CFG.speedMult, 0.5) && s.pac.pause === 0, `red: Pac-Man runs at double speed over pellets without pausing (${((s.pac.x - x0)).toFixed(2)} cells/s)`);
+  run(s, 300); ok(s.pac.speedLeft === 0, 'red wears off after 10 s');
+  s = LV.newRound([1600, 0, 0, 0], 0); park(s); give(s, 'cyan', s.pac);
+  ok(s.pac.clone && near(s.pac.clone.x, 23 - s.pac.x, 0.01) && s.pac.clone.y === s.pac.y, 'cyan: a clone mirrored about the centre line');
+  const left0 = s.left; put(s.pac, 5, 16, 3); run(s, 30, { pac: 3, ghosts: [null, null, null] });     // row 16 has no pads
+  ok(near(s.pac.clone.x, 23 - s.pac.x, 0.01) && s.pac.clone.dir === 1 && s.left < left0 - 4, 'the clone mirrors every move and eats pellets on its side');
+  const v = LV.view(s, 0); ok(v.clones.length === 1 && v.clones[0].of === -1 && v.clones[0].m === 'p', 'the view lists the clone');
+  const g = s.ghosts[0]; g.mode = 'fright'; s.frightLeft = 10; put(g, Math.floor(s.pac.clone.x), 16, 1); LV.update(s, idle);
+  ok(g.mode === 'eyes' && s.scores[0] >= 2200, 'the clone eats a frightened ghost');
+  const h = s.ghosts[1]; put(h, Math.floor(s.pac.clone.x), 16, 1); LV.update(s, idle);
+  ok(!s.pac.clone && !s.over && s.events.includes('clonegone'), 'a normal ghost touching the clone only removes it');
+  s = LV.newRound([1600, 0, 0, 0], 0); park(s); s.ghosts[2].mode = 'fright'; s.frightLeft = 5; give(s, 'pink', s.pac);
+  ok(s.events.includes('pot') && s.ghosts.every(g => g.potted && g.mode === 'normal' && Math.floor(g.x) === 11 && Math.floor(g.y) === 10) && near(s.pot, S.CFG.potTime, 0.05), 'pink: every ghost sits in the pot, fright cleared');
+  ok(LV.view(s, 0).ghosts.every(g => g.m === 'r'), 'potted ghosts are shown as away');
+  put(s.pac, 11, 9, 2); run(s, 60, { pac: null, ghosts: [0, 0, 0] });
+  ok(!s.over && s.ghosts.every(g => g.potted && Math.floor(g.y) === 10), 'potted ghosts cannot move or catch');
+  run(s, 70, { pac: null, ghosts: [0, 0, 0] }); ok(s.ghosts.every(g => !g.potted) && s.ghosts.some(g => g.y < 10), 'after 4 s they are let out and can leave');
+  s = LV.newRound([1600, 0, 0, 0], 0); park(s); give(s, 'orange', s.pac);
+  ok(near(s.pac.digest, S.CFG.capsuleTime, 0.05), 'orange: a digest timer');
+  put(s.pac, 5, 13, 3); run(s, 20, { pac: 3, ghosts: [null, null, null] }); ok(s.pac.pause === 0 && s.eaten > 2, 'orange: pellets go down without a pause');
+  s = LV.newRound([1600, 0, 0, 0], 0); park(s); give(s, 'gold', s.pac);
+  ok(s.scores[0] === 1700 && !s.pac.speedLeft && !s.pac.clone && !s.pac.digest, 'gold: 100 points and nothing else');
+}
+// 9. Ghosts' capsules
+{
+  let s = LV.newRound([1600, 0, 0, 0], 0); park(s); let g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'red', g);
+  ok(s.scores[S.playerOfGhost(s, 0)] === 400 && s.events.includes('capsuleghost') && near(g.speedLeft, S.CFG.capsuleTime, 0.05), 'red: 400 points and a speed timer for the ghost');
+  let x0 = g.x; run(s, 30, { pac: null, ghosts: [1, null, null] }); ok(near(g.x - x0, S.CFG.ghostSpeed * S.CFG.speedMult, 0.5), 'the ghost runs at double speed, steering as usual');
+  s = LV.newRound([1600, 0, 0, 0], 0); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'cyan', g);
+  ok(g.clone && near(g.clone.x, 23 - g.x, 0.01), 'cyan: a mirror ghost');
+  put(s.pac, Math.floor(g.clone.x), 13, 1); LV.update(s, idle);
+  ok(s.over && s.overReason === 'caught' && s.catcher === S.playerOfGhost(s, 0), 'the mirror ghost catches Pac-Man for its owner');
+  s = LV.newRound([1600, 0, 0, 0], 0); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'cyan', g); g.mode = 'fright'; s.frightLeft = 10;
+  put(g, 3, 13, 1);                                                          // the ghost on the left, its mirror on the right
+  const o = S.playerOfGhost(s, 0), so = s.scores[o]; put(s.pac, 19, 13, 1); LV.update(s, idle);
+  ok(!s.over && !g.clone && s.scores[0] >= 1800 && s.scores[0] < 1900 && s.scores[o] === so && g.mode === 'fright', 'a frightened mirror is eaten for 200, nothing charged, the owner stays');
+  s = LV.newRound([1600, 0, 0, 0], 0, { rng: S.mulberry(3) }); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'pink', g);
+  ok(near(g.hopLeft, S.CFG.capsuleTime, 0.05), 'pink: the ghost gets the hop');
+  LV.update(s, idle); ok(g.air && s.events.includes('hop'), 'it hops off at once');
+  let hops = 1; for (let n = 0; n < 300; n++) { LV.update(s, idle); if (s.events.includes('hop')) hops++; }
+  ok(hops >= 3 && hops <= 4 && g.hopLeft === 0 && !g.air, `about one hop every 3 s for 10 s (${hops} hops), then no more`);
+  s = LV.newRound([1600, 0, 0, 0], 0); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'orange', g);
+  for (let x = 1; x <= 21; x++) s.pellets[13 * 23 + x] = 0; put(g, 5, 13, 1); run(s, 100, { pac: null, ghosts: [1, null, null] });   // a cleared row
+  const nb = s.big.reduce((a, b) => a + b, 0);
+  ok(nb > 0 && nb <= S.CFG.bigMax && g.dropped === nb, `orange: the ghost leaves big pellets on empty cells (${nb})`);
+  const leftB = s.left, bi = s.big.indexOf(1); put(s.pac, bi % 23, Math.floor(bi / 23), 1); const sc = s.scores[0]; LV.update(s, idle);
+  ok(s.big[bi] === 0 && s.scores[0] === sc + S.CFG.bigPts && near(s.pac.pause, S.CFG.bigPause, 0.05) && s.left === leftB && s.events.includes('bigpellet'), 'a big pellet pays 50, holds Pac-Man half a second and does not count as a pellet');
+  ok(LV.view(s, 0).big.length === nb - 1, 'the view lists the big pellets');
+  s = LV.newRound([1600, 0, 0, 0], 0); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'gold', g);
+  ok(s.scores[S.playerOfGhost(s, 0)] === 100, 'gold: 100 points for a ghost');
 }
 console.log(fails ? fails + ' FAILED' : 'arrangement ok'); process.exit(fails ? 1 : 0);

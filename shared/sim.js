@@ -52,7 +52,13 @@
     targets: [7000, 10000, 15000], defaultTarget: 7000,
     // Arrangement levels only (shared/arrange.js). From the 1996 arcade game's demo: a dash crosses a 19-cell row in
     // about 0.8 s (2.5 times walking speed), a knocked ghost sits dizzy for about 2 s, a jump takes about half a second.
-    dashMult: 2.5, stunTime: 2, jumpTime: 0.6
+    dashMult: 2.5, stunTime: 2, jumpTime: 0.6,
+    // Capsules appear where the fruit does; which one (or the fruit) is a weighted draw. Red: double speed for 10 s;
+    // cyan: a mirror clone for 10 s; pink: every ghost into the pot in the house for 4 s (a ghost taking it hops
+    // about instead); orange: pellets digested without pausing for 10 s (a ghost drops big pellets that slow
+    // Pac-Man); gold: 100 points and nothing else. Points are fruit-like here (the arcade gave 1000).
+    speedMult: 2, capsuleTime: 10, potTime: 4, hopEvery: 3, capsulePts: 400, goldPts: 100, bigPause: 0.5, bigPts: 50, bigMax: 10,
+    itemOdds: [['fruit', 3], ['red', 2], ['cyan', 2], ['pink', 2], ['orange', 2], ['gold', 1]]
   };
 
   /** A maze descriptor. rows use: '#' wall, '=' house wall, 'D' door (ghosts only), '.' pellet,
@@ -103,18 +109,18 @@
       if ((c === '.' || c === 'o') && !inHouse(x, y)) { pellets[y * W + x] = c === 'o' ? 2 : 1; total++; }
     }
     if (pellets[START.pac[1] * W + START.pac[0]]) { pellets[START.pac[1] * W + START.pac[0]] = 0; total--; }
-    return {
+    return Object.assign({
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, air: null, onPad: -1 } : {}),
+      pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
-      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, air: null, onPad: -1, stun: 0 } : {})),
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, air: null, onPad: -1, stun: 0, speedLeft: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0, hopNext: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
       pacPlayer, tick: 0, catcher: -1, steal: 0, winner: -1, time: 0,
       eaten: 0, nextFruit: CFG.fruitFirst, fruit: null, trail: [], trailLast: -1
-    };
+    }, ARR ? { big: new Uint8Array(W * H), pot: 0, rng: opts.rng || Math.random } : {});
   }
   function ent(p) { return { x: p[0] + 0.5, y: p[1] + 0.5, dir: 1, want: 1 }; }
 
@@ -229,9 +235,127 @@
     e.dir = e.want = bd; s.events.push('land');
   }
 
+  // ---------- Arrangement items and effects (no-ops on a plain maze) ----------
+  const MIRDIR = [0, 3, 2, 1];
+  const mirrorX = e => { const ring = ringOf(e.y); return ((W - e.x) % ring + ring) % ring; };
+  /** What appears at the fruit spot: the fruit on a plain maze, otherwise a weighted draw. */
+  function spawnItem(s) {
+    const f = { x: FRUIT[0] + 0.5, y: FRUIT[1] + 0.5, left: CFG.fruitStay };
+    if (ARR && ARR.items) {
+      const total = CFG.itemOdds.reduce((a, o) => a + o[1], 0); let r = s.rng() * total;
+      f.kind = 'fruit'; for (const [k, w] of CFG.itemOdds) { r -= w; if (r < 0) { f.kind = k; break; } }
+    }
+    s.fruit = f;
+  }
+  /** Pac-Man (gi -1) or ghost gi takes what is at the fruit spot. Returns true if the round ended. */
+  function takeItem(s, gi) {
+    const kind = s.fruit.kind || 'fruit', g = gi >= 0 ? s.ghosts[gi] : null, who = gi >= 0 ? colorOf(s, gi) : s.pacPlayer;
+    s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery;
+    if (kind === 'fruit') {
+      if (g) g.sightLeft = CFG.fruitSightTime;
+      s.events.push(g ? 'fruitghost' : 'fruit'); award(s, who, CFG.fruitPts); return s.over;
+    }
+    s.events.push(g ? 'capsuleghost' : 'capsule'); s.lastItem = kind;
+    if (kind === 'red') (g || s.pac).speedLeft = CFG.capsuleTime;
+    else if (kind === 'cyan') { const e = g || s.pac; e.clone = { x: mirrorX(e), y: e.y, dir: MIRDIR[e.dir], left: CFG.capsuleTime }; }
+    else if (kind === 'pink') { if (g) { g.hopLeft = CFG.capsuleTime; g.hopNext = 0; } else potGhosts(s); }
+    else if (kind === 'orange') { if (g) { g.dropLeft = CFG.capsuleTime; g.dropped = 0; g.dropAt = null; } else s.pac.digest = CFG.capsuleTime; }
+    award(s, who, kind === 'gold' ? CFG.goldPts : CFG.capsulePts); return s.over;
+  }
+  /** The pink capsule: every ghost in play is pulled into the house and held there for a while. */
+  function potGhosts(s) {
+    for (const g of s.ghosts) {
+      if (g.mode === 'eyes' || g.grey) continue;
+      g.x = DOOR[0] + 0.5; g.y = HOUSE.y0 + 0.5; g.dir = g.want = 0; g.mode = 'normal'; g.dash = 0; g.air = null; g.clone = null; g.potted = true; g.onPad = -1;
+    }
+    s.pot = CFG.potTime; s.events.push('pot');
+  }
+  /** A random open cell outside the house (not a pad, not the fruit spot) for a hop. */
+  function hopTarget(s) {
+    for (let n = 0; n < 200; n++) {
+      const x = Math.floor(s.rng() * W), y = Math.floor(s.rng() * H);
+      if (blocked(x, y, 'ghost') || padAt[y * W + x] >= 0 || (x === FRUIT[0] && y === FRUIT[1])) continue;
+      return [x, y];
+    }
+    return null;
+  }
+  /** Timers for the capsule effects; clones vanish when their time is up. */
+  function tickEffects(s, dt) {
+    const p = s.pac;
+    if (p.speedLeft > 0) p.speedLeft = Math.max(0, p.speedLeft - dt);
+    if (p.digest > 0) p.digest = Math.max(0, p.digest - dt);
+    if (p.clone && (p.clone.left -= dt) <= 0) { p.clone = null; s.events.push('clonegone'); }
+    for (const g of s.ghosts) {
+      if (g.speedLeft > 0) g.speedLeft = Math.max(0, g.speedLeft - dt);
+      if (g.dropLeft > 0) g.dropLeft = Math.max(0, g.dropLeft - dt);
+      if (g.clone && (g.clone.left -= dt) <= 0) { g.clone = null; s.events.push('clonegone'); }
+      if (g.hopLeft > 0) { g.hopLeft = Math.max(0, g.hopLeft - dt); g.hopNext -= dt; }
+    }
+    if (s.pot > 0 && (s.pot -= dt) <= 0) { s.pot = 0; s.ghosts.forEach(g => { g.potted = false; }); }
+  }
+  /** A clone shadows its owner: the same moves mirrored about the maze's centre line. */
+  function moveClone(e) { if (e.clone) { e.clone.x = mirrorX(e); e.clone.y = e.y; e.clone.dir = MIRDIR[e.dir]; } }
+  /** A ghost with the orange capsule leaves big pellets behind it: on each empty cell it has just left. */
+  function dropBig(s, g) {
+    if (g.x >= W) return;
+    const i = Math.floor(g.y) * W + Math.floor(g.x);
+    if (g.dropAt === i) return;
+    const j = g.dropAt; g.dropAt = i;
+    if (j == null || g.dropped >= CFG.bigMax) return;
+    const x = j % W, y = Math.floor(j / W);
+    if (inHouse(x, y) || cellAt(x, y) === 'D' || s.pellets[j] || s.big[j] || padAt[j] >= 0 || (x === FRUIT[0] && y === FRUIT[1])) return;
+    s.big[j] = 1; g.dropped++;
+  }
+  /** Whether a ghost is out of play for touching anything: in the air, dizzy or in the pot. */
+  const outOfPlay = g => g.air || g.stun > 0 || g.potted;
+
   function award(s, player, pts) {
     s.scores[player] += pts; s.roundScores[player] += pts;
     if (s.scores[player] >= s.target && !s.over) { s.over = true; s.overReason = 'won'; s.winner = player; }
+  }
+
+  /** Pac-Man (or his clone) eats what is on the cell under him. Returns true if the round ended. */
+  function eatCell(s, e) {
+    if (e.x >= W) return false;                 // nothing to eat in the hidden part of the tunnel
+    const pi = Math.floor(e.y) * W + Math.floor(e.x), real = e === s.pac;
+    if (ARR && s.big[pi]) {                     // a big pellet dropped by a ghost: worth more, slow to chew
+      s.big[pi] = 0; s.events.push('bigpellet'); award(s, s.pacPlayer, CFG.bigPts);
+      if (real && !s.pac.dash && !(s.pac.speedLeft > 0) && !(s.pac.digest > 0)) s.pac.pause += CFG.bigPause;
+      if (s.over) return true;
+    }
+    if (!s.pellets[pi]) return false;
+    const power = s.pellets[pi] === 2;
+    s.pellets[pi] = 0; s.left--; s.eaten++;
+    if (real && !s.pac.dash && !(s.pac.speedLeft > 0) && !(s.pac.digest > 0)) s.pac.pause += CFG.pelletPause;
+    if (!s.fruit && s.eaten >= s.nextFruit && s.left > 8) spawnItem(s);
+    s.events.push(power ? 'power' : 'pellet');
+    if (power) {
+      s.frightLeft = CFG.frightTime; s.chain = 0;
+      s.ghosts.forEach(g => { if (g.mode === 'normal' && !g.grey) { g.mode = 'fright'; g.want = OPP[g.dir]; } });
+    }
+    award(s, s.pacPlayer, power ? CFG.powerPts : CFG.pelletPts);
+    if (s.over) return true;
+    if (s.left <= 0) { award(s, s.pacPlayer, CFG.clearBonus); s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'cleared'; return true; }
+    return false;
+  }
+  /** A frightened ghost is eaten: Pac-Man gains the chain points and the owner loses them (measured on the disc). */
+  function eatGhost(s, i) {
+    const g = s.ghosts[i];
+    g.mode = 'eyes'; s.events.push('eatghost');
+    if (g.standin) { g.grey = true; g.claim = -1; }     // a woken stand-in that is eaten goes back to grey
+    const pts = CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)], owner = g.grey ? -1 : colorOf(s, i);
+    if (owner >= 0) { const lose = Math.min(pts, s.scores[owner]); s.scores[owner] -= lose; s.roundScores[owner] -= lose; }
+    award(s, s.pacPlayer, pts); s.chain++;
+    if (ARR) g.clone = null;
+    return s.over;
+  }
+  /** Ghost i (or its clone) catches Pac-Man: steals points and takes over as Pac-Man next round. */
+  function catchPac(s, i) {
+    const catcher = colorOf(s, i), steal = Math.min(CFG.stealPts, s.scores[s.pacPlayer]);
+    s.scores[s.pacPlayer] -= steal; s.roundScores[s.pacPlayer] -= steal;
+    s.catcher = catcher; s.steal = steal; s.events.push('catch');
+    award(s, catcher, steal);
+    s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'caught';
   }
 
   // inputs: {pac: dir|null, ghosts: [dir|null x3]} already mapped from players
@@ -239,6 +363,7 @@
     if (s.over) return;
     dt = dt || CFG.tick;
     s.tick++; s.time += dt; s.events.length = 0;
+    if (ARR) tickEffects(s, dt);
 
     // Pac-Man
     if (inputs.pac != null && !s.pac.dash) s.pac.want = inputs.pac;
@@ -246,29 +371,16 @@
     else {
       const held = s.pac.dash ? 0 : Math.min(dt, s.pac.pause || 0);          // time still owed to the last pellet (a dash owes nothing)
       s.pac.pause = s.pac.dash ? 0 : (s.pac.pause || 0) - held;
-      moveEnt(s.pac, CFG.pacSpeed, dt - held, 'pac');
+      moveEnt(s.pac, CFG.pacSpeed * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt - held, 'pac');
       padCheck(s, s.pac, 'pac');
     }
     if (!s.pac.air && s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
     while (s.trail.length && s.time - s.trail[0].t > CFG.trailTime) s.trail.shift();
-    const px = Math.floor(s.pac.x), py = Math.floor(s.pac.y);
-    const pi = py * W + (((px % W) + W) % W);
-    if (s.pellets[pi] && s.pac.x < W && !s.pac.air) {        // nothing to eat in the hidden part of the tunnel, or in the air
-      const power = s.pellets[pi] === 2;
-      s.pellets[pi] = 0; s.left--; s.eaten++; if (!s.pac.dash) s.pac.pause += CFG.pelletPause;
-      if (!s.fruit && s.eaten >= s.nextFruit && s.left > 8) s.fruit = { x: FRUIT[0] + 0.5, y: FRUIT[1] + 0.5, left: CFG.fruitStay };
-      s.events.push(power ? 'power' : 'pellet');
-      if (power) {
-        s.frightLeft = CFG.frightTime; s.chain = 0;
-        s.ghosts.forEach(g => { if (g.mode === 'normal' && !g.grey) { g.mode = 'fright'; g.want = OPP[g.dir]; } });
-      }
-      award(s, s.pacPlayer, power ? CFG.powerPts : CFG.pelletPts);
-      if (s.over) return;
-      if (s.left <= 0) { award(s, s.pacPlayer, CFG.clearBonus); s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'cleared'; return; }
-    }
+    if (!s.pac.air && eatCell(s, s.pac)) return;
+    if (ARR) { moveClone(s.pac); if (s.pac.clone && eatCell(s, s.pac.clone)) return; }
     if (s.fruit) {
       s.fruit.left -= dt;
-      if (!s.pac.air && dist(s.pac, s.fruit) < 0.7) { s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; s.events.push('fruit'); award(s, s.pacPlayer, CFG.fruitPts); if (s.over) return; }
+      if (!s.pac.air && dist(s.pac, s.fruit) < 0.7) { if (takeItem(s, -1)) return; }
       else if (s.fruit.left <= 0) { s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; }
     }
     if (s.frightLeft > 0) {
@@ -289,38 +401,40 @@
         }
         continue;
       }
-      if (g.air) { flyStep(s, g, 'ghost', dt); continue; }          // in the air: out of play until it lands
+      if (g.air) { flyStep(s, g, 'ghost', dt); if (ARR) moveClone(g); continue; }          // in the air: out of play until it lands
       if (g.stun > 0) { g.stun = Math.max(0, g.stun - dt); continue; }   // knocked dizzy by a dash: cannot move, catch or take anything
+      if (g.potted) continue;                                            // held in the pot
+      if (g.hopLeft > 0 && g.hopNext <= 0 && !g.grey) {                  // the hop: off to a random cell
+        const t = hopTarget(s);
+        if (t) { g.air = { x0: g.x, y0: g.y, x1: t[0] + 0.5, y1: t[1] + 0.5, t: 0, dur: CFG.jumpTime, to: -1 }; g.dash = 0; g.hopNext = CFG.hopEvery; s.events.push('hop'); continue; }
+      }
       const inp = inputs.ghosts[i];
       if (inp != null && !g.dash) g.want = inp;
-      moveEnt(g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1), dt, 'ghost');
+      moveEnt(g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1) * (g.speedLeft > 0 ? CFG.speedMult : 1), dt, 'ghost');
       padCheck(s, g, 'ghost');
+      if (ARR) { moveClone(g); if (g.dropLeft > 0) dropBig(s, g); }
       if (g.grey || g.air) continue;              // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
       if (s.pac.air) continue;                    // nobody touches Pac-Man while he is in the air
-      if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7) {
-        s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; g.sightLeft = CFG.fruitSightTime; s.events.push('fruitghost');
-        award(s, colorOf(s, i), CFG.fruitPts); if (s.over) return;
-      }
+      if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7 && takeItem(s, i)) return;
       if (dist(g, s.pac) < CFG.catchDist) {
-        if (g.mode === 'fright') {
-          g.mode = 'eyes'; s.events.push('eatghost');
-          if (g.standin) { g.grey = true; g.claim = -1; }     // a woken stand-in that is eaten goes back to grey
-          // Pac-Man gains the points and the ghost's owner loses the same points (measured on the disc: +200 / -200).
-          // A grey stand-in has no owner to charge.
-          const pts = CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)], owner = g.grey ? -1 : colorOf(s, i);
-          if (owner >= 0) { const lose = Math.min(pts, s.scores[owner]); s.scores[owner] -= lose; s.roundScores[owner] -= lose; }
-          award(s, s.pacPlayer, pts); s.chain++;
-          if (s.over) return;
-        } else if (g.mode === 'normal' && s.pac.dash) {
-          g.stun = CFG.stunTime; s.events.push('stun');     // a dashing Pac-Man knocks a ghost aside and leaves it dizzy
-        } else if (g.mode === 'normal') {
-          // The catcher steals points from Pac-Man and takes over as Pac-Man next round.
-          const catcher = colorOf(s, i), steal = Math.min(CFG.stealPts, s.scores[s.pacPlayer]);
-          s.scores[s.pacPlayer] -= steal; s.roundScores[s.pacPlayer] -= steal;
-          s.catcher = catcher; s.steal = steal; s.events.push('catch');
-          award(s, catcher, steal);
-          s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'caught';
-          return;
+        if (g.mode === 'fright') { if (eatGhost(s, i)) return; }
+        else if (g.mode === 'normal' && s.pac.dash) { g.stun = CFG.stunTime; s.events.push('stun'); }   // a dashing Pac-Man knocks a ghost aside and leaves it dizzy
+        else if (g.mode === 'normal') { catchPac(s, i); return; }
+      }
+    }
+    // Clones: Pac-Man's mirror eats frightened ghosts and vanishes when a normal one touches it (nothing is stolen);
+    // a ghost's mirror catches Pac-Man for its owner, and is eaten (points for Pac-Man, nothing charged) while its owner is frightened.
+    if (ARR && !s.pac.air) {
+      for (let i = 0; i < s.ghosts.length; i++) {
+        const g = s.ghosts[i];
+        if (g.grey || g.mode === 'eyes' || outOfPlay(g)) continue;
+        if (s.pac.clone && dist(g, s.pac.clone) < CFG.catchDist) {
+          if (g.mode === 'fright') { if (eatGhost(s, i)) return; }
+          else { s.pac.clone = null; s.events.push('clonegone'); }
+        }
+        if (g.clone && dist(g.clone, s.pac) < CFG.catchDist) {
+          if (g.mode === 'fright') { g.clone = null; s.events.push('eatghost'); award(s, s.pacPlayer, CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)]); s.chain++; if (s.over) return; }
+          else { catchPac(s, i); return; }
         }
       }
     }
@@ -384,9 +498,17 @@
       // the trail Pac-Man leaves: [x, y, age in seconds]; ghosts only see the parts inside a circle of sight
       trail: s.trail.filter(p => vis(p)).map(p => [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100, Math.round((s.time - p.t) * 100) / 100]),
       // Every ghost is on the shared screen (its own circle and the minimap); `s` is the radius of its circle.
-      ghosts: s.ghosts.map((g, i) => Object.assign(q(g), { m: g.mode[0], s: sightOf(g), c: colorOf(s, i) }, ARR ? qa(g) : {}))
+      ghosts: s.ghosts.map((g, i) => Object.assign(q(g), { m: g.potted ? 'r' : g.mode[0], s: sightOf(g), c: colorOf(s, i) }, ARR ? qa(g) : {}))
     };
-    if (ARR) { out.arr = 1; if (out.pac) Object.assign(out.pac, qa(s.pac)); }
+    if (ARR) {
+      out.arr = 1; if (out.pac) Object.assign(out.pac, qa(s.pac));
+      if (out.fruit) out.fruit.k = s.fruit.kind || 'fruit';
+      out.pot = Math.round(s.pot * 100) / 100;
+      out.clones = [];
+      if (s.pac.clone && vis(s.pac.clone)) out.clones.push(Object.assign(q(s.pac.clone), { m: 'p', c: s.pacPlayer, of: -1 }));
+      s.ghosts.forEach((g, i) => { if (g.clone && vis(g.clone)) out.clones.push(Object.assign(q(g.clone), { m: g.mode[0], c: colorOf(s, i), of: i })); });
+      out.big = []; for (let i = 0; i < W * H; i++) if (s.big[i] && (gi < 0 || seen((i % W) + 0.5, Math.floor(i / W) + 0.5))) out.big.push(i);
+    }
     if (gi < 0) out.pellets = Array.from(s.pellets);
     else {
       const p = new Array(W * H).fill(0);
@@ -406,6 +528,9 @@
     if (e.air) o.a = [e.air.x0, e.air.y0, e.air.x1, e.air.y1, Math.round(Math.min(1, e.air.t / e.air.dur) * 100) / 100];
     if (e.dash) o.ds = 1;
     if (e.stun > 0) o.st = Math.round(e.stun * 100) / 100;
+    if (e.speedLeft > 0) o.sp = Math.round(e.speedLeft * 100) / 100;
+    if (e.digest > 0) o.dg = Math.round(e.digest * 100) / 100;
+    if (e.hopLeft > 0) o.hp = Math.round(e.hopLeft * 100) / 100;
     return o;
   }
 
@@ -617,7 +742,7 @@
     level = level == null ? 1 : level;
     const g = s.ghosts[gi];
     if (g.mode === 'eyes') return null;           // eaten ghosts steer themselves
-    if (g.air || g.dash || g.stun > 0) return null;   // no steering in the air, during a dash or while dizzy
+    if (g.air || g.dash || g.stun > 0 || g.potted) return null;   // no steering in the air, during a dash, while dizzy or in the pot
     if (!atCentre(g)) return null;
     // Just revived: out through the door
     const gx = Math.floor(g.x), gy = Math.floor(g.y);

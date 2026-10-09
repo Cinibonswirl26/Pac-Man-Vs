@@ -59,7 +59,7 @@
       if (!this.slots) this.slots = [0, 1, 2, 3].filter(i => i !== this.pac);
       // Seats nobody is playing: either computer players, or grey stand-ins that only wake up when a ghost player touches them.
       const standin = this.slots.map(p => this.kindOf(p) === 'standin');
-      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, players: this.slots });
+      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, players: this.slots, rng: this.rng });
       this.phase = 'countdown'; this.phaseLeft = COUNTDOWN;
     }
     /** Advance one fixed step. inputs[i] is the latest direction for human seat i.
