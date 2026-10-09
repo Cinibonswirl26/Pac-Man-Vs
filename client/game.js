@@ -119,6 +119,12 @@
     }
   }
   const stopLoops = () => Object.keys(loops).forEach(id => setLoop(id, false));
+  /** The title line plays once per launch: not in a hidden page (a preview), and not again if another copy of the page just played it. */
+  function titleOnce() {
+    if (document.hidden) return;
+    try { const last = +localStorage.getItem('pacvs.titleAt') || 0; if (Date.now() - last < 10000) return; localStorage.setItem('pacvs.titleAt', String(Date.now())); } catch { /* no storage */ }
+    fire('title');
+  }
   const fire = (id, p) => SM.fire(id, Object.assign({ me: snap ? snap.me : 0 }, p));
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
 
@@ -215,7 +221,7 @@
       art.logo = tex('pactitle_06.bti'); art.press = tex('press_start.bti');
       if (art.logo) { $('logo').src = art.logo.toDataURL(); $('logo').classList.remove('hidden'); $('title').classList.add('hidden'); }
       music.disc = d; music.bufs.clear();
-      try { const w = await Sound.load(d); snd.sfx = w.sfx; snd.voice = w.voice; fire('title'); } catch (e) { console.warn('sound', e); snd.sfx = snd.voice = null; }
+      try { const w = await Sound.load(d); snd.sfx = w.sfx; snd.voice = w.voice; titleOnce(); } catch (e) { console.warn('sound', e); snd.sfx = snd.voice = null; }
       try {   // the original stage 1 maze, read from the disc's maze data
         art.mazes = MazeData.all(await d.read(MazeData.PATH), PacSim.makeMaze);
         fillMazes();
@@ -380,7 +386,11 @@
   function fxDetect(cur) {
     const prev = fxPrev; fxPrev = cur;
     const now = performance.now();
-    if (!prev || (cur.phase === 'countdown' && prev.phase !== 'countdown')) { fx.pops.length = 0; fx.sparkle = -1; fx.burst = null; return; }
+    if (!prev || (cur.phase === 'countdown' && prev.phase !== 'countdown')) {
+      fx.pops.length = 0; fx.sparkle = -1; fx.burst = null;
+      if (cur.phase === 'countdown') { snd.said.clear(); fire('ready'); }     // "Ready?" as the countdown begins
+      return;
+    }
     const near = (a, b, d) => a && b && Math.hypot(a.x - b.x, a.y - b.y) < d;
     announce(prev, cur);
     if (prev.fruitUp && !cur.fruitUp && cur.phase === 'play') {
@@ -401,8 +411,7 @@
   // The announcer's lines, picked from changes between two snapshots (the same on every client).
   function announce(prev, cur) {
     if (cur.phase !== prev.phase) {
-      if (cur.phase === 'countdown') { snd.said.clear(); fire('ready'); }
-      else if (cur.phase === 'play' && prev.phase === 'countdown') fire('go');
+      if (cur.phase === 'play' && prev.phase === 'countdown') fire('go');
       else if (cur.phase === 'roundover' && cur.why === 'caught') fire('caught', { index: cur.catcher });
       else if (cur.phase === 'roundover' && cur.why === 'cleared') fire('mazeCleared');
       else if (cur.phase === 'final') { fire('final'); fire('champion', { index: cur.winner >= 0 ? cur.winner : 0 }); }

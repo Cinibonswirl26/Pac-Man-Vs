@@ -79,6 +79,17 @@
     const tex = t => R.texture(t);
     const skins = {}; for (const k in assets.skins) skins[k] = tex(assets.skins[k]);
     const dot = tex(assets.dot);
+    // the glowing blue drops that float off frightened ghosts: a bright cyan disc, white in the middle
+    const orb = tex((() => {
+      const n = 32, rgba = new Uint8Array(n * n * 4);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        const d = Math.hypot(x - 15.5, y - 15.5), i = (y * n + x) * 4, k = Math.max(0, 1 - d / 14) ** 2;
+        rgba[i] = 70 + 185 * k; rgba[i + 1] = 200 + 55 * k; rgba[i + 2] = 255; rgba[i + 3] = d <= 14 ? 255 : 0;
+      }
+      return { w: n, h: n, rgba, wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 };
+    })());
+    const ORBS = 7, ORB_LIFE = 1.3;
+    const rnd = (a, b, c) => { let h = Math.imul((a * 73856093) ^ (b * 19349663) ^ (c * 83492791), 0x45d9f3b); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; return (h >>> 0) / 4294967296; };
     // the ghosts' blink: the five eye textures, swapped by the disc's pattern animation
     const eyes = assets.ghost.textures.slice(0, 5).map(t => R.texture(t));
     let lastGhostFrame = -1, lastPacFrame = -1;
@@ -132,8 +143,19 @@
         if (v.pac.hit) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
         R.draw(pac, pm);
       }
+      // Frightened ghosts cry: glowing blue drops drift off them (positions come from the time alone, so every circle agrees).
+      const orbs = [];
+      if (!v.flash) for (const g of v.ghosts) if (g.m === 'f') {
+        const seat = g.seat | 0;
+        for (let k = 0; k < ORBS; k++) {
+          const ph = v.time / ORB_LIFE + k / ORBS, cyc = Math.floor(ph), u = ph - cyc;
+          const a = rnd(seat, k, cyc) * Math.PI * 2, r = (380 + rnd(seat, k, cyc + 99) * 320) * (0.7 + 0.6 * u), h0 = 120 + rnd(seat, k, cyc + 7) * 380;
+          orbs.push([wx(g.x) + Math.cos(a) * r, fl + h0 + 420 * u, wz(g.y) + Math.sin(a) * r, 190 * (1 - u) ** 0.6 + 20]);
+        }
+      }
+      R.sprites(orb, orbs);
       // Ghosts last: their bodies are blended.
-      const blink = J3D.animatePattern(assets.ghostBlink, f).e || 0;
+      const blink = J3D.animatePattern(assets.ghostBlink, f * 0.5).e || 0;       // the blink runs at half speed
       for (const g of v.ghosts) {
         let skin = skins[SKINS[g.seat]], scale = 1.25, opts;
         if (g.m === 'f') {
