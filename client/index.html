@@ -86,8 +86,15 @@
       <label class="note" for="target">Points to win
         <select id="target"><option value="7000" selected>7,000</option><option value="10000">10,000</option><option value="15000">15,000</option></select></label>
     </div>
-    <label class="note" for="fillSel">Seats nobody is playing
-      <select id="fillSel"><option value="standin" selected>Grey stand-in ghosts (like the original)</option><option value="cpu">Computer players</option></select></label>
+    <div class="row" id="seatKinds">
+      <label class="note" for="kind1">Seat 2 (blue)
+        <select id="kind1" class="kind"><option value="standin" selected>Stand-in ghost</option><option value="cpu">Computer player</option></select></label>
+      <label class="note" for="kind2">Seat 3 (pink)
+        <select id="kind2" class="kind"><option value="standin" selected>Stand-in ghost</option><option value="cpu">Computer player</option></select></label>
+      <label class="note" for="kind3">Seat 4 (green)
+        <select id="kind3" class="kind"><option value="standin" selected>Stand-in ghost</option><option value="cpu">Computer player</option></select></label>
+    </div>
+    <p class="note">A stand-in is the original's grey ghost: it wanders, Pac-Man passes through it, and it only joins the hunt once a ghost player runs through it. A computer player plays to win. In an online room, people take seats in order and the host can change the rest in the lobby.</p>
     <label class="note" for="mazeSel">Maze
       <select id="mazeSel"><option value="builtin">Built-in maze</option></select></label>
     <button id="solo" class="primary">Start single player</button>
@@ -120,7 +127,7 @@
     <div class="row"><button id="copyLink">Copy invite link</button><button id="leave">Leave</button></div>
   </div>
   <div class="card"><h2>Seats</h2><div id="seats"></div>
-    <p class="note">Empty seats are played by the computer. Anyone who joins later takes the next free seat.</p></div>
+    <p class="note">Anyone who joins takes the next free seat. The host chooses what plays each empty seat: a computer player or a grey stand-in ghost.</p></div>
   <button id="start" class="primary">Start match</button>
   <p id="lobbyNote" class="note"></p>
 </section>

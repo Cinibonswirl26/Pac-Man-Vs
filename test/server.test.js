@@ -8,11 +8,18 @@ server.listen(0, async () => {
   const last = (w, t) => w.q.filter(m => m.t === t).pop();
   try {
     const a = await open(), b = await open();
-    a.send(JSON.stringify({ t: 'create', name: 'Ann', target: 10000 }));
+    a.send(JSON.stringify({ t: 'create', name: 'Ann', target: 10000, kinds: ['human', 'cpu', 'standin', 'cpu'] }));
     const ra = await wait(() => a.q.find(m => m.t === 'room'));
     ok(ra.target === 10000, 'room carries the chosen target');
+    ok(ra.kinds.join() === 'cpu,cpu,standin,cpu' && ra.players[2].kind === 'standin', 'room carries what plays each empty seat: ' + ra.kinds);
+    a.send(JSON.stringify({ t: 'seat', i: 3, kind: 'standin' })); a.send(JSON.stringify({ t: 'seat', i: 0, kind: 'standin' })); a.send(JSON.stringify({ t: 'seat', i: 2, kind: 'bogus' }));
+    const rk = await wait(() => { const l = last(a, 'room'); return l && l.kinds[3] === 'standin' ? l : null; });
+    ok(rk.kinds.join() === 'cpu,cpu,standin,standin' && rk.players[0].kind === 'human', 'the host changes an empty seat; a taken seat and a bad kind are ignored');
     b.send(JSON.stringify({ t: 'join', code: ra.code.toLowerCase(), name: 'Bo' }));
-    await wait(() => b.q.find(m => m.t === 'room' && m.players[1].name === 'Bo'));
+    const rb = await wait(() => b.q.find(m => m.t === 'room' && m.players[1].name === 'Bo'));
+    ok(rb.players[1].kind === 'human', 'a joined seat is a person');
+    b.send(JSON.stringify({ t: 'seat', i: 2, kind: 'cpu' })); await new Promise(r => setTimeout(r, 200));
+    ok(last(a, 'room').kinds[2] === 'standin', 'only the host changes seats');
     console.log('room', ra.code, 'joined, target', ra.target);
     b.send(JSON.stringify({ t: 'start' }));          // non-host must be ignored
     await new Promise(r => setTimeout(r, 300));

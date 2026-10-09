@@ -24,7 +24,8 @@
       this.target = this.Sim.CFG.targets.includes(opts.target) ? opts.target : this.Sim.CFG.defaultTarget;
       this.level = opts.level == null ? 1 : opts.level;
       this.startRole = opts.start || 'random';
-      this.fill = opts.fill === 'standin' ? 'standin' : 'cpu';     // what plays a ghost seat nobody is sitting in
+      this.fill = opts.fill === 'standin' ? 'standin' : 'cpu';     // what plays a seat nobody is sitting in, unless opts.kinds says per seat
+      this.kinds = opts.kinds || null;                              // per seat: 'cpu' (computer player) or 'standin' (grey ghost); people override
       this.isHuman = isHuman;
       this.rng = this.Sim.mulberry(seed || Date.now());
       this.phase = 'lobby';            // lobby | countdown | play | roundover | handoff | final
@@ -32,12 +33,21 @@
       this.sim = null; this.round = 0; this.scores = [0, 0, 0, 0]; this.pac = 0; this.winner = -1;
       this.slots = null;               // the seat playing each ghost slot (circle, start position); kept from round to round
     }
+    /** What plays seat i: 'human', 'cpu' (a computer player) or 'standin' (a grey ghost that only wakes when touched). */
+    kindOf(i) {
+      if (this.isHuman(i)) return 'human';
+      const k = this.kinds && this.kinds[i];
+      return k === 'standin' || k === 'cpu' ? k : this.fill;
+    }
     initialPac() {
       if (this.startRole === 'pac') return 0;
-      if (this.startRole === 'ghost') return 1 + Math.floor(this.rng() * 3);
-      // With stand-ins, Pac-Man is one of the people playing, as in the original (unless a person is playing alone).
-      const people = [0, 1, 2, 3].filter(i => this.isHuman(i));
-      if (this.fill === 'standin' && people.length >= 2) return people[Math.floor(this.rng() * people.length)];
+      if (this.startRole === 'ghost') {   // a computer player takes Pac-Man if there is one; a stand-in seat otherwise
+        const cpus = [1, 2, 3].filter(i => this.kindOf(i) === 'cpu');
+        return cpus.length ? cpus[Math.floor(this.rng() * cpus.length)] : 1 + Math.floor(this.rng() * 3);
+      }
+      // Pac-Man starts as one of the players (people or computer players), never a stand-in, unless only one seat is a player.
+      const players = [0, 1, 2, 3].filter(i => this.kindOf(i) !== 'standin');
+      if (players.length >= 2 && players.length < 4) return players[Math.floor(this.rng() * players.length)];
       return Math.floor(this.rng() * 4);
     }
     start() {
@@ -48,7 +58,7 @@
     begin() {
       if (!this.slots) this.slots = [0, 1, 2, 3].filter(i => i !== this.pac);
       // Seats nobody is playing: either computer players, or grey stand-ins that only wake up when a ghost player touches them.
-      const standin = this.slots.map(p => this.fill === 'standin' && !this.isHuman(p));
+      const standin = this.slots.map(p => this.kindOf(p) === 'standin');
       this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, players: this.slots });
       this.phase = 'countdown'; this.phaseLeft = COUNTDOWN;
     }
@@ -103,6 +113,7 @@
       v.t = 'state'; v.phase = this.phase; v.left_t = Math.max(0, Math.round(this.phaseLeft * 10) / 10); v.round = this.round;
       v.human = [0, 1, 2, 3].map(i => !!this.isHuman(i));
       v.fill = this.fill;  // seats nobody is playing are 'standin' (grey COM ghosts) or 'cpu' (computer players)
+      v.kinds = [0, 1, 2, 3].map(i => this.kindOf(i));
       v.next = this.pac;   // who is Pac-Man in the coming round (the catcher, during a hand-over)
       return v;
     }

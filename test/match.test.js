@@ -66,5 +66,17 @@ for (const seed of [3, 7, 11]) {
   }
   const solo = new Match(i => i === 0, 2, { fill: 'standin', start: 'ghost' }); solo.start();
   ok(solo.pac > 0 && solo.sim.ghosts.filter(g => g.grey).length === 2, 'a person playing a ghost alone: a computer Pac-Man and two stand-ins');
+  // Seat by seat: a person, a computer player and two stand-ins. Pac-Man starts as the person or the computer player.
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const m = new Match(i => i === 0, seed, { kinds: ['human', 'cpu', 'standin', 'standin'] }); m.start();
+    ok(m.kindOf(0) === 'human' && m.kindOf(1) === 'cpu' && m.kindOf(2) === 'standin', 'kinds per seat');
+    ok(m.pac <= 1, `seed ${seed}: Pac-Man is the person or the computer player, not a stand-in (${m.pac})`);
+    ok(m.sim.ghosts.filter(g => g.grey).length === 2 && m.view(0).kinds.join() === 'human,cpu,standin,standin', `seed ${seed}: two grey ghosts, kinds in the view`);
+  }
+  const gh = new Match(i => i === 0, 3, { kinds: ['human', 'standin', 'cpu', 'standin'], start: 'ghost' }); gh.start();
+  ok(gh.pac === 2, 'starting as a ghost, the computer player is Pac-Man rather than a stand-in');
+  const mixed = new Match(i => i === 0, 3, { kinds: ['human', 'cpu', 'cpu', 'standin'], start: 'pac' }); mixed.start();
+  const gi3 = mixed.Sim.ghostIndexOf(mixed.sim, 3);
+  ok(mixed.sim.ghosts[gi3].grey && mixed.sim.ghosts.filter(g => g.grey).length === 1, 'only the stand-in seat is grey');
 }
 console.log(fails ? fails + ' FAILED' : 'match flow ok'); process.exit(fails ? 1 : 0);

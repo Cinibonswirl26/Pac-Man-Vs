@@ -252,7 +252,7 @@
   function onMsg(m) {
     if (m.t === 'err') { $('menuErr').textContent = m.msg; return; }
     if (m.t === 'room') {
-      mode = 'online'; room = m; you = m.you; setMaze(m.maze); names = m.players.map((p, i) => p.cpu ? (m.fill === 'standin' ? 'Stand-in ' : 'CPU ') + (i + 1) : p.name);
+      mode = 'online'; room = m; you = m.you; setMaze(m.maze); names = m.players.map((p, i) => p.cpu ? kindName(p.kind || m.fill) + ' ' + (i + 1) : p.name);
       if (m.phase === 'lobby') { screen('lobby'); renderLobby(); } else showGame();
       return;
     }
@@ -270,24 +270,29 @@
   }
   function renderLobby() {
     $('roomCode').textContent = room.code;
-    $('seats').innerHTML = room.players.map((p, i) => `<div class="seat ${i === you ? 'me' : ''}"><span class="dot" style="background:${SEAT_COLORS[i]}"></span><b>${esc(p.cpu ? (room.fill === 'standin' ? 'Stand-in' : 'CPU') : p.name)}</b><span class="note">${i === you ? '(you)' : ''}${i === room.host ? ' host' : ''}</span></div>`).join('');
     const host = room.host === you;
+    // an empty seat: the host picks what plays it, everyone else sees the choice
+    const pick = (i, k) => `<select class="kindSel" data-seat="${i}" aria-label="Seat ${i + 1}"><option value="standin"${k === 'standin' ? ' selected' : ''}>Stand-in ghost</option><option value="cpu"${k === 'cpu' ? ' selected' : ''}>Computer player</option></select>`;
+    $('seats').innerHTML = room.players.map((p, i) => `<div class="seat ${i === you ? 'me' : ''}"><span class="dot" style="background:${SEAT_COLORS[i]}"></span>${p.cpu ? (host ? pick(i, p.kind || room.fill) : '<b>' + kindName(p.kind || room.fill) + '</b>') : '<b>' + esc(p.name) + '</b>'}<span class="note">${i === you ? '(you)' : ''}${i === room.host ? ' host' : ''}</span></div>`).join('');
+    for (const sel of document.querySelectorAll('#seats .kindSel')) sel.onchange = () => send({ t: 'seat', i: +sel.dataset.seat, kind: sel.value });
     $('start').classList.toggle('hidden', !host);
     $('lobbyNote').textContent = host ? 'You are the host. Start whenever everyone is in.' : 'Waiting for the host to start.';
   }
   /** The colour seat ghost i wears right now (-1 = a grey stand-in): its player's, or the colour of the ghost that woke it. */
   const gcolor = i => { const c = snap.ghosts[i] && snap.ghosts[i].c; return c == null ? S.playerOfGhost(snap, i) : c; };
-  // seats nobody is playing, when they are grey stand-ins rather than computer players
-  const standins = () => [0, 1, 2, 3].map(i => snap.fill === 'standin' && !!snap.human && !snap.human[i]);
+  // seats played by a grey stand-in ghost rather than a person or a computer player
+  const standins = () => snap.kinds ? snap.kinds.map(k => k === 'standin') : [0, 1, 2, 3].map(i => snap.fill === 'standin' && !!snap.human && !snap.human[i]);
+  const kindName = k => k === 'standin' ? 'Stand-in' : 'CPU';
+  const seatKinds = () => ['human', $('kind1').value, $('kind2').value, $('kind3').value];
   const gcss = i => { const c = gcolor(i); return c < 0 ? GREY : SEAT_COLORS[c]; };
   const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   $('solo').onclick = () => {
-    audio(); const opts = { start: $('soloRole').value, level: +$('soloLevel').value, target: +$('target').value, maze: mazeOf(), fill: $('fillSel').value };
-    store.set('pacvs.solo', JSON.stringify({ start: opts.start, level: opts.level, target: opts.target, fill: opts.fill })); store.set('pacvs.maze', $('mazeSel').value); startOffline(opts);
+    audio(); const opts = { start: $('soloRole').value, level: +$('soloLevel').value, target: +$('target').value, maze: mazeOf(), kinds: seatKinds() };
+    store.set('pacvs.solo', JSON.stringify({ start: opts.start, level: opts.level, target: opts.target, kinds: opts.kinds })); store.set('pacvs.maze', $('mazeSel').value); startOffline(opts);
   };
-  $('host').onclick = () => { audio(); $('menuErr').textContent = ''; store.set('pacvs.maze', $('mazeSel').value); connect(() => send({ t: 'create', name: playerName(), maze: mazeOf(), target: +$('target').value, fill: $('fillSel').value })); };
+  $('host').onclick = () => { audio(); $('menuErr').textContent = ''; store.set('pacvs.maze', $('mazeSel').value); connect(() => send({ t: 'create', name: playerName(), maze: mazeOf(), target: +$('target').value, kinds: seatKinds() })); };
   $('join').onclick = () => {
     audio(); const c = $('code').value.trim().toUpperCase();
     if (c.length !== 4) { $('menuErr').textContent = 'Room codes have 4 letters.'; return; }
@@ -318,8 +323,8 @@
     if (opts) soloOpts = opts;
     setMaze(soloOpts.maze);
     mode = 'offline'; you = 0; room = null;
-    const cpuName = soloOpts.fill === 'standin' ? 'Stand-in' : 'CPU';
-    names = [playerName(), cpuName + ' 1', cpuName + ' 2', cpuName + ' 3'];
+    const kinds = soloOpts.kinds || ['human', 'standin', 'standin', 'standin'];
+    names = [playerName(), ...[1, 2, 3].map(i => kindName(kinds[i]) + ' ' + i)];
     offline = { match: new PacMatch.Match(i => i === 0, undefined, soloOpts), inputs: [null, null, null, null], acc: 0, last: performance.now() };
     offline.match.start(); snap = offline.match.view(0); showGame();
   }
@@ -732,7 +737,7 @@
 
   // ------------------------------------------------------------------ boot
   $('name').value = store.get('pacvs.name') || '';
-  try { const o = JSON.parse(store.get('pacvs.solo') || 'null'); if (o) { $('soloRole').value = o.start; $('soloLevel').value = String(o.level); $('target').value = String(o.target); if (o.fill) $('fillSel').value = o.fill; } } catch { /* defaults */ }
+  try { const o = JSON.parse(store.get('pacvs.solo') || 'null'); if (o) { $('soloRole').value = o.start; $('soloLevel').value = String(o.level); $('target').value = String(o.target); if (o.kinds) [1, 2, 3].forEach(i => { if (o.kinds[i] === 'cpu' || o.kinds[i] === 'standin') $('kind' + i).value = o.kinds[i]; }); else if (o.fill === 'cpu') [1, 2, 3].forEach(i => { $('kind' + i).value = 'cpu'; }); } } catch { /* defaults */ }
   const qr = new URLSearchParams(location.search).get('room');
   if (qr) { $('code').value = qr.toUpperCase().slice(0, 4); $('menuErr').textContent = 'Enter your name and press Join to enter room ' + $('code').value + '.'; }
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });

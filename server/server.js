@@ -30,16 +30,25 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 2048 });
 const rooms = new Map();
 
 class Room {
-  constructor(code, maze, target, fill) {
+  constructor(code, maze, target, fill, kinds) {
     this.code = code; this.maze = maze || null; this.target = target; this.fill = fill === 'standin' ? 'standin' : 'cpu';
-    this.slots = [null, null, null, null];      // ws or null (CPU)
+    this.slots = [null, null, null, null];      // ws or null (played by the computer)
+    // what plays a seat nobody sits in: a computer player ('cpu') or a grey stand-in ghost ('standin'); the host may change it
+    this.kinds = [0, 1, 2, 3].map(i => Room.kind(kinds && kinds[i], this.fill));
     this.names = ['CPU', 'CPU', 'CPU', 'CPU'];
     this.host = -1;
     this.inputs = [null, null, null, null];
-    this.match = new Match(i => !!this.slots[i], undefined, { maze: this.maze, target: this.target, fill: this.fill });
+    this.match = new Match(i => !!this.slots[i], undefined, { maze: this.maze, target: this.target, fill: this.fill, kinds: this.kinds });
     this.timer = null;
   }
+  static kind(k, dflt) { return k === 'standin' || k === 'cpu' ? k : dflt; }
   humans() { return this.slots.filter(Boolean).length; }
+  /** The host picks what plays an empty seat, between matches. */
+  setKind(i, k) {
+    if (!Number.isInteger(i) || i < 0 || i > 3 || this.slots[i] || (k !== 'standin' && k !== 'cpu')) return false;
+    if (this.match.phase !== 'lobby' && this.match.phase !== 'final') return false;
+    this.kinds[i] = k; this.broadcastRoom(); return true;
+  }
   add(ws, name) {
     const i = this.slots.indexOf(null);
     if (i < 0) return -1;
@@ -59,7 +68,7 @@ class Room {
   roomInfo(i) {
     const m = this.match;
     return { t: 'room', code: this.code, maze: this.maze ? { name: this.maze.name, rows: this.maze.rows, pac: this.maze.pac, ghosts: this.maze.ghosts, door: this.maze.door, exit: this.maze.exit, house: this.maze.house } : null, you: i, host: this.host, phase: m.phase,
-      players: this.names.map((n, k) => ({ name: n, cpu: !this.slots[k] })), scores: m.scores, round: m.round, target: m.target, pac: m.pac, winner: m.winner, fill: this.fill };
+      players: this.names.map((n, k) => ({ name: n, cpu: !this.slots[k], kind: this.slots[k] ? 'human' : this.kinds[k] })), scores: m.scores, round: m.round, target: m.target, pac: m.pac, winner: m.winner, fill: this.fill, kinds: this.kinds.slice() };
   }
   broadcastRoom() { for (let i = 0; i < 4; i++) this.send(i, this.roomInfo(i)); }
   start() {
@@ -110,7 +119,7 @@ wss.on('connection', ws => {
     switch (m.t) {
       case 'create': {
         if (r) return;
-        const room = new Room(code(), m.maze ? sanitizeMaze(m.maze) : null, Sim.CFG.targets.includes(m.target) ? m.target : Sim.CFG.defaultTarget, m.fill); rooms.set(room.code, room);
+        const room = new Room(code(), m.maze ? sanitizeMaze(m.maze) : null, Sim.CFG.targets.includes(m.target) ? m.target : Sim.CFG.defaultTarget, m.fill, Array.isArray(m.kinds) ? m.kinds : null); rooms.set(room.code, room);
         room.add(ws, clean(m.name)); room.broadcastRoom(); break;
       }
       case 'join': {
@@ -121,6 +130,7 @@ wss.on('connection', ws => {
         room.broadcastRoom(); break;
       }
       case 'start': if (r && r.host === ws.slot) r.start(); break;
+      case 'seat': if (r && r.host === ws.slot) r.setKind(m.i, m.kind); break;
       case 'in': if (r && Number.isInteger(m.d) && m.d >= 0 && m.d <= 3) r.inputs[ws.slot] = m.d; break;
       case 'ready': if (r && r.match.ready(ws.slot)) { r.inputs = [null, null, null, null]; r.broadcastRoom(); } break;
       case 'leave': if (r) r.remove(ws); break;
