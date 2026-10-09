@@ -36,29 +36,53 @@ const LV = S.create(A.apply(S.BUILTIN, A.byId('arr:0')));
 const put = (e, x, y, d) => { e.x = x + 0.5; e.y = y + 0.5; e.dir = e.want = d == null ? e.dir : d; };
 const park = s => { s.ghosts.forEach(g => put(g, 11, 6, 1)); };     // ghosts out of the way, in the top corridor
 const run = (s, n, inp) => { for (let i = 0; i < n; i++) LV.update(s, inp || idle); };
-// 3. A dash arrow fires once, only when crossed in its own direction; the dash is 2.5x, steered as usual, and runs out after dashCells
+// 3. A dash arrow fires once, only when crossed in its own direction; the dash is momentum: a 4x launch that fades,
+//    steered as usual (a turn costs some), braked by the opposite direction, and stopped dead by a wall (a bonk)
 {
+  const inp = d => ({ pac: d, ghosts: [null, null, null] });
   const s = LV.newRound([1600, 0, 0, 0], 0); park(s);
-  put(s.pac, 2, 4, 3); run(s, 40, { pac: 3, ghosts: [null, null, null] });                 // onto the arrow at (1,4) from the right: against it
+  put(s.pac, 2, 4, 3); run(s, 40, inp(3));                                                // onto the arrow at (1,4) from the right: against it
   ok(!s.pac.dash && Math.floor(s.pac.x) === 1 && !s.events.includes('dash'), 'walking onto an arrow against its direction does nothing');
-  let t = 0; while (!s.pac.dash && t++ < 40) LV.update(s, { pac: 1, ghosts: [null, null, null] });   // now leave it the arrow's way
+  let t = 0; while (!s.pac.dash && t++ < 40) LV.update(s, inp(1));                       // now leave it the arrow's way
   ok(s.pac.dash > 0 && s.pac.dir === 1 && s.events.includes('dash') && s.padsUsed[0] === 1, 'leaving the arrow in its direction fires the dash and uses the arrow up');
-  const x0 = s.pac.x; run(s, 15, { pac: 1, ghosts: [null, null, null] });
-  const v = (s.pac.x - x0) / (15 * S.CFG.tick);
-  ok(near(v, S.CFG.pacSpeed * S.CFG.dashMult, 0.3), `dashing at ${v.toFixed(2)} cells/s, expected ${(S.CFG.pacSpeed * S.CFG.dashMult).toFixed(2)}`);
-  t = 0; while (s.pac.dash && s.pac.x < 6.2 && t++ < 60) LV.update(s, { pac: 1, ghosts: [null, null, null] });   // Down held before the (7,4) junction
-  run(s, 8, { pac: 2, ghosts: [null, null, null] });
+  ok(near(s.pac.dash, S.CFG.dashMult, 0.1), `the dash launches at ${s.pac.dash.toFixed(2)} times walking speed`);
+  const x0 = s.pac.x, d0 = s.pac.dash; run(s, 3, inp(1));
+  const v = (s.pac.x - x0) / (3 * S.CFG.tick);
+  ok(near(v, S.CFG.pacSpeed * S.CFG.dashMult, 0.6) && s.pac.dash < d0 && s.pac.dash > d0 - 0.2, `dashing at ${v.toFixed(2)} cells/s, expected about ${(S.CFG.pacSpeed * S.CFG.dashMult).toFixed(2)}, fading slowly (${s.pac.dash.toFixed(2)})`);
+  t = 0; while (s.pac.dash && s.pac.x < 6.2 && t++ < 60) LV.update(s, inp(1));          // Down held before the (7,4) junction
+  const before = s.pac.dash; run(s, 8, inp(2));
   ok(s.pac.dash > 0 && s.pac.dir === 2 && Math.floor(s.pac.x) === 7 && s.pac.y > 4.6, `steering works during the dash (${s.pac.x.toFixed(2)},${s.pac.y.toFixed(2)})`);
-  const s2 = LV.newRound([1600, 0, 0, 0], 0); park(s2); put(s2.pac, 1, 13, 1); LV.update(s2, { pac: 1, ghosts: [null, null, null] });
+  ok(s.pac.dash < before * S.CFG.dashTurnKeep && s.pac.turned, `the turn costs momentum: ${before.toFixed(2)} -> ${s.pac.dash.toFixed(2)}`);
+  run(s, 20, inp(2));
+  ok(!s.pac.dash && !s.pac.bonk, 'after a turn the rest fades out within two thirds of a second');
+  // a straight run fades by itself before the far wall of row 13 (open from x=1 to x=21)
+  const s2 = LV.newRound([1600, 0, 0, 0], 0); park(s2); put(s2.pac, 1, 13, 1); LV.update(s2, inp(1));
   ok(s2.pac.dash > 0, 'the arrow at (1,13) fires for Pac-Man walking right');
-  let n = 0; while (s2.pac.dash && n++ < 400) LV.update(s2, { pac: 1, ghosts: [null, null, null] });
-  ok(!s2.pac.dash && near(s2.pac.x - 1.5, S.CFG.dashCells, 1.5), `the dash runs out after about ${S.CFG.dashCells} cells (${(s2.pac.x - 1.5).toFixed(1)})`);
+  let n = 0; while (s2.pac.dash && n++ < 400) LV.update(s2, inp(1));
+  const ran = s2.pac.x - 1.5;
+  ok(!s2.pac.dash && !s2.pac.bonk && ran > 14 && ran < 20, `a straight dash fades out after about 17 cells (${ran.toFixed(1)}) in ${(n * S.CFG.tick).toFixed(2)} s`);
   ok(!LV.view(s2, 0).ghosts[0].ds && LV.view(s2, 0).padsOff.includes(2), 'the view lists the used-up arrow');
-  put(s2.pac, 2, 13, 3); run(s2, 40, { pac: 3, ghosts: [null, null, null] }); t = 0; while (t++ < 30) LV.update(s2, { pac: 1, ghosts: [null, null, null] });
+  put(s2.pac, 2, 13, 3); run(s2, 40, inp(3)); t = 0; while (t++ < 30) LV.update(s2, inp(1));
   ok(!s2.pac.dash, 'a used arrow never fires again');
-  const s3 = LV.newRound([1600, 0, 0, 0], 0); park(s3); put(s3.pac, 1, 4, 1); LV.update(s3, { pac: 1, ghosts: [null, null, null] });
-  run(s3, 120, { pac: 2, ghosts: [null, null, null] });                                    // dashing, then into a dead end going down
-  ok(!s3.pac.dash, 'a wall ends the dash early');
+  // the opposite direction brakes: Pac-Man keeps going for a few ticks, slowing, then walks back
+  const s4 = LV.newRound([1600, 0, 0, 0], 0); park(s4); put(s4.pac, 1, 13, 1); LV.update(s4, inp(1)); run(s4, 5, inp(1));
+  const xb = s4.pac.x, db = s4.pac.dash; LV.update(s4, inp(3));
+  ok(s4.pac.dash > 0 && s4.pac.dash < db - 0.3 && s4.pac.dir === 1 && s4.pac.x > xb, `holding the opposite direction brakes hard (${db.toFixed(2)} -> ${s4.pac.dash.toFixed(2)}) without reversing yet`);
+  t = 0; while (s4.pac.dash && t++ < 30) LV.update(s4, inp(3));
+  ok(t <= 8 && !s4.pac.dash && !s4.pac.bonk, `the brake spends the dash in ${t} ticks`);
+  const xr = s4.pac.x; run(s4, 5, inp(3));
+  ok(s4.pac.dir === 3 && s4.pac.x < xr && near((xr - s4.pac.x) / (5 * S.CFG.tick), S.CFG.pacSpeed, 0.5), 'then he walks back at walking speed');
+  // a wall: the bonk
+  const s3 = LV.newRound([1600, 0, 0, 0], 0); park(s3); put(s3.pac, 16, 13, 1); s3.pac.dash = S.CFG.dashMult;   // mid-dash, five cells from the right wall
+  t = 0; while (!s3.pac.bonk && t++ < 60) LV.update(s3, inp(1));
+  ok(!s3.pac.dash && near(s3.pac.bonk, S.CFG.bonkTime, 0.05) && s3.events.includes('bonk') && LV.view(s3, 0).pac.bk > 0 && s3.pac.x === 21.5, `a wall ends the dash with a bonk (dizzy ${s3.pac.bonk && s3.pac.bonk.toFixed(2)} s)`);
+  const xw = s3.pac.x, yw = s3.pac.y; run(s3, 6, inp(0));
+  ok(s3.pac.x === xw && s3.pac.y === yw && s3.pac.bonk > 0, 'nothing moves him while dizzy');
+  run(s3, 12, inp(0));
+  ok(!s3.pac.bonk && s3.pac.y < yw, 'then he walks off again');
+  const s5 = LV.newRound([1600, 0, 0, 0], 0); park(s5); put(s5.pac, 16, 13, 1); s5.pac.dash = S.CFG.dashMult;   // the same corner with Up held: the turn is taken, no bonk
+  t = 0; while (s5.pac.dir !== 0 && t++ < 60) LV.update(s5, inp(0));
+  ok(s5.pac.dir === 0 && !s5.pac.bonk && s5.pac.dash > 0, 'a wanted turn at the corner is taken instead of bonking');
 }
 // 4. A dashing Pac-Man knocks a normal ghost dizzy instead of being caught; a frightened one in the way is eaten
 {

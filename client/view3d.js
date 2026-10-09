@@ -198,7 +198,7 @@
       const gone = dying >= D.spin + D.shrink && dying < D.flatAt, flat = dying >= D.flatAt;
       if (v.pac && v.pac.x < v.W && !gone) {     // out of sight in the hidden part of the tunnel otherwise
         let yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0, scale = 1;
-        if (v.pac.ds) yaw += v.time * 24;             // a dasher spins
+        if (v.pac.ds >= 2) yaw += v.time * 24;        // a dasher spins while the dash is strong
         if (dying >= 0 && !flat) { yaw += Math.min(dying, D.spin + D.shrink) / D.spin * 2 * Math.PI; scale = dying < D.spin ? 1 : Math.max(0.001, 1 - (dying - D.spin) / D.shrink); }
         let pm = squash(m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380) + lift(v.pac), wz(v.pac.y), yaw, scale), v.pac);
         if (flat) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
@@ -243,14 +243,14 @@
           if (g.m === 'e') skin = skins.toumei;
           opts = { textures: { ghost_r: skin, 'ghost_eye.0': eyes[blink] } };
         }
-        R.draw(ghost, squash(m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw + (g.ds ? v.time * 24 : 0), scale), g), opts);
+        R.draw(ghost, squash(m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw + (g.ds >= 2 ? v.time * 24 : 0), scale), g), opts);
       }
       // the dust of a dash (white puffs growing and fading behind the dasher) and the green sparks of its launch
       if (v.dust) for (const d of v.dust) { const k = 0.95 - 0.6 * d.age; R.sprites(puff, [[wx(d.x), fl + 200 + 150 * d.age, wz(d.y), 220 + 300 * d.age]], [k, k, k, 1]); }
-      if (v.sparks) for (const sp of v.sparks) { const pts = []; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.4, r = 200 + 900 * sp.age; pts.push([wx(sp.x) + Math.cos(a) * r, fl + 300 + 500 * sp.age, wz(sp.y) + Math.sin(a) * r, 160 * (1 - sp.age) + 20]); } R.sprites(star, pts, [0.35, 1, 0.45, 1]); }
+      if (v.sparks) for (const sp of v.sparks) { const pts = []; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.4, r = 200 + 900 * sp.age; pts.push([wx(sp.x) + Math.cos(a) * r, fl + 300 + 500 * sp.age, wz(sp.y) + Math.sin(a) * r, (sp.star ? 260 : 160) * (1 - sp.age) + 20]); } R.sprites(star, pts, sp.star ? [1, 1, 1, 1] : [0.35, 1, 0.45, 1]); }
       // dizzy (knocked aside by a dash): three stars circling over the ghost
       const stars = [];
-      for (const g of v.ghosts) if (g.st > 0 && g.x < v.W) for (let k = 0; k < 3; k++) { const a = v.time * 5 + k * 2.1; stars.push([wx(g.x) + Math.cos(a) * 380, fl + 900 + 60 * Math.sin(a * 2), wz(g.y) + Math.sin(a) * 380, 200]); }
+      for (const g of [...v.ghosts, v.pac]) if (g && (g.st > 0 || g.bk > 0) && g.x < v.W) for (let k = 0; k < 3; k++) { const a = v.time * 5 + k * 2.1; stars.push([wx(g.x) + Math.cos(a) * 380, fl + 900 + 60 * Math.sin(a * 2), wz(g.y) + Math.sin(a) * 380, 200]); }
       if (stars.length) R.sprites(star, stars);
       // where a point on the floor lands in the view: -1..1 across and up the square
       const vp = m4.mul(proj, view);

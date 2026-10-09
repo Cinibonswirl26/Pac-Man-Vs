@@ -52,9 +52,13 @@
     targets: [7000, 10000, 15000], defaultTarget: 7000,
     // Arrangement levels only (shared/arrange.js). From the 1996 arcade game's demo: a dash runs at about 2.5-3 times
     // walking speed; from the handheld port played in an emulator: an arrow fires once, only when crossed in its own
-    // direction, you keep steering during the dash, the dash covers about 20 cells, and a ghost hit by a dashing
-    // Pac-Man stands dizzy for about 5 s; a jump takes about two thirds of a second.
-    dashMult: 2.5, dashCells: 20, stunTime: 5, jumpTime: 0.6,
+    // direction, you keep steering during the dash, and a ghost hit by a dashing Pac-Man stands dizzy for about 5 s;
+    // a jump takes about two thirds of a second. The dash itself is a burst of momentum, measured on the handheld
+    // port of the arcade game (cells of 8 px, walking 65 px/s there): it launches at about 4 times walking speed and
+    // fades slowly on a straight (about 1.5 walking speeds per second); a turn keeps about 65% of it and then it
+    // fades fast (about 4 walking speeds per second); holding the opposite direction brakes hard (about 17 walking
+    // speeds per second), then you walk back; a wall stops it dead with a bonk that leaves you dizzy for 0.4 s.
+    dashMult: 4, dashDecay: 1.5, dashTurnKeep: 0.65, dashTurnDecay: 4, dashBrake: 17, bonkTime: 0.4, stunTime: 5, jumpTime: 0.6,
     // Capsules appear where the fruit does; which one (or the fruit) is a weighted draw. Red: double speed for 10 s;
     // cyan: a mirror clone for 10 s; pink: every ghost into the pot in the house for 4 s (a ghost taking it hops
     // about instead); orange: pellets digested without pausing for 10 s (a ghost drops big pellets that slow
@@ -114,9 +118,9 @@
     return Object.assign({
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
+      pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
-      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, air: null, onPad: -1, stun: 0, speedLeft: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, speedLeft: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
@@ -205,7 +209,7 @@
     return n;
   }
   /** On a pad's cell. A dash arrow fires once per round, for whoever crosses it moving in the arrow's own direction:
-   *  the entity is hurled on at dashMult speed for dashCells cells (steering as usual; a wall ends it early). A jump
+   *  the entity is hurled on at dashMult times its speed (see moveEnt for how that fades). A jump
    *  pad launches the entity towards its partner pad and does not fire again until the cell has been left. */
   function padCheck(s, e, who) {
     if (!ARR || e.x >= W || e.air) return;
@@ -217,20 +221,33 @@
     const pad = PADS[k];
     if (pad.kind === 'dash') {
       if (s.padsUsed[k] || e.dir !== pad.dir || !e.moved) return;
-      s.padsUsed[k] = 1; e.dash = CFG.dashCells; s.events.push('dash');
+      s.padsUsed[k] = 1; e.dash = CFG.dashMult; e.turned = false; s.events.push('dash');
     } else if (fresh) {
       const to = PADS[pad.pair];
       e.x = pad.x + 0.5; e.y = pad.y + 0.5;
       e.air = { x0: e.x, y0: e.y, x1: to.x + 0.5, y1: to.y + 0.5, t: 0, dur: CFG.jumpTime, to: pad.pair }; s.events.push('jump');
     }
   }
-  /** Walking; a dash is faster, steered as usual, and runs out after its distance or at the first wall. */
-  function moveEnt(e, speed, dt, who) {
-    if (e.dash) speed *= CFG.dashMult;
-    const x0 = e.x, y0 = e.y;
-    step(e, speed, dt, who);
+  /** Walking; a dash (e.dash, the current multiple of walking speed) is momentum that fades: slowly on a straight,
+   *  fast once you have turned (the turn itself costs a third of it), hard while the opposite direction is held (no
+   *  reversing until it is spent, then you walk back). It ends once it is down to walking pace, or at a wall: a bonk
+   *  that leaves you dizzy for bonkTime (a wanted turn at the corner is taken instead). */
+  function moveEnt(s, e, speed, dt, who) {
+    const x0 = e.x, y0 = e.y, d0 = e.dir;
+    if (e.dash) {
+      const braking = e.want === OPP[e.dir];
+      e.dash -= (braking ? CFG.dashBrake : e.turned ? CFG.dashTurnDecay : CFG.dashDecay) * dt;
+      if (e.dash <= 1) { e.dash = 0; e.turned = false; }
+    }
+    if (e.dash) {
+      const want = e.want; if (want === OPP[e.dir]) e.want = e.dir;
+      step(e, speed * e.dash, dt, who);
+      e.want = want;
+      if (e.dir !== d0) { e.dash *= CFG.dashTurnKeep; e.turned = true; }
+      if (atCentreOf(e) && !canGo(e, e.dir, who) && !(e.want !== e.dir && canGo(e, e.want, who))) { e.dash = 0; e.turned = false; e.bonk = CFG.bonkTime; s.events.push('bonk'); }
+      e.px = x0; e.py = y0;
+    } else step(e, speed, dt, who);
     e.moved = e.x !== x0 || e.y !== y0;
-    if (e.dash) { e.dash = e.moved ? Math.max(0, e.dash - speed * dt) : 0; e.px = x0; e.py = y0; }
   }
   /** Whether a dasher's last step (a straight run from px,py to x,y, up to two thirds of a cell) passed within
    *  catchDist of `b`: at dash speed a plain end-of-tick distance check can miss a body it ran straight through. */
@@ -284,7 +301,7 @@
   function potGhosts(s) {
     for (const g of s.ghosts) {
       if (g.mode === 'eyes' || g.grey) continue;
-      g.x = DOOR[0] + 0.5; g.y = HOUSE.y0 + 0.5; g.dir = g.want = 0; g.mode = 'normal'; g.dash = 0; g.air = null; g.clone = null; g.potted = true; g.onPad = -1;
+      g.x = DOOR[0] + 0.5; g.y = HOUSE.y0 + 0.5; g.dir = g.want = 0; g.mode = 'normal'; g.dash = 0; g.bonk = 0; g.air = null; g.clone = null; g.potted = true; g.onPad = -1;
     }
     s.pot = CFG.potTime; s.events.push('pot');
   }
@@ -325,7 +342,7 @@
     s.big[j] = 1; g.dropped++;
   }
   /** Whether a ghost is out of play for touching anything: in the air, dizzy or in the pot. */
-  const outOfPlay = g => g.air || g.stun > 0 || g.potted;
+  const outOfPlay = g => g.air || g.stun > 0 || g.bonk > 0 || g.potted;
 
   function award(s, player, pts) {
     s.scores[player] += pts; s.roundScores[player] += pts;
@@ -386,10 +403,11 @@
     // Pac-Man
     if (inputs.pac != null) s.pac.want = inputs.pac;
     if (s.pac.air) flyStep(s, s.pac, 'pac', dt);
+    else if (s.pac.bonk > 0) s.pac.bonk = Math.max(0, s.pac.bonk - dt);     // dizzy against a wall: going nowhere
     else {
       const held = s.pac.dash ? 0 : Math.min(dt, s.pac.pause || 0);          // time still owed to the last pellet (a dash owes nothing)
       s.pac.pause = s.pac.dash ? 0 : (s.pac.pause || 0) - held;
-      moveEnt(s.pac, CFG.pacSpeed * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt - held, 'pac');
+      moveEnt(s, s.pac, CFG.pacSpeed * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt - held, 'pac');
       padCheck(s, s.pac, 'pac');
     }
     if (!s.pac.air && s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
@@ -421,6 +439,7 @@
       }
       if (g.air) { flyStep(s, g, 'ghost', dt); if (ARR) moveClone(g); continue; }          // in the air: out of play until it lands
       if (g.stun > 0) { g.stun = Math.max(0, g.stun - dt); continue; }   // knocked dizzy by a dash: cannot move, catch or take anything
+      if (g.bonk > 0) { g.bonk = Math.max(0, g.bonk - dt); continue; }   // dizzy from its own dash into a wall: the same
       if (g.potted) continue;                                            // held in the pot
       if (g.hopLeft > 0 && inputs.hop && inputs.hop[i] && !g.grey) {       // the hop, on its player's button: off to a random cell
         const t = hopTarget(s);
@@ -428,7 +447,7 @@
       }
       const inp = inputs.ghosts[i];
       if (inp != null) g.want = inp;
-      moveEnt(g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1) * (g.speedLeft > 0 ? CFG.speedMult : 1), dt, 'ghost');
+      moveEnt(s, g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1) * (g.speedLeft > 0 ? CFG.speedMult : 1), dt, 'ghost');
       padCheck(s, g, 'ghost');
       if (ARR) { moveClone(g); if (g.dropLeft > 0) dropBig(s, g); }
       if (g.grey || g.air) continue;              // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
@@ -541,11 +560,13 @@
     return out;
   }
   function q(e) { return { x: Math.round(e.x * 100) / 100, y: Math.round(e.y * 100) / 100, d: e.dir }; }
-  /** The Arrangement extras of an entity, only the ones in play: a (airborne: from, to, progress), ds (dashing), st (dizzy, seconds left). */
+  /** The Arrangement extras of an entity, only the ones in play: a (airborne: from, to, progress), ds (dashing: the speed multiple
+   *  left), bk (bonked a wall: seconds of dizziness left), st (knocked dizzy: seconds left). */
   function qa(e) {
     const o = {};
     if (e.air) o.a = [e.air.x0, e.air.y0, e.air.x1, e.air.y1, Math.round(Math.min(1, e.air.t / e.air.dur) * 100) / 100];
-    if (e.dash) o.ds = Math.round(e.dash * 10) / 10;
+    if (e.dash) o.ds = Math.round(e.dash * 100) / 100;
+    if (e.bonk > 0) o.bk = Math.round(e.bonk * 100) / 100;
     if (e.stun > 0) o.st = Math.round(e.stun * 100) / 100;
     if (e.speedLeft > 0) o.sp = Math.round(e.speedLeft * 100) / 100;
     if (e.digest > 0) o.dg = Math.round(e.digest * 100) / 100;
@@ -623,7 +644,7 @@
   function cpuPac(s, rng, level) {
     level = level == null ? 1 : level;
     const p = s.pac;
-    if (p.air) return null;                           // no steering in the air
+    if (p.air || p.bonk > 0) return null;             // no steering in the air or while dizzy against a wall
     // Emergency: a dangerous ghost closing head-on in this corridor, reverse right now.
     for (const g of s.ghosts) {
       if (g.mode !== 'normal' || g.grey) continue;
@@ -761,7 +782,7 @@
     level = level == null ? 1 : level;
     const g = s.ghosts[gi];
     if (g.mode === 'eyes') return null;           // eaten ghosts steer themselves
-    if (g.air || g.stun > 0 || g.potted) return null;   // no steering in the air, while dizzy or in the pot
+    if (g.air || g.stun > 0 || g.bonk > 0 || g.potted) return null;   // no steering in the air, while dizzy or in the pot
     if (!atCentre(g)) return null;
     // Just revived: out through the door
     const gx = Math.floor(g.x), gy = Math.floor(g.y);

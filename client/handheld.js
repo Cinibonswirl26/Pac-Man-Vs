@@ -198,9 +198,11 @@
       else {
         const phase = st.pac.moving ? Math.floor(fr / 2) % 4 : (fr % 16 < 12 ? 0 : 1);
         base = phase === 0 ? 0 : PAC_FRAMES[st.pac.d][phase - 1];
-        if (st.pac.ds) base = PAC_FRAMES[[0, 1, 2, 3][Math.floor(fr / 2) % 4]][2];     // a dasher spins: wide open, facing round in turn
+        if (st.pac.ds >= 2) base = PAC_FRAMES[[0, 1, 2, 3][Math.floor(fr / 2) % 4]][2];     // a dasher spins while the dash is strong: wide open, facing round in turn
+        else if (st.pac.bk > 0) base = 0;                                                  // bonked a wall: a round ball
       }
       sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y) - lift(st.pac), 0, st.pac.sq);
+      if (st.pac.bk > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(st.pac.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(st.pac.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     }
     st.ghosts.forEach(g => {
       if (g.m === 'r') return;
@@ -211,15 +213,15 @@
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
         badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
-      else sprite16(sprites, GHOST_BASE[g.ds ? Math.floor(fr / 2) % 4 : g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0, g.sq);
-      if (g.st > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(g.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(g.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
+      else sprite16(sprites, GHOST_BASE[g.ds >= 2 ? Math.floor(fr / 2) % 4 : g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0, g.sq);
+      if (g.st > 0 || g.bk > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(g.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(g.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     });
     if (st.fruit && st.fruit.k && st.fruit.k !== 'fruit') sprites.push({ pix: PILL, palette: PAL.pill[st.fruit.k] || PAL.pill.gold, x: sx(st.fruit.x) + 4, y: sy(st.fruit.y) + 4, hf: 0, vf: 0 });
     else if (st.fruit) sprite16(sprites, CHERRY, 1, sx(st.fruit.x), sy(st.fruit.y), 0);
     for (const i of st.big || []) sprites.push({ pix: BIGDOT, palette: PAL.big, x: sx((i % st.W) + 0.5) + 4, y: sy(Math.floor(i / st.W) + 0.5) + 4, hf: 0, vf: 0 });
     padSprites(sprites, st.pads, sx, sy);
     for (const d of st.dust || []) sprites.push({ pix: PUFF[Math.min(2, Math.floor(d.age * 3))], palette: PAL.dust, x: sx(d.x) + 4, y: sy(d.y) + 4, hf: 0, vf: 0 });
-    for (const sp of st.sparks || []) { const r = Math.round(2 + 8 * sp.age); for (const [ox, oy] of [[-r, -r], [r, -r], [-r, r], [r, r]]) badges.push({ pix: SPARK, palette: PAL.spark, x: sx(sp.x) + 4 + ox, y: sy(sp.y) + 4 + oy, hf: ox > 0 ? 1 : 0, vf: oy > 0 ? 1 : 0 }); }
+    for (const sp of st.sparks || []) { const r = Math.round(2 + 8 * sp.age); for (const [ox, oy] of [[-r, -r], [r, -r], [-r, r], [r, r]]) badges.push({ pix: sp.star ? STAR : SPARK, palette: sp.star ? PAL.star : PAL.spark, x: sx(sp.x) + 4 + ox, y: sy(sp.y) + 4 + oy, hf: ox > 0 ? 1 : 0, vf: oy > 0 ? 1 : 0 }); }
     // sprite16 pushed in draw-priority order (Pac first); the picture draws the last one first
     sprites.push(...badges);
     // score popups float over the spot: [{x, y, text}]; the digits sit 4 pixels apart

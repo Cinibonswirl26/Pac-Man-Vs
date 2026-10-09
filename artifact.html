@@ -193,9 +193,13 @@ body { background: var(--bg); color: var(--ink); }
     targets: [7000, 10000, 15000], defaultTarget: 7000,
     // Arrangement levels only (shared/arrange.js). From the 1996 arcade game's demo: a dash runs at about 2.5-3 times
     // walking speed; from the handheld port played in an emulator: an arrow fires once, only when crossed in its own
-    // direction, you keep steering during the dash, the dash covers about 20 cells, and a ghost hit by a dashing
-    // Pac-Man stands dizzy for about 5 s; a jump takes about two thirds of a second.
-    dashMult: 2.5, dashCells: 20, stunTime: 5, jumpTime: 0.6,
+    // direction, you keep steering during the dash, and a ghost hit by a dashing Pac-Man stands dizzy for about 5 s;
+    // a jump takes about two thirds of a second. The dash itself is a burst of momentum, measured on the handheld
+    // port of the arcade game (cells of 8 px, walking 65 px/s there): it launches at about 4 times walking speed and
+    // fades slowly on a straight (about 1.5 walking speeds per second); a turn keeps about 65% of it and then it
+    // fades fast (about 4 walking speeds per second); holding the opposite direction brakes hard (about 17 walking
+    // speeds per second), then you walk back; a wall stops it dead with a bonk that leaves you dizzy for 0.4 s.
+    dashMult: 4, dashDecay: 1.5, dashTurnKeep: 0.65, dashTurnDecay: 4, dashBrake: 17, bonkTime: 0.4, stunTime: 5, jumpTime: 0.6,
     // Capsules appear where the fruit does; which one (or the fruit) is a weighted draw. Red: double speed for 10 s;
     // cyan: a mirror clone for 10 s; pink: every ghost into the pot in the house for 4 s (a ghost taking it hops
     // about instead); orange: pellets digested without pausing for 10 s (a ghost drops big pellets that slow
@@ -255,9 +259,9 @@ body { background: var(--bg); color: var(--ink); }
     return Object.assign({
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
+      pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
-      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, air: null, onPad: -1, stun: 0, speedLeft: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, speedLeft: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
@@ -346,7 +350,7 @@ body { background: var(--bg); color: var(--ink); }
     return n;
   }
   /** On a pad's cell. A dash arrow fires once per round, for whoever crosses it moving in the arrow's own direction:
-   *  the entity is hurled on at dashMult speed for dashCells cells (steering as usual; a wall ends it early). A jump
+   *  the entity is hurled on at dashMult times its speed (see moveEnt for how that fades). A jump
    *  pad launches the entity towards its partner pad and does not fire again until the cell has been left. */
   function padCheck(s, e, who) {
     if (!ARR || e.x >= W || e.air) return;
@@ -358,20 +362,33 @@ body { background: var(--bg); color: var(--ink); }
     const pad = PADS[k];
     if (pad.kind === 'dash') {
       if (s.padsUsed[k] || e.dir !== pad.dir || !e.moved) return;
-      s.padsUsed[k] = 1; e.dash = CFG.dashCells; s.events.push('dash');
+      s.padsUsed[k] = 1; e.dash = CFG.dashMult; e.turned = false; s.events.push('dash');
     } else if (fresh) {
       const to = PADS[pad.pair];
       e.x = pad.x + 0.5; e.y = pad.y + 0.5;
       e.air = { x0: e.x, y0: e.y, x1: to.x + 0.5, y1: to.y + 0.5, t: 0, dur: CFG.jumpTime, to: pad.pair }; s.events.push('jump');
     }
   }
-  /** Walking; a dash is faster, steered as usual, and runs out after its distance or at the first wall. */
-  function moveEnt(e, speed, dt, who) {
-    if (e.dash) speed *= CFG.dashMult;
-    const x0 = e.x, y0 = e.y;
-    step(e, speed, dt, who);
+  /** Walking; a dash (e.dash, the current multiple of walking speed) is momentum that fades: slowly on a straight,
+   *  fast once you have turned (the turn itself costs a third of it), hard while the opposite direction is held (no
+   *  reversing until it is spent, then you walk back). It ends once it is down to walking pace, or at a wall: a bonk
+   *  that leaves you dizzy for bonkTime (a wanted turn at the corner is taken instead). */
+  function moveEnt(s, e, speed, dt, who) {
+    const x0 = e.x, y0 = e.y, d0 = e.dir;
+    if (e.dash) {
+      const braking = e.want === OPP[e.dir];
+      e.dash -= (braking ? CFG.dashBrake : e.turned ? CFG.dashTurnDecay : CFG.dashDecay) * dt;
+      if (e.dash <= 1) { e.dash = 0; e.turned = false; }
+    }
+    if (e.dash) {
+      const want = e.want; if (want === OPP[e.dir]) e.want = e.dir;
+      step(e, speed * e.dash, dt, who);
+      e.want = want;
+      if (e.dir !== d0) { e.dash *= CFG.dashTurnKeep; e.turned = true; }
+      if (atCentreOf(e) && !canGo(e, e.dir, who) && !(e.want !== e.dir && canGo(e, e.want, who))) { e.dash = 0; e.turned = false; e.bonk = CFG.bonkTime; s.events.push('bonk'); }
+      e.px = x0; e.py = y0;
+    } else step(e, speed, dt, who);
     e.moved = e.x !== x0 || e.y !== y0;
-    if (e.dash) { e.dash = e.moved ? Math.max(0, e.dash - speed * dt) : 0; e.px = x0; e.py = y0; }
   }
   /** Whether a dasher's last step (a straight run from px,py to x,y, up to two thirds of a cell) passed within
    *  catchDist of `b`: at dash speed a plain end-of-tick distance check can miss a body it ran straight through. */
@@ -425,7 +442,7 @@ body { background: var(--bg); color: var(--ink); }
   function potGhosts(s) {
     for (const g of s.ghosts) {
       if (g.mode === 'eyes' || g.grey) continue;
-      g.x = DOOR[0] + 0.5; g.y = HOUSE.y0 + 0.5; g.dir = g.want = 0; g.mode = 'normal'; g.dash = 0; g.air = null; g.clone = null; g.potted = true; g.onPad = -1;
+      g.x = DOOR[0] + 0.5; g.y = HOUSE.y0 + 0.5; g.dir = g.want = 0; g.mode = 'normal'; g.dash = 0; g.bonk = 0; g.air = null; g.clone = null; g.potted = true; g.onPad = -1;
     }
     s.pot = CFG.potTime; s.events.push('pot');
   }
@@ -466,7 +483,7 @@ body { background: var(--bg); color: var(--ink); }
     s.big[j] = 1; g.dropped++;
   }
   /** Whether a ghost is out of play for touching anything: in the air, dizzy or in the pot. */
-  const outOfPlay = g => g.air || g.stun > 0 || g.potted;
+  const outOfPlay = g => g.air || g.stun > 0 || g.bonk > 0 || g.potted;
 
   function award(s, player, pts) {
     s.scores[player] += pts; s.roundScores[player] += pts;
@@ -527,10 +544,11 @@ body { background: var(--bg); color: var(--ink); }
     // Pac-Man
     if (inputs.pac != null) s.pac.want = inputs.pac;
     if (s.pac.air) flyStep(s, s.pac, 'pac', dt);
+    else if (s.pac.bonk > 0) s.pac.bonk = Math.max(0, s.pac.bonk - dt);     // dizzy against a wall: going nowhere
     else {
       const held = s.pac.dash ? 0 : Math.min(dt, s.pac.pause || 0);          // time still owed to the last pellet (a dash owes nothing)
       s.pac.pause = s.pac.dash ? 0 : (s.pac.pause || 0) - held;
-      moveEnt(s.pac, CFG.pacSpeed * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt - held, 'pac');
+      moveEnt(s, s.pac, CFG.pacSpeed * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt - held, 'pac');
       padCheck(s, s.pac, 'pac');
     }
     if (!s.pac.air && s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
@@ -562,6 +580,7 @@ body { background: var(--bg); color: var(--ink); }
       }
       if (g.air) { flyStep(s, g, 'ghost', dt); if (ARR) moveClone(g); continue; }          // in the air: out of play until it lands
       if (g.stun > 0) { g.stun = Math.max(0, g.stun - dt); continue; }   // knocked dizzy by a dash: cannot move, catch or take anything
+      if (g.bonk > 0) { g.bonk = Math.max(0, g.bonk - dt); continue; }   // dizzy from its own dash into a wall: the same
       if (g.potted) continue;                                            // held in the pot
       if (g.hopLeft > 0 && inputs.hop && inputs.hop[i] && !g.grey) {       // the hop, on its player's button: off to a random cell
         const t = hopTarget(s);
@@ -569,7 +588,7 @@ body { background: var(--bg); color: var(--ink); }
       }
       const inp = inputs.ghosts[i];
       if (inp != null) g.want = inp;
-      moveEnt(g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1) * (g.speedLeft > 0 ? CFG.speedMult : 1), dt, 'ghost');
+      moveEnt(s, g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1) * (g.speedLeft > 0 ? CFG.speedMult : 1), dt, 'ghost');
       padCheck(s, g, 'ghost');
       if (ARR) { moveClone(g); if (g.dropLeft > 0) dropBig(s, g); }
       if (g.grey || g.air) continue;              // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
@@ -682,11 +701,13 @@ body { background: var(--bg); color: var(--ink); }
     return out;
   }
   function q(e) { return { x: Math.round(e.x * 100) / 100, y: Math.round(e.y * 100) / 100, d: e.dir }; }
-  /** The Arrangement extras of an entity, only the ones in play: a (airborne: from, to, progress), ds (dashing), st (dizzy, seconds left). */
+  /** The Arrangement extras of an entity, only the ones in play: a (airborne: from, to, progress), ds (dashing: the speed multiple
+   *  left), bk (bonked a wall: seconds of dizziness left), st (knocked dizzy: seconds left). */
   function qa(e) {
     const o = {};
     if (e.air) o.a = [e.air.x0, e.air.y0, e.air.x1, e.air.y1, Math.round(Math.min(1, e.air.t / e.air.dur) * 100) / 100];
-    if (e.dash) o.ds = Math.round(e.dash * 10) / 10;
+    if (e.dash) o.ds = Math.round(e.dash * 100) / 100;
+    if (e.bonk > 0) o.bk = Math.round(e.bonk * 100) / 100;
     if (e.stun > 0) o.st = Math.round(e.stun * 100) / 100;
     if (e.speedLeft > 0) o.sp = Math.round(e.speedLeft * 100) / 100;
     if (e.digest > 0) o.dg = Math.round(e.digest * 100) / 100;
@@ -764,7 +785,7 @@ body { background: var(--bg); color: var(--ink); }
   function cpuPac(s, rng, level) {
     level = level == null ? 1 : level;
     const p = s.pac;
-    if (p.air) return null;                           // no steering in the air
+    if (p.air || p.bonk > 0) return null;             // no steering in the air or while dizzy against a wall
     // Emergency: a dangerous ghost closing head-on in this corridor, reverse right now.
     for (const g of s.ghosts) {
       if (g.mode !== 'normal' || g.grey) continue;
@@ -902,7 +923,7 @@ body { background: var(--bg); color: var(--ink); }
     level = level == null ? 1 : level;
     const g = s.ghosts[gi];
     if (g.mode === 'eyes') return null;           // eaten ghosts steer themselves
-    if (g.air || g.stun > 0 || g.potted) return null;   // no steering in the air, while dizzy or in the pot
+    if (g.air || g.stun > 0 || g.bonk > 0 || g.potted) return null;   // no steering in the air, while dizzy or in the pot
     if (!atCentre(g)) return null;
     // Just revived: out through the door
     const gx = Math.floor(g.x), gy = Math.floor(g.y);
@@ -1768,6 +1789,7 @@ body { background: var(--bg); color: var(--ink); }
     { id: 'jump', label: 'Jump pad', when: 'Someone is launched by a jump pad', cues: [sfx([2], { vol: 0.6 })] },
     { id: 'land', label: 'Landing', when: 'A flight ends', cues: [sfx([3], { vol: 0.5 })] },
     { id: 'stun', label: 'Ghost knocked dizzy', when: 'A dashing Pac-Man knocks a ghost aside', cues: [sfx([5], { vol: 0.7 })] },
+    { id: 'bonk', label: 'Dash into a wall', when: 'A dasher slams into a wall and stands dizzy for a moment', cues: [sfx([1], { vol: 0.7 })] },
     { id: 'capsule', label: 'Capsule taken by Pac-Man', when: 'Pac-Man takes a capsule', cues: [sfx([7], { vol: 0.7 })] },
     { id: 'capsuleGhost', label: 'Capsule taken by a ghost', when: 'A ghost takes a capsule', cues: [sfx([14], { vol: 0.7 })] },
     { id: 'pot', label: 'Ghosts potted', when: 'The pink capsule pulls every ghost into the house', cues: [sfx([15], { vol: 0.7 })] },
@@ -2865,7 +2887,7 @@ body { background: var(--bg); color: var(--ink); }
       const gone = dying >= D.spin + D.shrink && dying < D.flatAt, flat = dying >= D.flatAt;
       if (v.pac && v.pac.x < v.W && !gone) {     // out of sight in the hidden part of the tunnel otherwise
         let yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0, scale = 1;
-        if (v.pac.ds) yaw += v.time * 24;             // a dasher spins
+        if (v.pac.ds >= 2) yaw += v.time * 24;        // a dasher spins while the dash is strong
         if (dying >= 0 && !flat) { yaw += Math.min(dying, D.spin + D.shrink) / D.spin * 2 * Math.PI; scale = dying < D.spin ? 1 : Math.max(0.001, 1 - (dying - D.spin) / D.shrink); }
         let pm = squash(m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380) + lift(v.pac), wz(v.pac.y), yaw, scale), v.pac);
         if (flat) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
@@ -2910,14 +2932,14 @@ body { background: var(--bg); color: var(--ink); }
           if (g.m === 'e') skin = skins.toumei;
           opts = { textures: { ghost_r: skin, 'ghost_eye.0': eyes[blink] } };
         }
-        R.draw(ghost, squash(m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw + (g.ds ? v.time * 24 : 0), scale), g), opts);
+        R.draw(ghost, squash(m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw + (g.ds >= 2 ? v.time * 24 : 0), scale), g), opts);
       }
       // the dust of a dash (white puffs growing and fading behind the dasher) and the green sparks of its launch
       if (v.dust) for (const d of v.dust) { const k = 0.95 - 0.6 * d.age; R.sprites(puff, [[wx(d.x), fl + 200 + 150 * d.age, wz(d.y), 220 + 300 * d.age]], [k, k, k, 1]); }
-      if (v.sparks) for (const sp of v.sparks) { const pts = []; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.4, r = 200 + 900 * sp.age; pts.push([wx(sp.x) + Math.cos(a) * r, fl + 300 + 500 * sp.age, wz(sp.y) + Math.sin(a) * r, 160 * (1 - sp.age) + 20]); } R.sprites(star, pts, [0.35, 1, 0.45, 1]); }
+      if (v.sparks) for (const sp of v.sparks) { const pts = []; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + 0.4, r = 200 + 900 * sp.age; pts.push([wx(sp.x) + Math.cos(a) * r, fl + 300 + 500 * sp.age, wz(sp.y) + Math.sin(a) * r, (sp.star ? 260 : 160) * (1 - sp.age) + 20]); } R.sprites(star, pts, sp.star ? [1, 1, 1, 1] : [0.35, 1, 0.45, 1]); }
       // dizzy (knocked aside by a dash): three stars circling over the ghost
       const stars = [];
-      for (const g of v.ghosts) if (g.st > 0 && g.x < v.W) for (let k = 0; k < 3; k++) { const a = v.time * 5 + k * 2.1; stars.push([wx(g.x) + Math.cos(a) * 380, fl + 900 + 60 * Math.sin(a * 2), wz(g.y) + Math.sin(a) * 380, 200]); }
+      for (const g of [...v.ghosts, v.pac]) if (g && (g.st > 0 || g.bk > 0) && g.x < v.W) for (let k = 0; k < 3; k++) { const a = v.time * 5 + k * 2.1; stars.push([wx(g.x) + Math.cos(a) * 380, fl + 900 + 60 * Math.sin(a * 2), wz(g.y) + Math.sin(a) * 380, 200]); }
       if (stars.length) R.sprites(star, stars);
       // where a point on the floor lands in the view: -1..1 across and up the square
       const vp = m4.mul(proj, view);
@@ -3361,9 +3383,11 @@ body { background: var(--bg); color: var(--ink); }
       else {
         const phase = st.pac.moving ? Math.floor(fr / 2) % 4 : (fr % 16 < 12 ? 0 : 1);
         base = phase === 0 ? 0 : PAC_FRAMES[st.pac.d][phase - 1];
-        if (st.pac.ds) base = PAC_FRAMES[[0, 1, 2, 3][Math.floor(fr / 2) % 4]][2];     // a dasher spins: wide open, facing round in turn
+        if (st.pac.ds >= 2) base = PAC_FRAMES[[0, 1, 2, 3][Math.floor(fr / 2) % 4]][2];     // a dasher spins while the dash is strong: wide open, facing round in turn
+        else if (st.pac.bk > 0) base = 0;                                                  // bonked a wall: a round ball
       }
       sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y) - lift(st.pac), 0, st.pac.sq);
+      if (st.pac.bk > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(st.pac.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(st.pac.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     }
     st.ghosts.forEach(g => {
       if (g.m === 'r') return;
@@ -3374,15 +3398,15 @@ body { background: var(--bg); color: var(--ink); }
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
         badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
-      else sprite16(sprites, GHOST_BASE[g.ds ? Math.floor(fr / 2) % 4 : g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0, g.sq);
-      if (g.st > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(g.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(g.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
+      else sprite16(sprites, GHOST_BASE[g.ds >= 2 ? Math.floor(fr / 2) % 4 : g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0, g.sq);
+      if (g.st > 0 || g.bk > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(g.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(g.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     });
     if (st.fruit && st.fruit.k && st.fruit.k !== 'fruit') sprites.push({ pix: PILL, palette: PAL.pill[st.fruit.k] || PAL.pill.gold, x: sx(st.fruit.x) + 4, y: sy(st.fruit.y) + 4, hf: 0, vf: 0 });
     else if (st.fruit) sprite16(sprites, CHERRY, 1, sx(st.fruit.x), sy(st.fruit.y), 0);
     for (const i of st.big || []) sprites.push({ pix: BIGDOT, palette: PAL.big, x: sx((i % st.W) + 0.5) + 4, y: sy(Math.floor(i / st.W) + 0.5) + 4, hf: 0, vf: 0 });
     padSprites(sprites, st.pads, sx, sy);
     for (const d of st.dust || []) sprites.push({ pix: PUFF[Math.min(2, Math.floor(d.age * 3))], palette: PAL.dust, x: sx(d.x) + 4, y: sy(d.y) + 4, hf: 0, vf: 0 });
-    for (const sp of st.sparks || []) { const r = Math.round(2 + 8 * sp.age); for (const [ox, oy] of [[-r, -r], [r, -r], [-r, r], [r, r]]) badges.push({ pix: SPARK, palette: PAL.spark, x: sx(sp.x) + 4 + ox, y: sy(sp.y) + 4 + oy, hf: ox > 0 ? 1 : 0, vf: oy > 0 ? 1 : 0 }); }
+    for (const sp of st.sparks || []) { const r = Math.round(2 + 8 * sp.age); for (const [ox, oy] of [[-r, -r], [r, -r], [-r, r], [r, r]]) badges.push({ pix: sp.star ? STAR : SPARK, palette: sp.star ? PAL.star : PAL.spark, x: sx(sp.x) + 4 + ox, y: sy(sp.y) + 4 + oy, hf: ox > 0 ? 1 : 0, vf: oy > 0 ? 1 : 0 }); }
     // sprite16 pushed in draw-priority order (Pac first); the picture draws the last one first
     sprites.push(...badges);
     // score popups float over the spot: [{x, y, text}]; the digits sit 4 pixels apart
@@ -3836,10 +3860,10 @@ body { background: var(--bg); color: var(--ink); }
     for (const e of ev || []) {
       if ((e === 'pellet' || e === 'power') && SM.handled('pellet')) { fire('pellet'); if (e === 'power') fire('powerPellet'); continue; }
       if (e === 'eatghost' && SM.handled('ghostEatenSfx')) { fire('ghostEatenSfx'); continue; }
-      const arrCue = { dash: 'dash', jump: 'jump', land: 'land', stun: 'stun', capsule: 'capsule', capsuleghost: 'capsuleGhost', pot: 'pot', hop: 'hop', bigpellet: 'bigPellet', clonegone: 'cloneGone' }[e];
+      const arrCue = { dash: 'dash', bonk: 'bonk', jump: 'jump', land: 'land', stun: 'stun', capsule: 'capsule', capsuleghost: 'capsuleGhost', pot: 'pot', hop: 'hop', bigpellet: 'bigPellet', clonegone: 'cloneGone' }[e];
       if (arrCue) {
         if (SM.handled(arrCue)) { fire(arrCue); continue; }
-        if (e === 'dash') tone(200, 0.3, 'sawtooth', 0.12, 900); else if (e === 'jump' || e === 'hop') tone(300, 0.25, 'triangle', 0.12, 1200);
+        if (e === 'dash') tone(200, 0.3, 'sawtooth', 0.12, 900); else if (e === 'bonk') tone(160, 0.2, 'square', 0.14, 60); else if (e === 'jump' || e === 'hop') tone(300, 0.25, 'triangle', 0.12, 1200);
         else if (e === 'land') tone(500, 0.08, 'square', 0.08, 250); else if (e === 'stun') { tone(1200, 0.1, 'square', 0.1, 700); setTimeout(() => tone(900, 0.1, 'square', 0.1, 500), 100); }
         else if (e === 'capsule' || e === 'capsuleghost') { tone(523, 0.08, 'square', 0.1); setTimeout(() => tone(784, 0.08, 'square', 0.1), 80); setTimeout(() => tone(1047, 0.14, 'square', 0.1), 160); }
         else if (e === 'pot') tone(400, 0.5, 'sawtooth', 0.12, 80); else if (e === 'bigpellet') tone(220, 0.12, 'square', 0.09); else if (e === 'clonegone') tone(600, 0.2, 'triangle', 0.08, 150);
@@ -4036,8 +4060,8 @@ body { background: var(--bg); color: var(--ink); }
     Handheld.render(art.handheld, ps.frame, {
       banner: waiting,
       seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: waiting ? freshPellets() : snap.pellets,
-      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a, ds: snap.pac && snap.pac.ds, sq: squashOf('pac', snap.pac, now) } : null,
-      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st, ds: snap.ghosts[i].ds, sq: squashOf('g' + i, snap.ghosts[i], now) } : null).filter(Boolean),
+      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a, ds: snap.pac && snap.pac.ds, bk: snap.pac && snap.pac.bk, sq: squashOf('pac', snap.pac, now) } : null,
+      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st, ds: snap.ghosts[i].ds, bk: snap.ghosts[i].bk, sq: squashOf('g' + i, snap.ghosts[i], now) } : null).filter(Boolean),
       pacSeat: waiting ? snap.next : snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: waiting ? null : snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
       pads: waiting ? null : arrPads(), clones: waiting ? [] : (snap.clones || []).map(c => Object.assign({}, c, { seat: c.of < 0 ? -1 : gcolor(c.of) })), big: waiting ? [] : snap.big,
       pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })), dust: waiting ? [] : view.dust, sparks: waiting ? [] : view.sparks,
@@ -4290,6 +4314,11 @@ body { background: var(--bg); color: var(--ink); }
       const who = [cur.pac, ...cur.ghosts].filter((e, i) => e && e.ds && !([prev.pac, ...prev.ghosts][i] || {}).ds);
       for (const e of who) fx.sparks.push({ x: e.x, y: e.y, t0: now });
     }
+    // a bonk: whoever just slammed into a wall gets a burst of yellow stars
+    if (cur.ev && cur.ev.includes('bonk')) {
+      const who = [cur.pac, ...cur.ghosts].filter((e, i) => e && e.bk && !([prev.pac, ...prev.ghosts][i] || {}).bk);
+      for (const e of who) fx.sparks.push({ x: e.x, y: e.y, t0: now, star: true });
+    }
     cur.ghosts.forEach((g, i) => {
       const p = prev.ghosts[i];
       if (p && p.m === 'f' && g.m === 'e') fx.pops.push({ x: g.x, y: g.y, text: String(Math.max(0, cur.scores[cur.pacPlayer] - prev.scores[cur.pacPlayer])), t0: now });
@@ -4342,7 +4371,7 @@ body { background: var(--bg); color: var(--ink); }
     fx.pops = fx.pops.filter(p => now - p.t0 < FX_POP * 1000);
     return {
       dust: fx.dust.map(d => ({ x: d.x, y: d.y, age: (now - d.t0) / FX_DUST / 1000 })),
-      sparks: fx.sparks.map(d => ({ x: d.x, y: d.y, age: (now - d.t0) / FX_DASH / 1000 })),
+      sparks: fx.sparks.map(d => ({ x: d.x, y: d.y, age: (now - d.t0) / FX_DASH / 1000, star: !!d.star })),
       pops: fx.pops.filter(p => now >= p.t0).map(p => ({ x: p.x, y: p.y, text: p.text, age: (now - p.t0) / 1000, life: FX_POP })),   // some start later (the points once Pac-Man is gone)
       burst: fx.burst && now >= fx.burst.t0 && now - fx.burst.t0 < FX_BURST * 1000 ? { x: fx.burst.x, y: fx.burst.y, age: (now - fx.burst.t0) / 1000 } : null
     };
@@ -4517,14 +4546,17 @@ body { background: var(--bg); color: var(--ink); }
     const sq = squashOf(key, e, now), k = e.a ? Math.sin(Math.PI * e.a[4]) : 0;
     if (!sq && !k && !e.ds) return;
     g.translate(0, -k * u * 0.8); g.translate(e.x * u, e.y * u); g.scale((1 + 0.3 * k) * (sq ? sq[0] : 1), (1 + 0.3 * k) * (sq ? sq[1] : 1));
-    if (e.ds) g.rotate(now / 40);                   // a dasher spins
+    if (e.ds >= 2) g.rotate(now / 40);              // a dasher spins while the dash is strong
     g.translate(-e.x * u, -e.y * u);
   };
   function drawDust(efx, u) {
     for (const d of efx.dust) { g.fillStyle = `rgba(255,255,255,${0.7 * (1 - d.age)})`; g.beginPath(); g.arc(d.x * u, d.y * u, u * (0.12 + 0.25 * d.age), 0, 7); g.fill(); }
     for (const sp of efx.sparks) for (let k = 0; k < 8; k++) {
-      const a = k * Math.PI / 4 + 0.4, r = u * (0.2 + 0.9 * sp.age);
-      g.fillStyle = `rgba(90,255,120,${1 - sp.age})`; g.beginPath(); g.arc(sp.x * u + Math.cos(a) * r, sp.y * u + Math.sin(a) * r, u * 0.07 * (1 - sp.age) + 1, 0, 7); g.fill();
+      const a = k * Math.PI / 4 + 0.4, r = u * (0.2 + 0.9 * sp.age), x = sp.x * u + Math.cos(a) * r, y = sp.y * u + Math.sin(a) * r;
+      g.fillStyle = sp.star ? `rgba(255,235,80,${1 - sp.age})` : `rgba(90,255,120,${1 - sp.age})`; g.beginPath();
+      if (sp.star) { for (let i = 0; i < 8; i++) { const rr = i % 2 ? u * 0.05 : u * 0.12 * (1 - sp.age) + 1, b = i / 8 * 2 * Math.PI; g.lineTo(x + Math.cos(b) * rr, y + Math.sin(b) * rr); } g.closePath(); }
+      else g.arc(x, y, u * 0.07 * (1 - sp.age) + 1, 0, 7);
+      g.fill();
     }
   }
   function drawStars(gh, u, now) {
@@ -4595,10 +4627,10 @@ body { background: var(--bg); color: var(--ink); }
     for (const i of snap.big || []) { g.fillStyle = '#ff9ab0'; g.beginPath(); g.arc(((i % W) + 0.5) * u, (Math.floor(i / W) + 0.5) * u, u * 0.18, 0, 7); g.fill(); }
     if (snap.fruit && snap.fruit.k && snap.fruit.k !== 'fruit') drawCapsule(snap.fruit, u, now); else if (snap.fruit) drawFruit(snap.fruit, u, now);
     for (const c of snap.clones || []) { g.globalAlpha = 0.5; if (c.of < 0) drawPac(c, u, now, false); else drawGhost(c, c.c >= 0 ? SEAT_COLORS[c.c] : GREY, u, now, false); g.globalAlpha = 1; }
-    sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { g.save(); flight(sg, u, 'g' + i, now); drawGhost(gh, gcss(i), u, now, snap.me === i); g.restore(); if (sg.st > 0) drawStars(gh, u, now); } });
+    sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { g.save(); flight(sg, u, 'g' + i, now); drawGhost(gh, gcss(i), u, now, snap.me === i); g.restore(); if (sg.st > 0 || sg.bk > 0) drawStars(gh, u, now); } });
     drawTrail(u);
     if (arrPads()) drawDust(fxViews(now), u);
-    if (sm.pac) { g.save(); flight(snap.pac, u, 'pac', now); drawPac(sm.pac, u, now, snap.me < 0); g.restore(); }
+    if (sm.pac) { g.save(); flight(snap.pac, u, 'pac', now); drawPac(sm.pac, u, now, snap.me < 0); g.restore(); if (snap.pac.bk > 0) drawStars(sm.pac, u, now); }
     // Ghost players see a circular window around themselves, a minimap of the ghosts, and the pellet count.
     if (snap.me >= 0 && sm.ghosts[snap.me]) {
       const f = fogCv.getContext('2d'), me = sm.ghosts[snap.me], col = SEAT_COLORS[you];
@@ -4625,7 +4657,7 @@ body { background: var(--bg); color: var(--ink); }
       const target = View3D.YAW[gh.d] || 0;
       let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st, ds: s.ds, sq: squashOf('g' + i, s, now) });
+      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st, ds: s.ds, bk: s.bk, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
@@ -4638,7 +4670,7 @@ body { background: var(--bg); color: var(--ink); }
   }
   const u3 = () => cell * dpr;
   const caughtAge = () => isCaught() ? (performance.now() - phaseT0) / 1000 : -1;
-  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH, a: snap.pac && snap.pac.a, ds: snap.pac && snap.pac.ds, sq: squashOf('pac', snap.pac, performance.now()) });
+  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH, a: snap.pac && snap.pac.a, ds: snap.pac && snap.pac.ds, bk: snap.pac && snap.pac.bk, sq: squashOf('pac', snap.pac, performance.now()) });
   // the level's pads, less the dash arrows already used up this round (a snapshot lists them by index)
   const arrPads = () => {
     const pads = S.maze.arrange && S.maze.arrange.pads; if (!pads) return null;
@@ -4649,7 +4681,14 @@ body { background: var(--bg); color: var(--ink); }
   // landing that eases back. [wide, tall] scale factors from the flight's progress; landings are remembered per body.
   const SQ = [[0, 1.3, 0.7], [0.15, 0.8, 1.35], [0.5, 0.9, 1.15], [0.85, 0.8, 1.3], [1, 1.3, 0.7]], SQ_LAND = 0.18;
   const landed = new Map();
+  // A bonk (a dash into a wall): flattened against the wall for the first BONK_FLAT seconds, then a round ball easing back.
+  const BONK_FLAT = 0.13;
   function squashOf(key, e, now) {
+    if (e && e.bk > 0) {
+      const since = CFG.bonkTime - e.bk, along = e.d === 1 || e.d === 3;
+      if (since < BONK_FLAT) return along ? [0.6, 1.35] : [1.35, 0.6];
+      const u = Math.min(1, (since - BONK_FLAT) / (CFG.bonkTime - BONK_FLAT)); return [1.15 - 0.15 * u, 1.15 - 0.15 * u];
+    }
     const was = landed.get(key);
     if (e && e.a) { landed.set(key, { air: true, t: 0 }); const k = e.a[4]; let i = 1; while (i < SQ.length - 1 && SQ[i][0] < k) i++; const a = SQ[i - 1], b = SQ[i], u = (k - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u]; }
     if (was && was.air) { landed.set(key, { air: false, t: now }); return [1.3, 0.7]; }
@@ -4685,7 +4724,7 @@ body { background: var(--bg); color: var(--ink); }
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, ds: s.ds, sq: squashOf('g' + i, s, now) });
+      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, ds: s.ds, bk: s.bk, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
