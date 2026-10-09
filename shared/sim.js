@@ -49,7 +49,10 @@
     pelletPts: 10, powerPts: 110,
     ghostChain: [200, 400, 800, 1600],   // not measured
     stealPts: 1600, startPts: 1600,
-    targets: [7000, 10000, 15000], defaultTarget: 7000
+    targets: [7000, 10000, 15000], defaultTarget: 7000,
+    // Arrangement levels only (shared/arrange.js). From the 1996 arcade game's demo: a dash crosses a 19-cell row in
+    // about 0.8 s (2.5 times walking speed), a knocked ghost sits dizzy for about 2 s, a jump takes about half a second.
+    dashMult: 2.5, stunTime: 2, jumpTime: 0.6
   };
 
   /** A maze descriptor. rows use: '#' wall, '=' house wall, 'D' door (ghosts only), '.' pellet,
@@ -69,6 +72,9 @@
   function build(maze) {
   if (!maze.W) maze = makeMaze(maze.rows, maze);      // accept a bare descriptor (as sent over the network)
   const ROWS = maze.rows, W = maze.W, H = maze.H, START = { pac: maze.pac, ghosts: maze.ghosts }, DOOR = maze.door, EXIT = maze.exit, HOUSE = maze.house, FRUIT = maze.fruit || maze.pac;
+  // The Arrangement overlay, if any: PADS[k] is a dash arrow or a jump pad, padAt[cell] its index (or -1)
+  const ARR = maze.arrange || null, PADS = ARR ? ARR.pads : [];
+  const padAt = new Int8Array(W * H).fill(-1); PADS.forEach((p, k) => { padAt[p.y * W + p.x] = k; });
 
   function wallAt(x, y, who) {
     if (y < 0 || y >= H) return true;
@@ -100,9 +106,9 @@
     return {
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: Object.assign(ent(START.pac), { pause: 0 }),
+      pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, air: null, onPad: -1 } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
-      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 })),
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, air: null, onPad: -1, stun: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
@@ -182,6 +188,47 @@
     return Math.hypot(dx, a.y - b.y);
   }
 
+  // ---------- Arrangement pads (no-ops on a plain maze) ----------
+  const atCentreOf = e => Math.abs(e.x - Math.floor(e.x) - 0.5) < 1e-6 && Math.abs(e.y - Math.floor(e.y) - 0.5) < 1e-6;
+  /** How far an entity could go straight from its cell in direction d before a wall. */
+  function freeRun(e, d, who) {
+    let n = 0; const t = { x: e.x, y: e.y };
+    while (n < W && canGo(t, d, who)) { t.x += DIRS[d][0]; t.y += DIRS[d][1]; n++; if (t.y < 0 || t.y >= H) break; }
+    return n;
+  }
+  /** Entering a pad's cell: a dash arrow hurls the entity along the corridor (no steering until it stops), a jump
+   *  pad launches it towards the partner pad. A pad fires once per visit: arriving on one by dashing only ends the
+   *  dash, and a pad does not fire again until the cell has been left. */
+  function padCheck(s, e, who) {
+    if (!ARR || e.x >= W) return;
+    const k = padAt[Math.floor(e.y) * W + Math.floor(e.x)];
+    if (k === e.onPad) return;
+    e.onPad = k;
+    if (k < 0 || e.air) return;
+    if (e.dash) { e.dash = 0; return; }
+    const pad = PADS[k];
+    e.x = pad.x + 0.5; e.y = pad.y + 0.5;
+    if (pad.kind === 'dash') { e.dash = 1; e.dir = e.want = pad.dir; s.events.push('dash'); }
+    else { const to = PADS[pad.pair]; e.air = { x0: e.x, y0: e.y, x1: to.x + 0.5, y1: to.y + 0.5, t: 0, dur: CFG.jumpTime, to: pad.pair }; s.events.push('jump'); }
+  }
+  /** Walking, with a dash locked to its direction and ended by the first wall. */
+  function moveEnt(e, speed, dt, who) {
+    if (e.dash) { e.want = e.dir; speed *= CFG.dashMult; }
+    step(e, speed, dt, who);
+    if (e.dash && atCentreOf(e) && !canGo(e, e.dir, who)) e.dash = 0;
+  }
+  /** Airborne: along the line between the pads; on landing face the longest open run. */
+  function flyStep(s, e, who, dt) {
+    const a = e.air; a.t += dt;
+    const k = Math.min(1, a.t / a.dur);
+    e.x = a.x0 + (a.x1 - a.x0) * k; e.y = a.y0 + (a.y1 - a.y0) * k;
+    if (k < 1) return;
+    e.x = a.x1; e.y = a.y1; e.air = null; e.onPad = a.to;
+    let best = 0, bd = e.dir;
+    for (let d = 0; d < 4; d++) { const n = freeRun(e, d, who); if (n > best) { best = n; bd = d; } }
+    e.dir = e.want = bd; s.events.push('land');
+  }
+
   function award(s, player, pts) {
     s.scores[player] += pts; s.roundScores[player] += pts;
     if (s.scores[player] >= s.target && !s.over) { s.over = true; s.overReason = 'won'; s.winner = player; }
@@ -194,17 +241,21 @@
     s.tick++; s.time += dt; s.events.length = 0;
 
     // Pac-Man
-    if (inputs.pac != null) s.pac.want = inputs.pac;
-    const held = Math.min(dt, s.pac.pause || 0);          // time still owed to the last pellet
-    s.pac.pause = (s.pac.pause || 0) - held;
-    step(s.pac, CFG.pacSpeed, dt - held, 'pac');
-    if (s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
+    if (inputs.pac != null && !s.pac.dash) s.pac.want = inputs.pac;
+    if (s.pac.air) flyStep(s, s.pac, 'pac', dt);
+    else {
+      const held = s.pac.dash ? 0 : Math.min(dt, s.pac.pause || 0);          // time still owed to the last pellet (a dash owes nothing)
+      s.pac.pause = s.pac.dash ? 0 : (s.pac.pause || 0) - held;
+      moveEnt(s.pac, CFG.pacSpeed, dt - held, 'pac');
+      padCheck(s, s.pac, 'pac');
+    }
+    if (!s.pac.air && s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
     while (s.trail.length && s.time - s.trail[0].t > CFG.trailTime) s.trail.shift();
     const px = Math.floor(s.pac.x), py = Math.floor(s.pac.y);
     const pi = py * W + (((px % W) + W) % W);
-    if (s.pellets[pi] && s.pac.x < W) {        // nothing to eat in the hidden part of the tunnel
+    if (s.pellets[pi] && s.pac.x < W && !s.pac.air) {        // nothing to eat in the hidden part of the tunnel, or in the air
       const power = s.pellets[pi] === 2;
-      s.pellets[pi] = 0; s.left--; s.eaten++; s.pac.pause += CFG.pelletPause;
+      s.pellets[pi] = 0; s.left--; s.eaten++; if (!s.pac.dash) s.pac.pause += CFG.pelletPause;
       if (!s.fruit && s.eaten >= s.nextFruit && s.left > 8) s.fruit = { x: FRUIT[0] + 0.5, y: FRUIT[1] + 0.5, left: CFG.fruitStay };
       s.events.push(power ? 'power' : 'pellet');
       if (power) {
@@ -217,7 +268,7 @@
     }
     if (s.fruit) {
       s.fruit.left -= dt;
-      if (dist(s.pac, s.fruit) < 0.7) { s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; s.events.push('fruit'); award(s, s.pacPlayer, CFG.fruitPts); if (s.over) return; }
+      if (!s.pac.air && dist(s.pac, s.fruit) < 0.7) { s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; s.events.push('fruit'); award(s, s.pacPlayer, CFG.fruitPts); if (s.over) return; }
       else if (s.fruit.left <= 0) { s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; }
     }
     if (s.frightLeft > 0) {
@@ -238,10 +289,14 @@
         }
         continue;
       }
+      if (g.air) { flyStep(s, g, 'ghost', dt); continue; }          // in the air: out of play until it lands
+      if (g.stun > 0) { g.stun = Math.max(0, g.stun - dt); continue; }   // knocked dizzy by a dash: cannot move, catch or take anything
       const inp = inputs.ghosts[i];
-      if (inp != null) g.want = inp;
-      step(g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1), dt, 'ghost');
-      if (g.grey) continue;                       // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
+      if (inp != null && !g.dash) g.want = inp;
+      moveEnt(g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1), dt, 'ghost');
+      padCheck(s, g, 'ghost');
+      if (g.grey || g.air) continue;              // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
+      if (s.pac.air) continue;                    // nobody touches Pac-Man while he is in the air
       if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7) {
         s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; g.sightLeft = CFG.fruitSightTime; s.events.push('fruitghost');
         award(s, colorOf(s, i), CFG.fruitPts); if (s.over) return;
@@ -256,6 +311,8 @@
           if (owner >= 0) { const lose = Math.min(pts, s.scores[owner]); s.scores[owner] -= lose; s.roundScores[owner] -= lose; }
           award(s, s.pacPlayer, pts); s.chain++;
           if (s.over) return;
+        } else if (g.mode === 'normal' && s.pac.dash) {
+          g.stun = CFG.stunTime; s.events.push('stun');     // a dashing Pac-Man knocks a ghost aside and leaves it dizzy
         } else if (g.mode === 'normal') {
           // The catcher steals points from Pac-Man and takes over as Pac-Man next round.
           const catcher = colorOf(s, i), steal = Math.min(CFG.stealPts, s.scores[s.pacPlayer]);
@@ -269,10 +326,10 @@
     }
     // A grey stand-in that a ghost passes through takes that ghost's colour and goes hunting for Pac-Man.
     for (const a of s.ghosts) {
-      if (!a.grey || a.mode !== 'normal') continue;
+      if (!a.grey || a.mode !== 'normal' || a.air) continue;
       for (let j = 0; j < s.ghosts.length; j++) {
         const b = s.ghosts[j];
-        if (b === a || b.grey || b.mode !== 'normal' || dist(a, b) >= CFG.catchDist) continue;
+        if (b === a || b.grey || b.mode !== 'normal' || b.air || dist(a, b) >= CFG.catchDist) continue;
         a.grey = false; a.claim = colorOf(s, j); s.events.push('claim');
         break;
       }
@@ -327,8 +384,9 @@
       // the trail Pac-Man leaves: [x, y, age in seconds]; ghosts only see the parts inside a circle of sight
       trail: s.trail.filter(p => vis(p)).map(p => [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100, Math.round((s.time - p.t) * 100) / 100]),
       // Every ghost is on the shared screen (its own circle and the minimap); `s` is the radius of its circle.
-      ghosts: s.ghosts.map((g, i) => Object.assign(q(g), { m: g.mode[0], s: sightOf(g), c: colorOf(s, i) }))
+      ghosts: s.ghosts.map((g, i) => Object.assign(q(g), { m: g.mode[0], s: sightOf(g), c: colorOf(s, i) }, ARR ? qa(g) : {}))
     };
+    if (ARR) { out.arr = 1; if (out.pac) Object.assign(out.pac, qa(s.pac)); }
     if (gi < 0) out.pellets = Array.from(s.pellets);
     else {
       const p = new Array(W * H).fill(0);
@@ -342,6 +400,14 @@
     return out;
   }
   function q(e) { return { x: Math.round(e.x * 100) / 100, y: Math.round(e.y * 100) / 100, d: e.dir }; }
+  /** The Arrangement extras of an entity, only the ones in play: a (airborne: from, to, progress), ds (dashing), st (dizzy, seconds left). */
+  function qa(e) {
+    const o = {};
+    if (e.air) o.a = [e.air.x0, e.air.y0, e.air.x1, e.air.y1, Math.round(Math.min(1, e.air.t / e.air.dur) * 100) / 100];
+    if (e.dash) o.ds = 1;
+    if (e.stun > 0) o.st = Math.round(e.stun * 100) / 100;
+    return o;
+  }
 
   // ---------- CPU players ----------
   // Levels: 0 easy, 1 normal, 2 hard. The CPU plays by the same rules as a person; only hard-level
@@ -413,6 +479,7 @@
   function cpuPac(s, rng, level) {
     level = level == null ? 1 : level;
     const p = s.pac;
+    if (p.air || p.dash) return null;                 // no steering in the air or during a dash
     // Emergency: a dangerous ghost closing head-on in this corridor, reverse right now.
     for (const g of s.ghosts) {
       if (g.mode !== 'normal' || g.grey) continue;
@@ -550,6 +617,7 @@
     level = level == null ? 1 : level;
     const g = s.ghosts[gi];
     if (g.mode === 'eyes') return null;           // eaten ghosts steer themselves
+    if (g.air || g.dash || g.stun > 0) return null;   // no steering in the air, during a dash or while dizzy
     if (!atCentre(g)) return null;
     // Just revived: out through the door
     const gx = Math.floor(g.x), gy = Math.floor(g.y);
