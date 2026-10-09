@@ -56,6 +56,18 @@
       return glTex.get(k);
     };
     const sheets = assets.font.sheets.map(s => R.texture(Object.assign({}, s, { wrapS: 0, wrapT: 0 })));
+    // Arrangement levels: the fruit window shows the capsule that is out instead of the cherry. Generated icons, the
+    // same two-tone pill as on the board, registered under 'pill:<kind>' so the layout can name them like a disc texture.
+    const PILL_RGB = { red: [255, 40, 40], cyan: [60, 230, 255], pink: [255, 110, 200], orange: [255, 150, 30], gold: [255, 215, 40] };
+    for (const k in PILL_RGB) {
+      const n = 40, rgba = new Uint8Array(n * n * 4), c = PILL_RGB[k];
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        const u = (x - 19.5) + (y - 19.5) * 0.35, v = y - 19.5, inside = Math.abs(u) <= 7.5 && Math.abs(v) <= 16 && (Math.abs(v) <= 8.5 || Math.hypot(u, Math.abs(v) - 8.5) <= 7.5);
+        const i = (y * n + x) * 4, top = v < 0, shade = 0.75 + 0.25 * Math.max(0, 1 - Math.abs(u + 2.5) / 7.5);
+        rgba[i] = (top ? 255 : c[0]) * shade; rgba[i + 1] = (top ? 255 : c[1]) * shade; rgba[i + 2] = (top ? 255 : c[2]) * shade; rgba[i + 3] = inside ? 255 : 0;
+      }
+      glTex.set('pill:' + k, R.texture({ w: n, h: n, rgba, wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 }));
+    }
     // Panel colours: each player's frame material holds that player's colour in its first TEV register.
     const seatColor = [1, 2, 3, 4].map(i => { const p = scr.byName['P' + i + '_waku']; return p ? scr.materials[p.material].tevColors[0].slice(0, 3) : [1, 1, 1]; });
 
@@ -260,7 +272,7 @@
       }
       if (out > 0) R.poly(FULL, [0, 0, 0, out]);
     }
-    /** The game screen. st: {time, target, left, scores, pacPlayer, fruitUp, ghosts: [{seat, x, y, ...}], views: [per ghost]} */
+    /** The game screen. st: {time, target, left, scores, pacPlayer, fruitUp, fruitKind, ghosts: [{seat, x, y, ...}], views: [per ghost]} */
     function render(st, width) {
       frameStart(width);
       const f = st.time * 60;
@@ -282,6 +294,7 @@
       text.Score1 = text.Score2 = String(st.target);
       text.DOT_NUM1 = text.DOT_NUM2 = String(st.left);
       if (!st.fruitUp) { hide.add('furit_wk'); }
+      else if (st.fruitKind && st.fruitKind !== 'fruit') textures.IC_fruit = 'pill:' + (PILL_RGB[st.fruitKind] ? st.fruitKind : 'gold');
       const texMtx = {};
       if (assets.bgAnim) Object.assign(texMtx, J3D.animateTex(assets.bgAnim, f));
       drawLayout(scr, { textures, text, colors, hide, show, texMtx });

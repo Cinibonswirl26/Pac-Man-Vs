@@ -923,7 +923,7 @@
     const efx = fxViews(now);
     const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight * pullBack(), ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst, dust: efx.dust, sparks: efx.sparks, pads: arrPads(), clones: snap.clones, big: snap.big }));
     try {
-      scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, standin: standins(), fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
+      scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, standin: standins(), fruitUp: snap.fruitUp, fruitKind: snap.fruit && snap.fruit.k, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }
   }
   function drawMinimap(u) {
