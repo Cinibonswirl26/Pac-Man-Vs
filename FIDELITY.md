@@ -19,6 +19,7 @@ and what is still a best guess.
 | Frightened time | **10 s** (598 frames). Last 2 s the ghosts blink every 8 frames | Sprite tile changes, frame by frame |
 | Pellet | 10 points | Score before and after |
 | Power pellet | 110 points | Score before and after, pellet counter 167 -> 166 |
+| Ghost eaten | Pac-Man gets 200 for the first ghost after a power pellet, and **the ghost's owner loses the same 200**, but not below zero; a new power pellet starts the chain at 200 again. (The 400/800/1,600 chain for the second, third and fourth ghost is from Pac-Man, not measured here.) A grey stand-in has no owner to charge | Two controlled runs in the emulator, Pac-Man steered onto a power pellet and then into an idle ghost: the owner with 1,330 went to 1,130 while Pac-Man went 2,230 -> 2,430; the owner with 0 stayed at 0 while Pac-Man gained the 200 |
 | Player colours | P1 red, P2 blue, P3 pink, P4 green | In-game screens |
 | Goal | A target score is chosen before the match (7,000 shown first) | "Choose a score" screen |
 | First Pac-Man | Picked by a roulette. Starts with **1,600** points | Scoreboard at round start, three separate matches |

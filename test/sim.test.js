@@ -127,12 +127,23 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   const u = S.newRound([1600, 0, 0, 0], 0); u.eaten = 6; const k = u.pellets.findIndex(v => v === 1); u.pac.x = (k % S.W) + 0.5; u.pac.y = Math.floor(k / S.W) + 0.5; S.update(u, idle);
   const b0 = u.scores[0]; u.pac.x = u.fruit.x; u.pac.y = u.fruit.y; S.update(u, idle); ok(u.scores[0] === b0 + 400, 'Pac-Man can take the fruit too');
 }
+// 10b. Eating a ghost moves the points from its owner to Pac-Man (measured on the disc: Pac-Man 2230 -> 2430, owner 1330 -> 1130)
+{
+  const s = S.newRound([1600, 1330, 0, 0], 0); const gi = S.ghostIndexOf(s, 1), g = s.ghosts[gi];
+  s.frightLeft = 10; g.mode = 'fright'; g.x = s.pac.x; g.y = s.pac.y; S.update(s, idle);
+  ok(g.mode === 'eyes' && s.scores[0] === 1800 && s.scores[1] === 1130, `owner loses what Pac-Man gains: ${s.scores[0]} / ${s.scores[1]}`);
+  ok(s.roundScores[0] === 200 && s.roundScores[1] === -200, 'round scores follow');
+  const h = s.ghosts[(gi + 1) % 3]; h.mode = 'fright'; h.x = s.pac.x; h.y = s.pac.y; S.update(s, idle);
+  ok(s.scores[0] === 2200, 'the second ghost in one fright is 400 (not measured), has ' + s.scores[0]);
+}
 // 11. An eaten ghost steers itself back to the house, then its player has control again, from inside the house
 {
   const s = S.newRound([1600, 0, 0, 0], 0); const g = s.ghosts[0];
   // power pellet eaten, ghost caught
   s.frightLeft = 10; g.mode = 'fright'; g.x = s.pac.x; g.y = s.pac.y; S.update(s, idle);
   ok(g.mode === 'eyes' && s.events.includes('eatghost'), 'a frightened ghost touched by Pac-Man becomes eyes');
+  ok(s.scores[0] === 1800, 'Pac-Man gains 200 for the first ghost, has ' + s.scores[0]);
+  ok(s.scores[S.playerOfGhost(s, 0)] === 0, 'a ghost owner with nothing stays at 0, has ' + s.scores[S.playerOfGhost(s, 0)]);
   // its player pushes every way: it must not matter
   let t = 0, seen = false;
   while (g.mode === 'eyes' && t < 30 * 20) { S.update(s, { pac: null, ghosts: [(t >> 3) & 3, null, null] }, 1 / 30); t++; if (s.over) break; }

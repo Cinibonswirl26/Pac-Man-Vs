@@ -247,7 +247,11 @@
         if (g.mode === 'fright') {
           g.mode = 'eyes'; s.events.push('eatghost');
           if (g.standin) { g.grey = true; g.claim = -1; }     // a woken stand-in that is eaten goes back to grey
-          award(s, s.pacPlayer, CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)]); s.chain++;
+          // Pac-Man gains the points and the ghost's owner loses the same points (measured on the disc: +200 / -200).
+          // A grey stand-in has no owner to charge.
+          const pts = CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)], owner = g.grey ? -1 : colorOf(s, i);
+          if (owner >= 0) { const lose = Math.min(pts, s.scores[owner]); s.scores[owner] -= lose; s.roundScores[owner] -= lose; }
+          award(s, s.pacPlayer, pts); s.chain++;
           if (s.over) return;
         } else if (g.mode === 'normal') {
           // The catcher steals points from Pac-Man and takes over as Pac-Man next round.
