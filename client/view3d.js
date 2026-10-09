@@ -177,9 +177,9 @@
         const col = g.c != null ? g.c : g.seat;      // the colour it wears: its player's, the colour of the ghost that woke it, or -1 = grey stand-in
         let skin = col < 0 ? skins.com : skins[SKINS[col]], scale = 1.25, opts;
         if (g.m === 'f') {
-          // vulnerable: a smaller dark blue ghost with a mouth and no big eyes, blinking out near the end
+          // vulnerable: the same body in dark blue with a mouth and no big eyes, blinking out near the end
           if (v.flash) continue;
-          skin = skins.yowari; scale = 1.05;
+          skin = skins.yowari;
           opts = { textures: { ghost_r: skin }, filter: d => d.mat.name !== 'e' };
         } else {
           if (g.m === 'e') skin = skins.toumei;
