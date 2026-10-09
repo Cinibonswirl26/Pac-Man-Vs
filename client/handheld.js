@@ -29,7 +29,10 @@
       }
       return t;
     }
-    return { rom, u16, bgPal: pal(BG_PAL, 14), objPal: pal(OBJ_PAL, 16), bgTile: n => tile(BG_TILES, n), objTile: n => tile(OBJ_TILES, n) };
+    const objPal = pal(OBJ_PAL, 16);
+    // a grey copy of the red ghost's colours (palette 16), for the stand-in ghosts
+    objPal.push(objPal[1].map(c => { const y = Math.round(0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]); return [y, y, y]; }));
+    return { rom, u16, bgPal: pal(BG_PAL, 14), objPal, greyPal: 16, bgTile: n => tile(BG_TILES, n), objTile: n => tile(OBJ_TILES, n) };
   }
 
   /** A 240 x 160 frame buffer (RGBA) that backgrounds and sprites are drawn into. */
@@ -151,7 +154,7 @@
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
         badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
-      else sprite16(sprites, GHOST_BASE[g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y), 0);
+      else sprite16(sprites, GHOST_BASE[g.d] + foot, g.seat < 0 ? hw.greyPal : 1 + g.seat, sx(g.x), sy(g.y), 0);
     });
     if (st.fruit) sprite16(sprites, CHERRY, 1, sx(st.fruit.x), sy(st.fruit.y), 0);
     // sprite16 pushed in draw-priority order (Pac first); the picture draws the last one first

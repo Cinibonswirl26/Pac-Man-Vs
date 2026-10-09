@@ -262,11 +262,11 @@
       if (rd && st.W) {
         const b = box(rd, 0, 0);
         for (const g of st.ghosts) {
-          const c = seatColor[g.seat], gx = b.x + 4 + (g.x - 1) / (st.W - 2) * (b.w - 8), gy = b.y + 4 + g.y / st.H * (b.h - 8);
+          const c = g.c != null && g.c < 0 ? [0.62, 0.62, 0.68] : seatColor[g.c != null ? g.c : g.seat], gx = b.x + 4 + (g.x - 1) / (st.W - 2) * (b.w - 8), gy = b.y + 4 + g.y / st.H * (b.h - 8);
           R.poly([[tvx(gx - 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy + 4)], [tvx(gx - 4), tvy(gy + 4)]], [c[0], c[1], c[2], 1]);
         }
       }
-      st.ghosts.slice(0, 3).forEach((g, slot) => ghostCircle(slot, g.seat, st.views[slot], st.time));
+      st.ghosts.slice(0, 3).forEach((g, slot) => { if (!(g.c < 0)) ghostCircle(slot, g.c != null ? g.c : g.seat, st.views[slot], st.time); });      // a grey stand-in has no circle
       if (st.sparkle !== undefined) sparkles(st.sparkle);
       if (st.caught) caught(st.caught);
       return canvas;

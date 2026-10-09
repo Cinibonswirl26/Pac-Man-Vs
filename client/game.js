@@ -5,7 +5,7 @@
   let S = PacSim, W = S.W, H = S.H;
   const CFG = S.CFG;
   // Player colours as in the original: P1 red, P2 blue, P3 pink, P4 green (the disc ships ghost_r/b/p/g skins).
-  const SEAT_COLORS = ['#ff2a2a', '#35c8ff', '#ff5ccf', '#2bd94a'];
+  const SEAT_COLORS = ['#ff2a2a', '#35c8ff', '#ff5ccf', '#2bd94a'], GREY = '#9a9aa8';
 
   let mode = null;                 // 'offline' | 'online'
   let ws = null, room = null, you = 0;
@@ -190,7 +190,7 @@
       banner: waiting,
       seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: waiting ? freshPellets() : snap.pellets,
       pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120 } : null,
-      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: S.playerOfGhost(pacs, i) } : null).filter(Boolean),
+      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i) } : null).filter(Boolean),
       pacSeat: waiting ? snap.next : snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: waiting ? null : snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
       pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })),
       caught: isCaught() ? (now - phaseT0) / 1000 : null
@@ -252,7 +252,7 @@
   function onMsg(m) {
     if (m.t === 'err') { $('menuErr').textContent = m.msg; return; }
     if (m.t === 'room') {
-      mode = 'online'; room = m; you = m.you; setMaze(m.maze); names = m.players.map((p, i) => p.cpu ? 'CPU ' + (i + 1) : p.name);
+      mode = 'online'; room = m; you = m.you; setMaze(m.maze); names = m.players.map((p, i) => p.cpu ? (m.fill === 'standin' ? 'Stand-in ' : 'CPU ') + (i + 1) : p.name);
       if (m.phase === 'lobby') { screen('lobby'); renderLobby(); } else showGame();
       return;
     }
@@ -270,19 +270,22 @@
   }
   function renderLobby() {
     $('roomCode').textContent = room.code;
-    $('seats').innerHTML = room.players.map((p, i) => `<div class="seat ${i === you ? 'me' : ''}"><span class="dot" style="background:${SEAT_COLORS[i]}"></span><b>${esc(p.cpu ? 'CPU' : p.name)}</b><span class="note">${i === you ? '(you)' : ''}${i === room.host ? ' host' : ''}</span></div>`).join('');
+    $('seats').innerHTML = room.players.map((p, i) => `<div class="seat ${i === you ? 'me' : ''}"><span class="dot" style="background:${SEAT_COLORS[i]}"></span><b>${esc(p.cpu ? (room.fill === 'standin' ? 'Stand-in' : 'CPU') : p.name)}</b><span class="note">${i === you ? '(you)' : ''}${i === room.host ? ' host' : ''}</span></div>`).join('');
     const host = room.host === you;
     $('start').classList.toggle('hidden', !host);
     $('lobbyNote').textContent = host ? 'You are the host. Start whenever everyone is in.' : 'Waiting for the host to start.';
   }
+  /** The colour seat ghost i wears right now (-1 = a grey stand-in): its player's, or the colour of the ghost that woke it. */
+  const gcolor = i => { const c = snap.ghosts[i] && snap.ghosts[i].c; return c == null ? S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i) : c; };
+  const gcss = i => { const c = gcolor(i); return c < 0 ? GREY : SEAT_COLORS[c]; };
   const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   $('solo').onclick = () => {
-    audio(); const opts = { start: $('soloRole').value, level: +$('soloLevel').value, target: +$('target').value, maze: mazeOf() };
-    store.set('pacvs.solo', JSON.stringify({ start: opts.start, level: opts.level, target: opts.target })); store.set('pacvs.maze', $('mazeSel').value); startOffline(opts);
+    audio(); const opts = { start: $('soloRole').value, level: +$('soloLevel').value, target: +$('target').value, maze: mazeOf(), fill: $('fillSel').value };
+    store.set('pacvs.solo', JSON.stringify({ start: opts.start, level: opts.level, target: opts.target, fill: opts.fill })); store.set('pacvs.maze', $('mazeSel').value); startOffline(opts);
   };
-  $('host').onclick = () => { audio(); $('menuErr').textContent = ''; store.set('pacvs.maze', $('mazeSel').value); connect(() => send({ t: 'create', name: playerName(), maze: mazeOf(), target: +$('target').value })); };
+  $('host').onclick = () => { audio(); $('menuErr').textContent = ''; store.set('pacvs.maze', $('mazeSel').value); connect(() => send({ t: 'create', name: playerName(), maze: mazeOf(), target: +$('target').value, fill: $('fillSel').value })); };
   $('join').onclick = () => {
     audio(); const c = $('code').value.trim().toUpperCase();
     if (c.length !== 4) { $('menuErr').textContent = 'Room codes have 4 letters.'; return; }
@@ -312,7 +315,9 @@
   function startOffline(opts) {
     if (opts) soloOpts = opts;
     setMaze(soloOpts.maze);
-    mode = 'offline'; you = 0; names = [playerName(), 'CPU 1', 'CPU 2', 'CPU 3']; room = null;
+    mode = 'offline'; you = 0; room = null;
+    const cpuName = soloOpts.fill === 'standin' ? 'Stand-in' : 'CPU';
+    names = [playerName(), cpuName + ' 1', cpuName + ' 2', cpuName + ' 3'];
     offline = { match: new PacMatch.Match(i => i === 0, undefined, soloOpts), inputs: [null, null, null, null], acc: 0, last: performance.now() };
     offline.match.start(); snap = offline.match.view(0); showGame();
   }
@@ -630,7 +635,7 @@
       g.arc((x + 0.5) * u, (y + 0.5) * u, v === 2 ? u * (0.2 + 0.05 * Math.sin(now / 120)) : u * 0.09, 0, 7); g.fill();
     }
     if (snap.fruit) drawFruit(snap.fruit, u, now);
-    sm.ghosts.forEach((gh, i) => { if (gh && snap.ghosts[i] && snap.ghosts[i].m !== 'r') drawGhost(gh, SEAT_COLORS[S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i)], u, now, snap.me === i); });
+    sm.ghosts.forEach((gh, i) => { if (gh && snap.ghosts[i] && snap.ghosts[i].m !== 'r') drawGhost(gh, gcss(i), u, now, snap.me === i); });
     drawTrail(u);
     if (sm.pac) drawPac(sm.pac, u, now, snap.me < 0);
     // Ghost players see a circular window around themselves, a minimap of the ghosts, and the pellet count.
@@ -659,7 +664,7 @@
       const target = View3D.YAW[gh.d] || 0;
       let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i) });
+      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i), c: gcolor(i) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
@@ -700,7 +705,7 @@
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(pacs, i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r' });
+      ghosts.push({ i, seat: S.playerOfGhost(pacs, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r' });
     });
     ghosts.sort((a, b) => a.seat - b.seat);
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
@@ -719,7 +724,7 @@
     g.fillText(String(snap.left), x0 + w / 2, y0 - 0.82 * u);
     snap.ghosts.forEach((gh, i) => {
       if (!gh) return;
-      g.fillStyle = SEAT_COLORS[S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i)];
+      g.fillStyle = gcss(i);
       g.fillRect(x0 + (gh.x / W) * w - 0.28 * u, y0 + (gh.y / H) * h - 0.28 * u, 0.56 * u, 0.56 * u);
     });
     g.textAlign = 'start'; g.textBaseline = 'alphabetic';
@@ -727,7 +732,7 @@
 
   // ------------------------------------------------------------------ boot
   $('name').value = store.get('pacvs.name') || '';
-  try { const o = JSON.parse(store.get('pacvs.solo') || 'null'); if (o) { $('soloRole').value = o.start; $('soloLevel').value = String(o.level); $('target').value = String(o.target); } } catch { /* defaults */ }
+  try { const o = JSON.parse(store.get('pacvs.solo') || 'null'); if (o) { $('soloRole').value = o.start; $('soloLevel').value = String(o.level); $('target').value = String(o.target); if (o.fill) $('fillSel').value = o.fill; } } catch { /* defaults */ }
   const qr = new URLSearchParams(location.search).get('room');
   if (qr) { $('code').value = qr.toUpperCase().slice(0, 4); $('menuErr').textContent = 'Enter your name and press Join to enter room ' + $('code').value + '.'; }
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });

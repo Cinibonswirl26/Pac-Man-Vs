@@ -157,7 +157,8 @@
       // Ghosts last: their bodies are blended.
       const blink = J3D.animatePattern(assets.ghostBlink, f * 0.5).e || 0;       // the blink runs at half speed
       for (const g of v.ghosts) {
-        let skin = skins[SKINS[g.seat]], scale = 1.25, opts;
+        const col = g.c != null ? g.c : g.seat;      // the colour it wears: its player's, the colour of the ghost that woke it, or -1 = grey stand-in
+        let skin = col < 0 ? skins.com : skins[SKINS[col]], scale = 1.25, opts;
         if (g.m === 'f') {
           // vulnerable: a smaller dark blue ghost with a mouth and no big eyes, blinking out near the end
           if (v.flash) continue;

@@ -30,13 +30,13 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 2048 });
 const rooms = new Map();
 
 class Room {
-  constructor(code, maze, target) {
-    this.code = code; this.maze = maze || null; this.target = target;
+  constructor(code, maze, target, fill) {
+    this.code = code; this.maze = maze || null; this.target = target; this.fill = fill === 'standin' ? 'standin' : 'cpu';
     this.slots = [null, null, null, null];      // ws or null (CPU)
     this.names = ['CPU', 'CPU', 'CPU', 'CPU'];
     this.host = -1;
     this.inputs = [null, null, null, null];
-    this.match = new Match(i => !!this.slots[i], undefined, { maze: this.maze, target: this.target });
+    this.match = new Match(i => !!this.slots[i], undefined, { maze: this.maze, target: this.target, fill: this.fill });
     this.timer = null;
   }
   humans() { return this.slots.filter(Boolean).length; }
@@ -59,7 +59,7 @@ class Room {
   roomInfo(i) {
     const m = this.match;
     return { t: 'room', code: this.code, maze: this.maze ? { name: this.maze.name, rows: this.maze.rows, pac: this.maze.pac, ghosts: this.maze.ghosts, door: this.maze.door, exit: this.maze.exit, house: this.maze.house } : null, you: i, host: this.host, phase: m.phase,
-      players: this.names.map((n, k) => ({ name: n, cpu: !this.slots[k] })), scores: m.scores, round: m.round, target: m.target, pac: m.pac, winner: m.winner };
+      players: this.names.map((n, k) => ({ name: n, cpu: !this.slots[k] })), scores: m.scores, round: m.round, target: m.target, pac: m.pac, winner: m.winner, fill: this.fill };
   }
   broadcastRoom() { for (let i = 0; i < 4; i++) this.send(i, this.roomInfo(i)); }
   start() {
@@ -110,7 +110,7 @@ wss.on('connection', ws => {
     switch (m.t) {
       case 'create': {
         if (r) return;
-        const room = new Room(code(), m.maze ? sanitizeMaze(m.maze) : null, Sim.CFG.targets.includes(m.target) ? m.target : Sim.CFG.defaultTarget); rooms.set(room.code, room);
+        const room = new Room(code(), m.maze ? sanitizeMaze(m.maze) : null, Sim.CFG.targets.includes(m.target) ? m.target : Sim.CFG.defaultTarget, m.fill); rooms.set(room.code, room);
         room.add(ws, clean(m.name)); room.broadcastRoom(); break;
       }
       case 'join': {

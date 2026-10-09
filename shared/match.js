@@ -24,6 +24,7 @@
       this.target = this.Sim.CFG.targets.includes(opts.target) ? opts.target : this.Sim.CFG.defaultTarget;
       this.level = opts.level == null ? 1 : opts.level;
       this.startRole = opts.start || 'random';
+      this.fill = opts.fill === 'standin' ? 'standin' : 'cpu';     // what plays a ghost seat nobody is sitting in
       this.isHuman = isHuman;
       this.rng = this.Sim.mulberry(seed || Date.now());
       this.phase = 'lobby';            // lobby | countdown | play | roundover | handoff | final
@@ -41,7 +42,9 @@
       this.begin();
     }
     begin() {
-      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target });
+      // Seats nobody is playing: either computer players, or grey stand-ins that only wake up when a ghost player touches them.
+      const standin = [0, 1, 2].map(gi => this.fill === 'standin' && !this.isHuman(this.Sim.playerOfGhost({ pacPlayer: this.pac }, gi)));
+      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin });
       this.phase = 'countdown'; this.phaseLeft = COUNTDOWN;
     }
     /** Advance one fixed step. inputs[i] is the latest direction for human seat i.
@@ -91,6 +94,7 @@
     view(i) {
       const v = this.Sim.view(this.sim, i);
       v.t = 'state'; v.phase = this.phase; v.left_t = Math.max(0, Math.round(this.phaseLeft * 10) / 10); v.round = this.round;
+      v.human = [0, 1, 2, 3].map(i => !!this.isHuman(i));
       v.next = this.pac;   // who is Pac-Man in the coming round (the catcher, during a hand-over)
       return v;
     }

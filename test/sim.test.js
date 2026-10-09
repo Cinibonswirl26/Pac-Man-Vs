@@ -181,5 +181,30 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   ok(some(S.view(s, 1)) || s.left > 0, 'ghost view before'); s.left = S.CFG.hideAt + 1; ok(some(S.view(s, 1)), 'ghosts see pellets with 21 left (when in sight)' || true);
   s.left = S.CFG.hideAt; ok(!some(S.view(s, 1)) && some(S.view(s, s.pacPlayer)), 'at 20 left the ghosts see no pellets, Pac-Man still does');
 }
+{
+  // Grey stand-ins: harmless to Pac-Man, woken by a ghost passing through them, grey again when eaten
+  const idle = { pac: null, ghosts: [null, null, null] };
+  const s = S.newRound([1600, 0, 0, 0], 0, { standin: [true, true, false] });
+  ok(S.colorOf(s, 0) === -1 && S.colorOf(s, 1) === -1 && S.colorOf(s, 2) === S.playerOfGhost(s, 2), 'stand-ins start grey, the player ghost wears its colour');
+  s.ghosts[0].x = s.pac.x; s.ghosts[0].y = s.pac.y; s.ghosts[1].x = 1.5; s.ghosts[1].y = 1.5; s.ghosts[2].x = 17.5; s.ghosts[2].y = 1.5;
+  S.update(s, idle); ok(!s.over && s.ghosts[0].grey, 'Pac-Man passes through a grey ghost');
+  s.pac.x = 9.5; s.pac.y = 13.5; s.ghosts[0].x = 5.5; s.ghosts[0].y = 1.5; s.ghosts[2].x = 5.5; s.ghosts[2].y = 1.5;
+  S.update(s, idle);
+  ok(!s.ghosts[0].grey && S.colorOf(s, 0) === S.playerOfGhost(s, 2) && s.events.includes('claim'), 'a ghost passing through a stand-in gives it its colour');
+  ok(s.ghosts[1].grey, 'other stand-ins stay grey');
+  s.ghosts[0].x = s.pac.x; s.ghosts[0].y = s.pac.y;
+  S.update(s, idle);
+  ok(s.over && s.overReason === 'caught' && s.catcher === S.playerOfGhost(s, 2), 'the woken ghost catches Pac-Man for the player whose colour it wears: ' + s.catcher);
+  const s2 = S.newRound([1600, 0, 0, 0], 0, { standin: [true, true, false] });
+  s2.ghosts[0].grey = false; s2.ghosts[0].claim = S.playerOfGhost(s2, 2); s2.ghosts[0].mode = 'fright'; s2.frightLeft = 8;
+  s2.ghosts[0].x = s2.pac.x; s2.ghosts[0].y = s2.pac.y; s2.ghosts[1].x = 1.5; s2.ghosts[2].x = 17.5; s2.ghosts[2].y = 1.5; s2.ghosts[1].y = 1.5;
+  S.update(s2, idle);
+  ok(s2.ghosts[0].mode === 'eyes' && s2.ghosts[0].grey && S.colorOf(s2, 0) === -1, 'eaten, a woken stand-in goes back to grey');
+  const s3 = S.newRound([1600, 0, 0, 0], 0, { standin: [true, true, false] });
+  s3.pellets.fill(0); s3.pellets[(s3.pac.y | 0) * S.W + ((s3.pac.x | 0) + 1)] = 2; s3.left = 5;
+  s3.pac.x += 0.9; S.update(s3, idle);
+  ok(s3.frightLeft > 0, 'the power pellet was eaten');
+  ok(s3.ghosts[0].mode === 'normal' && s3.ghosts[0].grey, 'a power pellet does not frighten a grey ghost');
+}
 console.log(fails ? `${fails} FAILED` : 'all sim checks passed');
 process.exit(fails ? 1 : 0);

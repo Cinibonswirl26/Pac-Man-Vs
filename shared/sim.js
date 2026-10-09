@@ -86,7 +86,9 @@
     return {
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: ent(START.pac), ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0 })),
+      pac: ent(START.pac),
+      // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 })),
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
       pacPlayer, tick: 0, catcher: -1, steal: 0, winner: -1, time: 0,
       eaten: 0, nextFruit: CFG.fruitFirst, fruit: null, trail: [], trailLast: -1
@@ -100,6 +102,11 @@
     let gi = 0;
     for (let p = 0; p < 4; p++) { if (p === state.pacPlayer) continue; if (p === player) return gi; gi++; }
     return -1;
+  }
+  /** Whose colour ghost gi wears: its own player's, the colour of the ghost that woke it up (a stand-in), or -1 for grey. */
+  function colorOf(state, gi) {
+    const g = state.ghosts[gi];
+    return g.grey ? -1 : (g.claim >= 0 ? g.claim : playerOfGhost(state, gi));
   }
   function playerOfGhost(state, gi) {
     let n = 0;
@@ -179,7 +186,7 @@
       s.events.push(power ? 'power' : 'pellet');
       if (power) {
         s.frightLeft = CFG.frightTime; s.chain = 0;
-        s.ghosts.forEach(g => { if (g.mode === 'normal') { g.mode = 'fright'; g.want = OPP[g.dir]; } });
+        s.ghosts.forEach(g => { if (g.mode === 'normal' && !g.grey) { g.mode = 'fright'; g.want = OPP[g.dir]; } });
       }
       award(s, s.pacPlayer, power ? CFG.powerPts : CFG.pelletPts);
       if (s.over) return;
@@ -211,24 +218,36 @@
       const inp = inputs.ghosts[i];
       if (inp != null) g.want = inp;
       step(g, g.mode === 'fright' ? CFG.frightSpeed : CFG.ghostSpeed, dt, 'ghost');
+      if (g.grey) continue;                       // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
       if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7) {
         s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; g.sightLeft = CFG.fruitSightTime; s.events.push('fruitghost');
-        award(s, playerOfGhost(s, i), CFG.fruitPts); if (s.over) return;
+        award(s, colorOf(s, i), CFG.fruitPts); if (s.over) return;
       }
       if (dist(g, s.pac) < CFG.catchDist) {
         if (g.mode === 'fright') {
           g.mode = 'eyes'; s.events.push('eatghost');
+          if (g.standin) { g.grey = true; g.claim = -1; }     // a woken stand-in that is eaten goes back to grey
           award(s, s.pacPlayer, CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)]); s.chain++;
           if (s.over) return;
         } else if (g.mode === 'normal') {
           // The catcher steals points from Pac-Man and takes over as Pac-Man next round.
-          const catcher = playerOfGhost(s, i), steal = Math.min(CFG.stealPts, s.scores[s.pacPlayer]);
+          const catcher = colorOf(s, i), steal = Math.min(CFG.stealPts, s.scores[s.pacPlayer]);
           s.scores[s.pacPlayer] -= steal; s.roundScores[s.pacPlayer] -= steal;
           s.catcher = catcher; s.steal = steal; s.events.push('catch');
           award(s, catcher, steal);
           s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'caught';
           return;
         }
+      }
+    }
+    // A grey stand-in that a ghost passes through takes that ghost's colour and goes hunting for Pac-Man.
+    for (const a of s.ghosts) {
+      if (!a.grey || a.mode !== 'normal') continue;
+      for (let j = 0; j < s.ghosts.length; j++) {
+        const b = s.ghosts[j];
+        if (b === a || b.grey || b.mode !== 'normal' || dist(a, b) >= CFG.catchDist) continue;
+        a.grey = false; a.claim = colorOf(s, j); s.events.push('claim');
+        break;
       }
     }
   }
@@ -270,7 +289,7 @@
     const gi = ghostIndexOf(s, player);
     const me = gi < 0 ? s.pac : s.ghosts[gi];
     const sight = gi >= 0 ? sightOf(me) : CFG.ghostSight;
-    const seen = (x, y) => s.ghosts.some(g => Math.hypot(x - g.x, y - g.y) <= sightOf(g) * CFG.viewReach);
+    const seen = (x, y) => s.ghosts.some(g => !g.grey && Math.hypot(x - g.x, y - g.y) <= sightOf(g) * CFG.viewReach);
     const vis = e => gi < 0 || seen(e.x, e.y);
     const out = {
       tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, over: s.over, why: s.overReason,
@@ -281,7 +300,7 @@
       // the trail Pac-Man leaves: [x, y, age in seconds]; ghosts only see the parts inside a circle of sight
       trail: s.trail.filter(p => vis(p)).map(p => [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100, Math.round((s.time - p.t) * 100) / 100]),
       // Every ghost is on the shared screen (its own circle and the minimap); `s` is the radius of its circle.
-      ghosts: s.ghosts.map(g => Object.assign(q(g), { m: g.mode[0], s: sightOf(g) }))
+      ghosts: s.ghosts.map((g, i) => Object.assign(q(g), { m: g.mode[0], s: sightOf(g), c: colorOf(s, i) }))
     };
     if (gi < 0) out.pellets = Array.from(s.pellets);
     else {
@@ -351,7 +370,7 @@
   function ghostArrival(s) {
     const best = new Float32Array(T).fill(1e9);
     for (const g of s.ghosts) {
-      if (g.mode === 'eyes') continue;
+      if (g.mode === 'eyes' || g.grey) continue;
       const harmless = g.mode === 'fright' && s.frightLeft > 3;
       if (harmless) continue;
       // a ghost still inside the house is counted from the exit, a moment later
@@ -369,7 +388,7 @@
     const p = s.pac;
     // Emergency: a dangerous ghost closing head-on in this corridor, reverse right now.
     for (const g of s.ghosts) {
-      if (g.mode !== 'normal') continue;
+      if (g.mode !== 'normal' || g.grey) continue;
       const dx = g.x - p.x, dy = g.y - p.y, ahead = dx * DIRS[p.dir][0] + dy * DIRS[p.dir][1];
       if (ahead > 0 && ahead < (level === 0 ? 1.2 : 2.0) && Math.abs(dx * DIRS[p.dir][1]) + Math.abs(dy * DIRS[p.dir][0]) < 0.4 && s.frightLeft < 1) {
         const back = OPP[p.dir];
@@ -510,6 +529,7 @@
     if (inHouse(gx, gy) || cellAt(gx, gy) === 'D') return gx === DOOR[0] ? 0 : (gx < DOOR[0] ? 1 : 3);
     const ex = exits(g, 'ghost'), fwd = ex.filter(d => d !== OPP[g.dir]);
     const pool = fwd.length ? fwd : ex;
+    if (g.grey) return pool.includes(g.dir) && rng() < 0.7 ? g.dir : pool[Math.floor(rng() * pool.length)];     // a stand-in just wanders
     if (g.mode === 'fright' && s.frightLeft > 0) {
       const dm = distMap(s.pac.x, s.pac.y, 'ghost');
       let best = pool[0], bv = -1;
@@ -576,7 +596,7 @@
     if (t.tick === s.tick) return t;
     t.tick = s.tick;
     const sight = level === 0 ? CFG.ghostSight : level === 1 ? CFG.ghostSight * CFG.fruitSightMult : 1e9;
-    t.live = s.ghosts.some(g => g.mode !== 'eyes' && dist(g, s.pac) <= sight);
+    t.live = s.ghosts.some(g => g.mode !== 'eyes' && !g.grey && dist(g, s.pac) <= sight);
     if (t.live) { t.seen = s.time; t.px = s.pac.x; t.py = s.pac.y; }
     t.has = t.live || s.time - t.seen < (level === 0 ? 4 : level === 1 ? 8 : 1e9);
     t.route = [];
@@ -590,7 +610,7 @@
     }
     // ghosts ordered by how close they are to Pac-Man (0 = nearest = the chaser)
     const pd = distMap(s.pac.x, s.pac.y, 'ghost');
-    const order = s.ghosts.map((g, i) => [i, g.mode === 'normal' ? (pd[tileIdx(Math.floor(g.x), Math.floor(g.y))] + 1e3) % 1e3 : 1e4]).sort((a, b) => a[1] - b[1]);
+    const order = s.ghosts.map((g, i) => [i, g.mode === 'normal' && !g.grey ? (pd[tileIdx(Math.floor(g.x), Math.floor(g.y))] + 1e3) % 1e3 : 1e4]).sort((a, b) => a[1] - b[1]);
     t.rank = []; order.forEach(([i], r) => { t.rank[i] = r; });
     return t;
   }
@@ -600,7 +620,7 @@
     return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   }
 
-  return { W, H, ROWS, DIRS, OPP, CFG, START, maze, newRound, update, view, cpuGhost, cpuPac, ghostIndexOf, playerOfGhost, mulberry, wallAt, dist };
+  return { W, H, ROWS, DIRS, OPP, CFG, START, maze, newRound, update, view, cpuGhost, cpuPac, ghostIndexOf, playerOfGhost, colorOf, mulberry, wallAt, dist };
   }
 
   const api = build(BUILTIN);
