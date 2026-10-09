@@ -111,7 +111,8 @@
       const wx = x => (x + st.colOff - 1) * 1000, wz = y => (y + st.rowOff - 1) * 1000;
       const stage = useStage(st);
       // Animations: the ghosts' float cycle and Pac-Man's mouth, shared by every instance.
-      const gf = Math.floor(f) % assets.ghostAnim.length;
+      // the body's float and skirt sway run at half speed, like the blink: the original advances them 30 times a second
+      const gf = Math.floor(f * 0.5) % assets.ghostAnim.length;
       if (gf !== lastGhostFrame) { lastGhostFrame = gf; ghost.setPose(J3D.pose(assets.ghost, J3D.animate(assets.ghostAnim, gf))); }
       const pf = Math.floor(f) % assets.pacAnim.length;
       if (pf !== lastPacFrame && v.pac) { lastPacFrame = pf; pac.setPose(J3D.pose(assets.pac, J3D.animate(assets.pacAnim, pf))); }
