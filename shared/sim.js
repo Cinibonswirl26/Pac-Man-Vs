@@ -24,7 +24,8 @@
   const FPS = 59.7275, CELL = 8;
   const CFG = {
     tick: 1 / 30,
-    pacSpeed: 0.5 * FPS / CELL,          // 3.73 cells/s
+    pacSpeed: 0.5 * FPS / CELL,          // 3.73 cells/s on a cleared corridor
+    pelletPause: 1 / FPS,                // eating a pellet holds Pac-Man for a frame: 0.4725 px/frame measured over a pellet row against 0.503 cleared
     ghostSpeed: (0.5 + 1 / 256) * FPS / CELL,   // a hair faster than Pac-Man: about 1 px more per 128 px
     frightSpeed: 0.375 * FPS / CELL,     // 2.80 cells/s
     greySpeed: 0.41 * FPS / CELL,        // a grey stand-in dawdles (a guess: slow enough to run into on purpose, slower than Pac-Man)
@@ -87,7 +88,7 @@
     return {
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: ent(START.pac),
+      pac: Object.assign(ent(START.pac), { pause: 0 }),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
       ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 })),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
@@ -180,14 +181,16 @@
 
     // Pac-Man
     if (inputs.pac != null) s.pac.want = inputs.pac;
-    step(s.pac, CFG.pacSpeed, dt, 'pac');
+    const held = Math.min(dt, s.pac.pause || 0);          // time still owed to the last pellet
+    s.pac.pause = (s.pac.pause || 0) - held;
+    step(s.pac, CFG.pacSpeed, dt - held, 'pac');
     if (s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
     while (s.trail.length && s.time - s.trail[0].t > CFG.trailTime) s.trail.shift();
     const px = Math.floor(s.pac.x), py = Math.floor(s.pac.y);
     const pi = py * W + (((px % W) + W) % W);
     if (s.pellets[pi]) {
       const power = s.pellets[pi] === 2;
-      s.pellets[pi] = 0; s.left--; s.eaten++;
+      s.pellets[pi] = 0; s.left--; s.eaten++; s.pac.pause += CFG.pelletPause;
       if (!s.fruit && s.eaten >= s.nextFruit && s.left > 8) s.fruit = { x: FRUIT[0] + 0.5, y: FRUIT[1] + 0.5, left: CFG.fruitStay };
       s.events.push(power ? 'power' : 'pellet');
       if (power) {

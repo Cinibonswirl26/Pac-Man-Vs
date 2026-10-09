@@ -231,5 +231,21 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   const t = S.newRound([1600, 0, 0, 0], 0);
   ok(S.playerOfGhost(t, 0) === 1 && S.playerOfGhost(t, 2) === 3 && S.ghostIndexOf(t, 2) === 1, 'without opts.players the slots are in seat order');
 }
+{
+  // Eating pellets slows Pac-Man: each one holds him for a frame (measured on the original: 0.4725 px/frame over a pellet row, 0.503 cleared)
+  const RIGHT = S.DIRS.findIndex(d => d[0] === 1), idle = { ghosts: [null, null, null] };
+  let run = -1; for (let x = 1; x < S.W - 8 && run < 0; x++) if (![0, 1, 2, 3, 4, 5, 6, 7].some(k => S.wallAt(x + k, 1))) run = x;
+  const go = clear => {
+    const s = S.newRound([1600, 0, 0, 0], 0);
+    if (clear) { s.pellets.fill(0); s.left = 100; }
+    Object.assign(s.pac, { x: run + 0.5, y: 1.5, dir: RIGHT, want: RIGHT });
+    s.ghosts.forEach(g => { g.x = 17.5; g.y = 13.5; });
+    for (let k = 0; k < 40; k++) S.update(s, Object.assign({ pac: RIGHT }, idle));
+    return s;
+  };
+  const a = go(false), b = go(true), eaten = a.eaten;
+  const lost = (b.pac.x - a.pac.x), expect = eaten * S.CFG.pelletPause * S.CFG.pacSpeed;
+  ok(eaten >= 4 && lost > 0 && Math.abs(lost - expect) < 0.02, `pellets hold Pac-Man back: ate ${eaten}, ${lost.toFixed(3)} cells behind a cleared run (expected ${expect.toFixed(3)})`);
+}
 console.log(fails ? `${fails} FAILED` : 'all sim checks passed');
 process.exit(fails ? 1 : 0);
