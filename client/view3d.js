@@ -88,7 +88,16 @@
       }
       return { w: n, h: n, rgba, wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 };
     })());
-    const ORBS = 7, ORB_LIFE = 1.3;
+    // Measured on a recording of the original: each drop lives about 6 frames (0.2 s), two or three are in the air per
+    // ghost, about 4 px wide on the 640 px picture (0.09 cell), and they fly out from where the ghost was when they
+    // fell: sideways at about 1.4 cells/s in any direction and upwards at about 0.75 cells/s, so they trail a moving ghost.
+    const ORBS = 3, ORB_LIFE = 0.2;
+    const trails = new Map();                     // per ghost (by seat): recent positions [time, x, y]
+    const whereAt = (h, t) => {
+      if (h[0][0] >= t) return h[0];
+      for (let i = h.length - 1; i > 0; i--) if (h[i - 1][0] <= t) { const a = h[i - 1], b = h[i], k = b[0] > a[0] ? (t - a[0]) / (b[0] - a[0]) : 0; return [t, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]; }
+      return h[h.length - 1];
+    };
     const rnd = (a, b, c) => { let h = Math.imul((a * 73856093) ^ (b * 19349663) ^ (c * 83492791), 0x45d9f3b); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; return (h >>> 0) / 4294967296; };
     // the ghosts' blink: the five eye textures, swapped by the disc's pattern animation
     const eyes = assets.ghost.textures.slice(0, 5).map(t => R.texture(t));
@@ -143,14 +152,21 @@
         if (v.pac.hit) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
         R.draw(pac, pm);
       }
-      // Frightened ghosts cry: glowing blue drops drift off them (positions come from the time alone, so every circle agrees).
+      // Frightened ghosts cry: glowing blue drops fly off them and are left behind (positions come from the time and the
+      // ghost's recent path alone, so every circle agrees).
       const orbs = [];
-      if (!v.flash) for (const g of v.ghosts) if (g.m === 'f') {
-        const seat = g.seat | 0;
+      for (const g of v.ghosts) {
+        const seat = g.seat | 0, h = trails.get(seat) || [];
+        if (!h.length || h[h.length - 1][0] < v.time) { h.push([v.time, g.x, g.y]); while (h.length > 2 && h[1][0] < v.time - ORB_LIFE) h.shift(); }
+        else if (h[h.length - 1][0] === v.time) { h[h.length - 1][1] = g.x; h[h.length - 1][2] = g.y; }
+        trails.set(seat, h);
+        if (g.m !== 'f' || v.flash) continue;
         for (let k = 0; k < ORBS; k++) {
-          const ph = v.time / ORB_LIFE + k / ORBS, cyc = Math.floor(ph), u = ph - cyc;
-          const a = rnd(seat, k, cyc) * Math.PI * 2, r = (380 + rnd(seat, k, cyc + 99) * 320) * (0.7 + 0.6 * u), h0 = 120 + rnd(seat, k, cyc + 7) * 380;
-          orbs.push([wx(g.x) + Math.cos(a) * r, fl + h0 + 420 * u, wz(g.y) + Math.sin(a) * r, 190 * (1 - u) ** 0.6 + 20]);
+          const ph = v.time / ORB_LIFE + k / ORBS, cyc = Math.floor(ph), u = ph - cyc, age = u * ORB_LIFE;
+          const [, px, py] = whereAt(h, v.time - age);
+          const a = rnd(seat, k, cyc) * Math.PI * 2, sp = 500 + rnd(seat, k, cyc + 99) * 1400, up = 400 + rnd(seat, k, cyc + 7) * 700;
+          const ox = (rnd(seat, k, cyc + 3) - 0.5) * 300, oz = (rnd(seat, k, cyc + 5) - 0.5) * 300, h0 = 150 + rnd(seat, k, cyc + 11) * 400;
+          orbs.push([wx(px) + ox + Math.cos(a) * sp * age, fl + h0 + up * age, wz(py) + oz + Math.sin(a) * sp * age, u < 0.6 ? 100 : 100 - 70 * (u - 0.6) / 0.4]);
         }
       }
       R.sprites(orb, orbs);
