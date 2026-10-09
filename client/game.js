@@ -251,15 +251,25 @@
     if (!ps.img) ps.img = new ImageData(ps.frame.data, Handheld.W, Handheld.H);
     ps.ctx.putImageData(ps.img, 0, 0);
   }
-  const mazeOf = () => { const m = /^disc:(\d+)$/.exec($('mazeSel').value); return m ? art.mazes.find(d => d.stage === +m[1]) || null : null; };
+  const mazeOf = () => {
+    const v = $('mazeSel').value, m = /^disc:(\d+)$/.exec(v);
+    if (m) return art.mazes.find(d => d.stage === +m[1]) || null;
+    const lv = PacArrange.byId(v);                 // an Arrangement level: a disc maze (or the built-in one) with pads and capsules laid over it
+    if (!lv) return null;
+    const base = lv.base ? art.mazes.find(d => d.stage === lv.base) : PacSim.BUILTIN;
+    return base ? PacArrange.apply(base, lv) : null;
+  };
+  const arrLevels = () => PacArrange.LEVELS.filter(l => !l.base || art.mazes.some(d => d.stage === l.base));
   /** Fill the maze menu with the stages found on the disc. */
   function fillMazes() {
     const sel = $('mazeSel'), keep = store.get('pacvs.maze');
     const opt = d => `<option value="disc:${d.stage}">${esc(d.name)}</option>`;
+    const group = (label, items) => items.length ? `<optgroup label="${label}">${items.join('')}</optgroup>` : '';
     sel.innerHTML = '<option value="builtin">Built-in maze</option>' +
-      `<optgroup label="Stages on the menu">${art.mazes.filter(d => d.official).map(opt).join('')}</optgroup>` +
-      `<optgroup label="Other layouts on the disc">${art.mazes.filter(d => !d.official).map(opt).join('')}</optgroup>`;
-    sel.value = [...sel.options].some(o => o.value === keep) ? keep : 'disc:1';
+      group('Stages on the menu', art.mazes.filter(d => d.official).map(opt)) +
+      group('Other layouts on the disc', art.mazes.filter(d => !d.official).map(opt)) +
+      group('Arrangement levels (pads and capsules)', arrLevels().map(l => `<option value="${l.id}">${esc(l.name)}</option>`));
+    sel.value = [...sel.options].some(o => o.value === keep) ? keep : art.mazes.length ? 'disc:1' : 'builtin';
   }
   function toCanvas(t) { const c = document.createElement('canvas'); c.width = t.w; c.height = t.h; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h), 0, 0); return c; }
   async function loadDisc(blob, remember) {
@@ -807,6 +817,7 @@
   // ------------------------------------------------------------------ boot
   $('name').value = store.get('pacvs.name') || '';
   try { const o = JSON.parse(store.get('pacvs.solo') || 'null'); if (o) { $('soloRole').value = o.start; $('soloLevel').value = String(o.level); $('target').value = String(o.target); if (o.kinds) [1, 2, 3].forEach(i => { if (o.kinds[i] === 'cpu' || o.kinds[i] === 'standin') $('kind' + i).value = o.kinds[i]; }); else if (o.fill === 'cpu') [1, 2, 3].forEach(i => { $('kind' + i).value = 'cpu'; }); } } catch { /* defaults */ }
+  fillMazes();                                    // the built-in maze and its Arrangement level are there before any disc is read
   const qr = new URLSearchParams(location.search).get('room');
   if (qr) { $('code').value = qr.toUpperCase().slice(0, 4); $('menuErr').textContent = 'Enter your name and press Join to enter room ' + $('code').value + '.'; }
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });

@@ -56,7 +56,10 @@
    *  'o' power pellet, ' ' or '_' empty floor. The house is the rectangle ghosts wait in.
    *  `ghosts` are the three ghost start cells; ghosts start outside the house, ready to play. */
   function makeMaze(rows, o) {
-    return { rows, W: rows[0].length, H: rows.length, pac: o.pac, ghosts: o.ghosts, door: o.door, exit: o.exit, house: o.house, name: o.name || 'maze' };
+    const m = { rows, W: rows[0].length, H: rows.length, pac: o.pac, ghosts: o.ghosts, door: o.door, exit: o.exit, house: o.house, name: o.name || 'maze' };
+    if (o.fruit) m.fruit = o.fruit;
+    if (o.arrange) m.arrange = o.arrange;      // the "Arrangement" overlay (see shared/arrange.js): pads and capsules
+    return m;
   }
   const BUILTIN = makeMaze(HALF.map(h => h + h.slice(0, 11).split('').reverse().join('')), {
     name: 'built-in', pac: [11, 13], ghosts: [[8, 8], [14, 8], [11, 8]], door: [11, 9], exit: [11, 8], house: { x0: 10, x1: 12, y0: 10, y1: 11 }

@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const Sim = require('../shared/sim.js');
+const Arrange = require('../shared/arrange.js');
 const { Match } = require('../shared/match.js');
 
 const PORT = +process.env.PORT || 8080;
@@ -67,7 +68,7 @@ class Room {
   send(i, obj) { const w = this.slots[i]; if (w && w.readyState === 1) w.send(JSON.stringify(obj)); }
   roomInfo(i) {
     const m = this.match;
-    return { t: 'room', code: this.code, maze: this.maze ? { name: this.maze.name, rows: this.maze.rows, pac: this.maze.pac, ghosts: this.maze.ghosts, door: this.maze.door, exit: this.maze.exit, house: this.maze.house } : null, you: i, host: this.host, phase: m.phase,
+    return { t: 'room', code: this.code, maze: this.maze ? Object.assign({ name: this.maze.name, rows: this.maze.rows, pac: this.maze.pac, ghosts: this.maze.ghosts, door: this.maze.door, exit: this.maze.exit, house: this.maze.house }, this.maze.arrange ? { arrange: this.maze.arrange } : {}) : null, you: i, host: this.host, phase: m.phase,
       players: this.names.map((n, k) => ({ name: n, cpu: !this.slots[k], kind: this.slots[k] ? 'human' : this.kinds[k] })), scores: m.scores, round: m.round, target: m.target, pac: m.pac, winner: m.winner, fill: this.fill, kinds: this.kinds.slice() };
   }
   broadcastRoom() { for (let i = 0; i < 4; i++) this.send(i, this.roomInfo(i)); }
@@ -102,7 +103,9 @@ function sanitizeMaze(m) {
     if (!h || !['x0', 'x1', 'y0', 'y1'].every(k => Number.isInteger(h[k])) || h.x0 > h.x1 || h.y0 > h.y1 || !pt([h.x0, h.y0]) || !pt([h.x1, h.y1])) return null;
     const open = a => !'#='.includes(m.rows[a[1]][a[0]]);
     if (![m.pac, m.exit, ...m.ghosts].every(open) || m.rows[m.door[1]][m.door[0]] !== 'D') return null;
-    return Sim.makeMaze(m.rows.slice(), { name: String(m.name || 'custom').replace(/[^\w .'\-]/g, '').slice(0, 32) || 'custom', pac: m.pac, ghosts: m.ghosts, door: m.door, exit: m.exit, house: { x0: h.x0, x1: h.x1, y0: h.y0, y1: h.y1 } });
+    const o = { name: String(m.name || 'custom').replace(/[^\w .'\-]/g, '').slice(0, 32) || 'custom', pac: m.pac, ghosts: m.ghosts, door: m.door, exit: m.exit, house: { x0: h.x0, x1: h.x1, y0: h.y0, y1: h.y1 } };
+    if (m.arrange) { o.arrange = Arrange.validate(m.arrange, { rows: m.rows, pac: m.pac, ghosts: m.ghosts, exit: m.exit, house: o.house }); if (!o.arrange) return null; }
+    return Sim.makeMaze(m.rows.slice(), o);
   } catch { return null; }
 }
 const clean = s => String(s || 'Player').replace(/[^\w \-.]/g, '').slice(0, 12) || 'Player';
