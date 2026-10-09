@@ -67,7 +67,32 @@
 
   /** Sprites: [{tile, pal, x, y, hf, vf}] of 8 x 8 pieces, drawn in the order given (later on top). */
   function drawSprites(f, hw, list) {
-    for (const s of list) blit(f, hw.objTile(s.tile), hw.objPal[s.pal], s.x, s.y, (s.hf ? 1 : 0) | (s.vf ? 2 : 0), false);
+    for (const s of list) blit(f, s.pix || hw.objTile(s.tile), s.palette || hw.objPal[s.pal], s.x, s.y, (s.hf ? 1 : 0) | (s.vf ? 2 : 0), false);
+  }
+
+  // ---- Arrangement levels: marks of this project's own (8 x 8 four-bit pixels, drawn as sprites) ------------------
+  const px = rows => { const t = new Uint8Array(64); rows.forEach((r, j) => [...r].forEach((c, i) => { t[j * 8 + i] = c === '.' ? 0 : +c; })); return t; };
+  const ARROW_R = px(['........', '...1....', '...11...', '1111111.', '...111..', '...11...', '...1....', '........']);   // a dash arrow pointing right
+  const ARROW_D = px(['........', '...11...', '...11...', '...11...', '.111111.', '..1111..', '...11...', '........']);              // and one pointing down
+  const RING = px(['...1111.', '..1....1', '.1......', '1....1..', '1...1.1.', '1...1...', '1...1...', '1...1...']);                   // top-left quarter of a jump ring with its arrow
+  const PILL = px(['...2....', '..222...', '..222...', '.222....', '.111....', '111.....', '111.....', '.1......']);                    // a capsule: coloured bottom, white top
+  const STAR = px(['........', '...1....', '..111...', '.11111..', '..111...', '.1...1..', '........', '........']);
+  const BIGDOT = px(['........', '........', '...11...', '..1111..', '..1111..', '...11...', '........', '........']);
+  const PAL = { dash: [[0, 0, 0], [255, 140, 24]], ring: [[[0, 0, 0], [255, 72, 72]], [[0, 0, 0], [80, 220, 255]], [[0, 0, 0], [150, 255, 80]], [[0, 0, 0], [255, 210, 40]]],
+    pill: { red: [[0, 0, 0], [255, 40, 40], [255, 255, 255]], cyan: [[0, 0, 0], [60, 230, 255], [255, 255, 255]], pink: [[0, 0, 0], [255, 110, 200], [255, 255, 255]], orange: [[0, 0, 0], [255, 150, 30], [255, 255, 255]], gold: [[0, 0, 0], [255, 215, 40], [255, 255, 255]] },
+    star: [[0, 0, 0], [255, 235, 80]], big: [[0, 0, 0], [255, 150, 170]] };
+  /** The marks of the level's pads: a dash arrow or a jump ring over the cell. */
+  function padSprites(list, pads, sx, sy) {
+    for (const p of pads || []) {
+      const x = sx(p.x + 0.5), y = sy(p.y + 0.5);
+      if (p.kind === 'dash') {
+        const v = p.dir === 0 || p.dir === 2, pix = v ? ARROW_D : ARROW_R, flip = p.dir === 3 ? 1 : p.dir === 0 ? 2 : 0;
+        list.push({ pix, palette: PAL.dash, x: x + 4, y: y + 4, hf: flip & 1, vf: flip >> 1 });
+      } else {
+        const palette = PAL.ring[p.colour || 0];
+        list.push({ pix: RING, palette, x, y, hf: 0, vf: 0 }, { pix: RING, palette, x: x + 8, y, hf: 1, vf: 0 }, { pix: RING, palette, x, y: y + 8, hf: 0, vf: 1 }, { pix: RING, palette, x: x + 8, y: y + 8, hf: 1, vf: 1 });
+      }
+    }
   }
 
   // ---- the screen's contents -----------------------------------------------------------------------------
@@ -137,6 +162,12 @@
     // sprites: lower slots are drawn on top, so draw the list backwards
     const sprites = [];
     const sx = c => Math.round(8 * c - 8), sy = c => Math.round(8 * c - 8) - dy, badges = [];
+    // a flight (Arrangement levels) lifts the sprite along an arc
+    const lift = e => e && e.a ? Math.round(10 * Math.sin(Math.PI * e.a[4])) : 0;
+    for (const c of st.clones || []) {                 // mirror clones: Pac-Man's in grey, a ghost's blinking in its colour
+      if (c.of < 0) sprite16(sprites, PAC_FRAMES[c.d][Math.floor(fr / 2) % 3], hw.greyPal, sx(c.x), sy(c.y), 0);
+      else if (Math.floor(fr / 8) % 2) sprite16(sprites, GHOST_BASE[c.d] + (Math.floor(fr / 12) % 2 ? 2 : 0), c.seat >= 0 ? 1 + c.seat : 7, sx(c.x), sy(c.y), 0);
+    }
     if (st.pac) {
       let base;
       if (st.caught !== undefined && st.caught !== null) base = PAC_DEATH[Math.min(PAC_DEATH.length - 1, Math.floor(st.caught * 3))];
@@ -144,7 +175,7 @@
         const phase = st.pac.moving ? Math.floor(fr / 2) % 4 : (fr % 16 < 12 ? 0 : 1);
         base = phase === 0 ? 0 : PAC_FRAMES[st.pac.d][phase - 1];
       }
-      sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y), 0);
+      sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y) - lift(st.pac), 0);
     }
     st.ghosts.forEach(g => {
       if (g.m === 'r') return;
@@ -155,9 +186,13 @@
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
         badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
-      else sprite16(sprites, GHOST_BASE[g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y), 0);
+      else sprite16(sprites, GHOST_BASE[g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0);
+      if (g.st > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(g.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(g.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     });
-    if (st.fruit) sprite16(sprites, CHERRY, 1, sx(st.fruit.x), sy(st.fruit.y), 0);
+    if (st.fruit && st.fruit.k && st.fruit.k !== 'fruit') sprites.push({ pix: PILL, palette: PAL.pill[st.fruit.k] || PAL.pill.gold, x: sx(st.fruit.x) + 4, y: sy(st.fruit.y) + 4, hf: 0, vf: 0 });
+    else if (st.fruit) sprite16(sprites, CHERRY, 1, sx(st.fruit.x), sy(st.fruit.y), 0);
+    for (const i of st.big || []) sprites.push({ pix: BIGDOT, palette: PAL.big, x: sx((i % st.W) + 0.5) + 4, y: sy(Math.floor(i / st.W) + 0.5) + 4, hf: 0, vf: 0 });
+    padSprites(sprites, st.pads, sx, sy);
     // sprite16 pushed in draw-priority order (Pac first); the picture draws the last one first
     sprites.push(...badges);
     // score popups float over the spot: [{x, y, text}]; the digits sit 4 pixels apart

@@ -251,9 +251,10 @@
     Handheld.render(art.handheld, ps.frame, {
       banner: waiting,
       seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: waiting ? freshPellets() : snap.pellets,
-      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120 } : null,
-      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i) } : null).filter(Boolean),
+      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a } : null,
+      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st } : null).filter(Boolean),
       pacSeat: waiting ? snap.next : snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: waiting ? null : snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
+      pads: waiting ? null : arrPads(), clones: waiting ? [] : (snap.clones || []).map(c => Object.assign({}, c, { seat: c.of < 0 ? -1 : gcolor(c.of) })), big: waiting ? [] : snap.big,
       pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })),
       caught: isCaught() ? (now - phaseT0) / 1000 : null
     });
