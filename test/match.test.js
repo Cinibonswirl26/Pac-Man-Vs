@@ -38,6 +38,7 @@ for (const seed of [3, 7, 11]) {
   for (let k = 0; k < 30; k++) m2.tick([null, null, null, null]);
   ok(m2.phase === 'handoff', 'hand-over keeps waiting');
   ok(!m2.ready(0) && m2.ready(1) && m2.phase === 'countdown' && m2.view(1).me === -1, 'the catcher says ready and starts as Pac-Man');
+  ok(m2.Sim.playerOfGhost(m2.sim, gi) === 0 && m2.view(0).me === gi, 'the old Pac-Man takes over the catcher\'s ghost slot (circle and start position)');
   // ... or it starts by itself after the time limit
   const m3 = new Match(i => i === 1, 9, { start: 'pac' }); m3.start();
   while (m3.phase !== 'play') m3.tick([null, null, null, null]);
@@ -53,5 +54,17 @@ for (const seed of [3, 7, 11]) {
   while (m4.phase !== 'handoff') m4.tick([null, null, null, null]);
   humans.delete(1); m4.tick([null, null, null, null]);
   ok(m4.phase === 'countdown', 'a CPU replacing the catcher skips the hand-over');
+}
+// Stand-ins: with people in several seats, Pac-Man starts as one of them; a seat nobody plays is a grey stand-in.
+{
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const m = new Match(i => i < 3, seed, { fill: 'standin' }); m.start();
+    ok(m.pac < 3, `seed ${seed}: Pac-Man is a person`);
+    const gi = m.Sim.ghostIndexOf(m.sim, 3);
+    ok(gi >= 0 && m.sim.ghosts[gi].grey && m.sim.ghosts.filter(g => g.grey).length === 1, `seed ${seed}: seat 4 is the one grey stand-in`);
+    ok(m.view(0).fill === 'standin' && m.view(0).human.join() === 'true,true,true,false', 'views say which seats are stand-ins');
+  }
+  const solo = new Match(i => i === 0, 2, { fill: 'standin', start: 'ghost' }); solo.start();
+  ok(solo.pac > 0 && solo.sim.ghosts.filter(g => g.grey).length === 2, 'a person playing a ghost alone: a computer Pac-Man and two stand-ins');
 }
 console.log(fails ? fails + ' FAILED' : 'match flow ok'); process.exit(fails ? 1 : 0);

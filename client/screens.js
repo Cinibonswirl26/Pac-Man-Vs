@@ -78,8 +78,12 @@
     const tint = (cols, m) => cols.map(c => [c[0] * m[0], c[1] * m[1], c[2] * m[2], c[3] * m[3]]);
 
     function drawPicture(mats, p, b, st) {
-      const m = mats[p.material], over = st.textures && st.textures[p.name];
-      quadAt(m, i => texture(over && i === 0 ? over : m.textureNames[i]), b, p.uv, tint(p.colors, m.matColor[0]), st.texMtx && st.texMtx[m.name] ? { texMtx: st.texMtx[m.name] } : null);
+      const m = mats[p.material], over = st.textures && st.textures[p.name], col = st.colors && st.colors[p.name];
+      const opts = {};
+      if (st.texMtx && st.texMtx[m.name]) opts.texMtx = st.texMtx[m.name];
+      // the player colours live in the pane's colour registers: st.colors gives the whole set, or an [r, g, b] for the first
+      if (col) opts.tevColors = Array.isArray(col[0]) ? col : [[col[0], col[1], col[2], (m.tevColors[0] || [0, 0, 0, 1])[3]]].concat(m.tevColors.slice(1));
+      quadAt(m, i => texture(over && i === 0 ? over : m.textureNames[i]), b, p.uv, tint(p.colors, m.matColor[0]), opts);
     }
     function drawWindow(mats, p, b) {
       const fm = mats[p.frameMaterials[0]], ft = i => texture(fm.textureNames[i]);
@@ -119,7 +123,7 @@
         x += g.advance * sx + (o.charSpace || 0);
       }
     }
-    // Draw a layout. st: {text: {pane: string}, textures: {pane: texture name}, hide: Set, show: Set, texMtx}
+    // Draw a layout. st: {text: {pane: string}, textures: {pane: texture name}, colors: {pane: [r, g, b]}, hide: Set, show: Set, texMtx}
     function walk(mats, p, ox, oy, st) {
       if ((!p.visible && !(st.show && st.show.has(p.name))) || (st.hide && st.hide.has(p.name))) return;
       const b = box(p, ox, oy);
@@ -148,7 +152,7 @@
     const labelMat = Object.assign({}, MODULATE, { stages: [Object.assign({}, MODULATE.stages[0], { op: {
       color: { a: 10, b: 15, c: 8, d: 15, op: 0, bias: 0, scale: 0, clamp: 1, reg: 0 }, alpha: MODULATE.stages[0].op.alpha } })] });
     function ghostCircle(slot, seat, v, time, com) {
-      const s = SLOTS[slot], c = com ? [0.62, 0.62, 0.68] : seatColor[seat];
+      const s = SLOTS[slot], c = com ? GREY : seatColor[seat];
       // frame colours measured on the original's picture: 63% of the player's colour, the ring a touch brighter
       const dark = [c[0] * 0.63, c[1] * 0.63, c[2] * 0.63, 1];
       const ringCol = [c[0] * 0.66, c[1] * 0.66, c[2] * 0.66, 1];
@@ -199,7 +203,13 @@
       // "P1".."P4" in the badge
       const bx = slot === 2 ? s.x : s.x + (slot === 0 ? -1 : 1) * 104, by = slot === 2 ? s.y - 147 : s.y - 104;
       const light = [Math.min(1, c[0] + 0.29), Math.min(1, c[1] + 0.29), Math.min(1, c[2] + 0.29), 1];
-      if (com) { say('COM', bx, by, 17, [0.12, 0.12, 0.16, 1]); return; }
+      if (com) {   // a stand-in's tab says COM (the exchange screen's label, in the badges' dark lettering)
+        const wc = texture('wcom.bti'), cw = 52, ch = 26, lc = [0.3, 0.3, 0.34, 1];
+        R.quad(labelMat, i => (i === 0 ? wc : null), [
+          { x: bx - cw / 2, y: by - ch / 2, u: 0, v: 0, c: lc }, { x: bx + cw / 2, y: by - ch / 2, u: 1, v: 0, c: lc },
+          { x: bx + cw / 2, y: by + ch / 2, u: 1, v: 1, c: lc }, { x: bx - cw / 2, y: by + ch / 2, u: 0, v: 1, c: lc }]);
+        return;
+      }
       const lab = texture('p' + (seat + 1) + '.bti'), L = 34;
       R.quad(labelMat, i => (i === 0 ? lab : null), [
         { x: bx - L / 2, y: by - L / 2, u: 0, v: 0, c: light }, { x: bx + L / 2, y: by - L / 2, u: 1, v: 0, c: light },
@@ -207,6 +217,16 @@
     }
 
     const ICONS = ['Icon_Aka.bti', 'Icon_Ao.bti', 'Icon_pink.bti', 'Icon_GRN.bti'];
+    const GREY = [0.62, 0.62, 0.68];
+    const GREY_TEV = [[0.5, 0.5, 0.53, 0], [0.14, 0.14, 0.15, 1], [0, 0, 0, 0], [0, 0, 0, 0]];   // a stand-in's panel bar: grey frame, dark interior
+    // Which seats are grey stand-ins (st.standin[i]); a stand-in seat playing Pac-Man counts as a player.
+    const isCom = (st, i) => !!(st.standin && st.standin[i]) && i !== st.pacPlayer;
+    /** The panel's rows (and the exchange screen's circles) in the original's order: the people playing in seat
+     *  order with the last of them on the bottom row, and the stand-ins between (the layout has COM marks for rows 2 and 3). */
+    function rowOrder(st) {
+      const people = [0, 1, 2, 3].filter(i => !isCom(st, i)), coms = [0, 1, 2, 3].filter(i => isCom(st, i));
+      return people.length >= 2 ? people.slice(0, -1).concat(coms, people.slice(-1)) : people.concat(coms);
+    }
     function frameStart(width) {
       const w = Math.max(320, Math.min(2048, Math.round(width || TVW)));
       if (canvas.width !== w) { canvas.width = w; canvas.height = Math.round(w * TVH / TVW); }
@@ -244,29 +264,40 @@
     function render(st, width) {
       frameStart(width);
       const f = st.time * 60;
-      const textures = {}, text = {}, hide = new Set(['TEXT_001', 'TEXT_002', 'P2_COM', 'P3_COM']);
-      for (let i = 0; i < 4; i++) textures['P' + (i + 1) + '_mon'] = i === st.pacPlayer ? 'Icon_pac.bti' : ICONS[i];
+      const textures = {}, text = {}, colors = {}, hide = new Set(['TEXT_001', 'TEXT_002', 'P2_COM', 'P3_COM']), show = new Set();
+      // the player panel: each row wears its player's number, icon and colour; a stand-in's row is grey and says COM
+      const order = rowOrder(st), tevOf = name => scr.materials[scr.byName[name].material].tevColors;   // a pane's colour registers: frame, interior
+      order.forEach((seat, r) => {
+        const P = 'P' + (r + 1);
+        if (isCom(st, seat)) {
+          textures[P + '_mon'] = 'Icon_Grey.bti'; hide.add(P + '_num'); colors[P + '_waku'] = GREY_TEV;
+          if (scr.byName[P + '_COM']) { show.add(P + '_COM'); hide.delete(P + '_COM'); }
+        } else {
+          textures[P + '_mon'] = seat === st.pacPlayer ? 'Icon_pac.bti' : ICONS[seat];
+          if (seat !== r && scr.byName[P + '_num'] && scr.byName[P + '_waku']) {   // another seat's row: its number and colours
+            textures[P + '_num'] = 'p' + (seat + 1) + '.bti'; colors[P + '_num'] = tevOf('P' + (seat + 1) + '_num'); colors[P + '_waku'] = tevOf('P' + (seat + 1) + '_waku');
+          }
+        }
+      });
       text.Score1 = text.Score2 = String(st.target);
       text.DOT_NUM1 = text.DOT_NUM2 = String(st.left);
       if (!st.fruitUp) { hide.add('furit_wk'); }
       const texMtx = {};
       if (assets.bgAnim) Object.assign(texMtx, J3D.animateTex(assets.bgAnim, f));
-      const show = new Set(), com = new Set();
-      for (const g of st.ghosts) if (g.c != null && g.c < 0) { com.add(g.seat); if (scr.byName['P' + (g.seat + 1) + '_COM']) { show.add('P' + (g.seat + 1) + '_COM'); hide.delete('P' + (g.seat + 1) + '_COM'); } }
-      drawLayout(scr, { textures, text, hide, show, texMtx });
-      // scores in the player panels (a stand-in shows COM instead of a score)
-      for (let i = 0; i < 4; i++) {
-        const p = scr.byName['P' + (i + 1) + '_waku']; if (!p) continue;
-        if (com.has(i)) { if (!scr.byName['P' + (i + 1) + '_COM']) { const b = box(p, 0, 0); drawText(scoreMat, 'COM', { x: b.x + 90, y: b.y, w: b.w - 102, h: b.h }, { fontW: 22, fontH: 22, hBind: 1, charSpace: -1, charColor: [0.7, 0.7, 0.75, 1] }); } continue; }
+      drawLayout(scr, { textures, text, colors, hide, show, texMtx });
+      // scores in the player panels (a stand-in's row has the COM mark instead; drawn by hand on a row the layout has none for)
+      order.forEach((seat, r) => {
+        const p = scr.byName['P' + (r + 1) + '_waku']; if (!p) return;
         const b = box(p, 0, 0);
-        drawText(scoreMat, String(st.scores[i]), { x: b.x + 90, y: b.y, w: b.w - 102, h: b.h }, { fontW: 22, fontH: 22, hBind: 1, charSpace: -1, charColor: [1, 1, 1, 1] });
-      }
+        if (isCom(st, seat)) { if (!scr.byName['P' + (r + 1) + '_COM']) sprite(ringMat, 'fs_gameTokutenNop_00.bti', tvx(b.x + 117), tvy(b.y + b.h / 2), 48 * MAP.sx, 48 * MAP.sy); return; }
+        drawText(scoreMat, String(st.scores[seat]), { x: b.x + 90, y: b.y, w: b.w - 102, h: b.h }, { fontW: 22, fontH: 22, hBind: 1, charSpace: -1, charColor: [1, 1, 1, 1] });
+      });
       // radar: one square per ghost in its player's colour
       const rd = scr.byName.Rdr;
       if (rd && st.W) {
         const b = box(rd, 0, 0);
         for (const g of st.ghosts) {
-          const c = g.c != null && g.c < 0 ? [0.62, 0.62, 0.68] : seatColor[g.c != null ? g.c : g.seat], gx = b.x + 4 + (g.x - 1) / (st.W - 2) * (b.w - 8), gy = b.y + 4 + g.y / st.H * (b.h - 8);
+          const c = g.c != null && g.c < 0 ? GREY : seatColor[g.c != null ? g.c : g.seat], gx = b.x + 4 + (g.x - 1) / (st.W - 2) * (b.w - 8), gy = b.y + 4 + g.y / st.H * (b.h - 8);
           R.poly([[tvx(gx - 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy + 4)], [tvx(gx - 4), tvy(gy + 4)]], [c[0], c[1], c[2], 1]);
         }
       }
@@ -280,13 +311,20 @@
     // the score bars below and the points taken or won under those.
     const MON = ['mon_red.bti', 'mon_blue.bti', 'mon_pink.bti', 'mon_green.bti'];
     const EXCH = [[1, 0.12, 0, 1], [0, 0.69, 0.85, 1], [1, 0.33, 1, 1], [0, 0.9, 0, 1]];
-    /** st: {time (s since the catch), target, before: [4], after: [4], loser, winner} */
+    /** st: {time (s since the catch), target, before: [4], after: [4], loser, winner, pacPlayer, standin: [4]} */
     function exchange(st, width) {
       frameStart(width);
       drawLayout(assets.exchange, { text: { TIME: String(st.target) } });
       const k = Math.min(1, Math.max(0, (st.time - 1.2) / 1.2));   // scores slide from before to after
-      for (let i = 0; i < 4; i++) {
-        const cx = 90 + 152 * i, cy = 211;
+      const order = rowOrder(st);
+      order.forEach((i, col) => {
+        const cx = 90 + 152 * col, cy = 211;
+        if (isCom(st, i)) {   // a stand-in: grey circle, grey ghost, COM, and no score
+          sprite(ringMat, 'ex_maruwaku.bti', cx, cy, 142, 142, [0.55, 0.55, 0.58, 1]);
+          sprite(ringMat, 'fs_mongrey_00.bti', cx, cy, 116, 116);
+          sprite(labelMat, 'wcom.bti', cx + 50, cy + 57, 32, 16, [1, 1, 1, 1]);
+          return;
+        }
         sprite(ringMat, 'ex_maruwaku.bti', cx, cy, 142, 142, EXCH[i]);
         sprite(ringMat, i === st.loser ? 'pcmn.bti' : MON[i], cx, cy, 116, 116, i === st.loser ? [0.6, 0.6, 0.6, 1] : null);
         sprite(labelMat, 'wp' + (i + 1) + '.bti', cx + 50, cy + 57, 32, 16, [1, 1, 1, 1]);
@@ -294,26 +332,37 @@
         say(String(Math.round(st.before[i] + (st.after[i] - st.before[i]) * k)), cx, 305, 20);
         if (i === st.loser) { sprite(ringMat, 'lost.bti', cx, 128, 144, 52); say('-' + (st.before[i] - st.after[i]), cx, 350, 20); }
         if (i === st.winner) { sprite(ringMat, 'win.bti', cx, 128, 144, 52); say('+' + (st.after[i] - st.before[i]), cx, 350, 20); }
-      }
+      });
       if (st.time > 2.6) {   // the arrow points at the next Pac-Man
-        const cx = 90 + 152 * st.winner;
-        sprite(ringMat, 'yajirushi.bti', cx + (st.winner < 3 ? 120 : -120), 405, 128, 40, null, st.winner >= 3);
+        const col = order.indexOf(st.winner), cx = 90 + 152 * col;
+        sprite(ringMat, 'yajirushi.bti', cx + (col < 3 ? 120 : -120), 405, 128, 40, null, col >= 3);
       }
       return canvas;
     }
-    // Final results (layout PAC_results, four-player arrangement).
+    // Final results (layout PAC_results): its four-, three- and two-player arrangements, one column per person
+    // playing (stand-ins are left out). Each column: colour bar, number, portrait, crown, score window.
     const PORTRAIT = ['Akabei.bti', 'Aosuke.bti', 'pinky.bti', 'guzuta.bti'];
-    const CROWN = ['Crw_AKA', 'Crw_Ao', 'Crw_pink', 'Crw_Guzu'];
-    const WINS = ['Aka_win', 'AO_win', 'PIN_WIN', 'PIN_WIN1'];
-    /** st: {time, scores, winner} */
+    const RES = {
+      4: { nul: 'PL4_NULL', cols: [['AKA_dai', 'AKA_1P', 'AKABEI', 'Crw_AKA', 'Aka_win'], ['AO_dai', 'AO_2P', 'AOSUKE', 'Crw_Ao', 'AO_win'], ['PIN_dai', 'PIN_3P', 'PINKY', 'Crw_pink', 'PIN_WIN'], ['GRN_dai', 'GRN_4P', 'GUZUTA', 'Crw_Guzu', 'PIN_WIN1']] },
+      3: { nul: 'PL3_NULL', cols: [['AKA_dai3', 'AKA_1P3', 'AKABEI3', 'Crw_AKA3', 'Aka_win3'], ['AO_dai3', 'AO_2P3', 'AOSUKE3', 'Crw_Ao3', 'AO_win3'], ['PIN_dai3', 'PIN_3P3', 'PINKY3', 'Crw_pin3', 'PIN_WIN3']] },
+      2: { nul: 'PL2_NULL', cols: [['AKA_dai2', 'AKA_1P2', 'AKABEI2', 'Crw_AKA2', 'Aka_win2'], ['AO_dai2', 'AO_2P2', 'AOSUKE2', 'Crw_Ao2', 'AO_win2']] }
+    };
+    /** st: {time, scores, winner, pacPlayer, standin: [4]} */
     function results(st, width) {
       frameStart(width);
-      const L = assets.results, hide = new Set(['PL3_NULL', 'PL2_NULL', 'PI4_nl']);
-      CROWN.forEach((n, i) => { if (i !== st.winner) hide.add(n); });
+      const L = assets.results, people = [0, 1, 2, 3].filter(i => !isCom(st, i));
+      const lay = RES[people.length] || RES[4], seats = RES[people.length] ? people : [0, 1, 2, 3];
+      const hide = new Set(['PL4_NULL', 'PL3_NULL', 'PL2_NULL', 'PI4_nl', 'PI3_nll', 'PI2_nll']); hide.delete(lay.nul);
+      const textures = { WINNER: PORTRAIT[st.winner], WIN_num: 'n' + (st.winner + 1) + '.bti' }, colors = {};
+      lay.cols.forEach(([dai, num, por, crw], k) => {
+        const seat = seats[k];
+        if (seat !== st.winner) hide.add(crw);
+        if (seat !== k) { textures[num] = 'p' + (seat + 1) + '.bti'; textures[por] = PORTRAIT[seat]; colors[dai] = seatColor[seat]; }
+      });
       const overlay = st.time > 3;   // the ranking first, then the winner
       if (!overlay) for (const n of ['WIN_back', 'R', 'E', 'N2', 'N1', 'I', 'W', 'WIN_Wndw', 'WIN_pl', 'WIN_num', 'WINNER', 'WIN_Crw']) hide.add(n);
-      drawLayout(L, { hide, textures: { WINNER: PORTRAIT[st.winner], WIN_num: 'n' + (st.winner + 1) + '.bti' } });
-      if (!overlay) WINS.forEach((n, i) => { const p = L.byName[n]; if (p) { const b = box(p, 0, 0); say(String(st.scores[i]), tvx(b.x + b.w / 2), tvy(b.y + b.h * 0.68), 22); } });
+      drawLayout(L, { hide, textures, colors });
+      if (!overlay) lay.cols.forEach(([, , , , win], k) => { const p = L.byName[win]; if (p) { const b = box(p, 0, 0); say(String(st.scores[seats[k]]), tvx(b.x + b.w / 2), tvy(b.y + b.h * 0.68), 22); } });
       return canvas;
     }
     return { render, exchange, results, canvas, seatColor };

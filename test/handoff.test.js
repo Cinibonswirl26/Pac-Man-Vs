@@ -2,6 +2,7 @@
 // start the next round, and then each player's view switches role (catcher -> Pac-Man, old Pac-Man -> ghost).
 const WebSocket = require('ws');
 const { server, rooms } = require('../server/server.js');
+const { ROUND_END, CAUGHT } = require('../shared/match.js');
 server.listen(0, async () => {
   const url = `ws://localhost:${server.address().port}/ws`;
   const open = () => new Promise(r => { const w = new WebSocket(url); w.q = []; w.on('message', m => w.q.push(JSON.parse(m))); w.on('open', () => r(w)); });
@@ -23,7 +24,7 @@ server.listen(0, async () => {
     Object.assign(s.ghosts[gi], { x: s.pac.x, y: s.pac.y });
     await wait(() => { const l = last(a, 'state'); return l && l.phase === 'roundover' && l.why === 'caught'; });
     ok(last(a, 'state').catcher === catcher, 'catch reported to everyone');
-    const h = await wait(() => { const l = last(ws[other], 'state'); return l && l.phase === 'handoff' ? l : null; }, 9000);
+    const h = await wait(() => { const l = last(ws[other], 'state'); return l && l.phase === 'handoff' ? l : null; }, (ROUND_END + CAUGHT) * 1000 + 3000);
     ok(h.next === catcher && last(ws[catcher], 'state').next === catcher, 'both players know who takes over Pac-Man');
     ws[other].send(JSON.stringify({ t: 'ready' }));
     await new Promise(r => setTimeout(r, 400));

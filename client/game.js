@@ -276,7 +276,9 @@
     $('lobbyNote').textContent = host ? 'You are the host. Start whenever everyone is in.' : 'Waiting for the host to start.';
   }
   /** The colour seat ghost i wears right now (-1 = a grey stand-in): its player's, or the colour of the ghost that woke it. */
-  const gcolor = i => { const c = snap.ghosts[i] && snap.ghosts[i].c; return c == null ? S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i) : c; };
+  const gcolor = i => { const c = snap.ghosts[i] && snap.ghosts[i].c; return c == null ? S.playerOfGhost(snap, i) : c; };
+  // seats nobody is playing, when they are grey stand-ins rather than computer players
+  const standins = () => [0, 1, 2, 3].map(i => snap.fill === 'standin' && !!snap.human && !snap.human[i]);
   const gcss = i => { const c = gcolor(i); return c < 0 ? GREY : SEAT_COLORS[c]; };
   const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -401,7 +403,7 @@
     if (prev.fruitUp && !cur.fruitUp && cur.phase === 'play') {
       fx.sparkle = now;
       const f = prev.fruit, gi = f ? cur.ghosts.findIndex(g => g.m !== 'e' && near(g, f, 1.2)) : -1;
-      if (gi >= 0) { fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(CFG.fruitPts), t0: now }); fire('fruitGhost', { index: S.playerOfGhost({ pacPlayer: cur.pacPlayer }, gi) }); }
+      if (gi >= 0) { fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(CFG.fruitPts), t0: now }); fire('fruitGhost', { index: S.playerOfGhost(cur, gi) }); }
       else if (f && near(cur.pac, f, 1.2)) { fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.fruitPts), t0: now }); fire('fruitPac'); }
     }
     cur.ghosts.forEach((g, i) => {
@@ -664,7 +666,7 @@
       const target = View3D.YAW[gh.d] || 0;
       let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost({ pacPlayer: snap.pacPlayer }, i), c: gcolor(i) });
+      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
@@ -688,32 +690,30 @@
     try {
       if (snap.phase === 'final') {
         const order = [0, 1, 2, 3].sort((a, b) => snap.scores[b] - snap.scores[a]);
-        scr.results({ time: t, scores: snap.scores, winner: snap.winner >= 0 ? snap.winner : order[0] }, w);
+        scr.results({ time: t, scores: snap.scores, winner: snap.winner >= 0 ? snap.winner : order[0], pacPlayer: snap.pacPlayer, standin: standins() }, w);
       } else {
         const after = snap.scores.slice(), before = after.slice();
         before[snap.pacPlayer] += snap.steal; before[snap.catcher] -= snap.steal;
-        scr.exchange({ time: (now - exchangeT0) / 1000, target: snap.target, before, after, loser: snap.pacPlayer, winner: snap.catcher }, w);
+        scr.exchange({ time: (now - exchangeT0) / 1000, target: snap.target, before, after, loser: snap.pacPlayer, winner: snap.catcher, pacPlayer: snap.pacPlayer, standin: standins() }, w);
       }
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; }
   }
-  // The shared screen: every ghost's circle (ghosts ordered by player number), panels, radar and counters.
+  // The shared screen: every ghost's circle (one per ghost slot: a player keeps theirs from round to round), panels, radar and counters.
   function drawShared(scr, now, dt, caught) {
     const cw = fitScreen(scr);
-    const pacs = { pacPlayer: snap.pacPlayer };
     const ghosts = [];
     sm.ghosts.forEach((gh, i) => {
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(pacs, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r' });
+      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r' });
     });
-    ghosts.sort((a, b) => a.seat - b.seat);
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
     const efx = fxViews(now);
     const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight, ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst }));
     try {
-      scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
+      scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, standin: standins(), fruitUp: snap.fruitUp, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }
   }
   function drawMinimap(u) {

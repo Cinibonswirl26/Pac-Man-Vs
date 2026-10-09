@@ -205,6 +205,31 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   s3.pac.x += 0.9; S.update(s3, idle);
   ok(s3.frightLeft > 0, 'the power pellet was eaten');
   ok(s3.ghosts[0].mode === 'normal' && s3.ghosts[0].grey, 'a power pellet does not frighten a grey ghost');
+  // A grey stand-in dawdles (so a ghost can run into it on purpose); woken, it moves at ghost speed and hunts Pac-Man down.
+  ok(S.CFG.greySpeed < S.CFG.pacSpeed && S.CFG.greySpeed < S.CFG.ghostSpeed, 'grey stand-ins are slower than Pac-Man and the ghosts');
+  const RIGHT = S.DIRS.findIndex(d => d[0] === 1);
+  let run = -1; for (let x = 1; x < S.W - 5 && run < 0; x++) if (![0, 1, 2, 3, 4].some(k => S.wallAt(x + k, 1))) run = x;
+  const s4 = S.newRound([1600, 0, 0, 0], 0, { standin: [true, false, false] });
+  s4.pac.x = 9.5; s4.pac.y = 13.5; s4.ghosts[2].x = 17.5; s4.ghosts[2].y = 1.5;
+  // both on the top corridor heading right, two cells apart (far enough not to touch)
+  Object.assign(s4.ghosts[0], { x: run + 0.5, y: 1.5, dir: RIGHT, want: RIGHT }); Object.assign(s4.ghosts[1], { x: run + 2.5, y: 1.5, dir: RIGHT, want: RIGHT });
+  const moved = g => Math.hypot(g.x - run - (g.id === 0 ? 0.5 : 2.5), g.y - 1.5);
+  S.update(s4, { pac: null, ghosts: [RIGHT, RIGHT, null] });
+  ok(moved(s4.ghosts[0]) > 0 && moved(s4.ghosts[0]) < moved(s4.ghosts[1]), 'a grey ghost moves, but less than a normal one: ' + moved(s4.ghosts[0]).toFixed(3) + ' vs ' + moved(s4.ghosts[1]).toFixed(3));
+  const s5 = S.newRound([1600, 0, 0, 0], 0, { standin: [true, false, false] }), rng5 = S.mulberry(5);
+  s5.ghosts[0].grey = false; s5.ghosts[0].claim = S.playerOfGhost(s5, 1);
+  Object.assign(s5.ghosts[0], { x: 1.5, y: 1.5 }); s5.ghosts[1].x = 17.5; s5.ghosts[1].y = 1.5; s5.ghosts[2].x = 17.5; s5.ghosts[2].y = 1.5;
+  const d0 = S.dist(s5.ghosts[0], s5.pac); let n5 = 0;
+  while (!s5.over && n5++ < 30 * 40) S.update(s5, { pac: null, ghosts: [S.cpuGhost(s5, 0, rng5, 1), null, null] });
+  ok(s5.over && s5.overReason === 'caught' && s5.catcher === S.playerOfGhost(s5, 1), `a woken stand-in hunts Pac-Man down (from ${d0.toFixed(1)} cells away, ${(n5 / 30).toFixed(1)} s)`);
+}
+{
+  // Ghost slots given by the match (opts.players) decide which seat drives which ghost, and whose view is whose.
+  const s = S.newRound([0, 1600, 0, 0], 1, { players: [3, 0, 2] });
+  ok(S.playerOfGhost(s, 0) === 3 && S.playerOfGhost(s, 2) === 2 && S.ghostIndexOf(s, 0) === 1 && S.ghostIndexOf(s, 1) === -1, 'ghost slots follow opts.players');
+  ok(S.view(s, 3).me === 0 && S.view(s, 1).me === -1 && S.view(s, 0).gp.join() === '3,0,2', 'views carry the slots');
+  const t = S.newRound([1600, 0, 0, 0], 0);
+  ok(S.playerOfGhost(t, 0) === 1 && S.playerOfGhost(t, 2) === 3 && S.ghostIndexOf(t, 2) === 1, 'without opts.players the slots are in seat order');
 }
 console.log(fails ? `${fails} FAILED` : 'all sim checks passed');
 process.exit(fails ? 1 : 0);

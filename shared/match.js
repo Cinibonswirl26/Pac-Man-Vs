@@ -30,21 +30,26 @@
       this.phase = 'lobby';            // lobby | countdown | play | roundover | handoff | final
       this.phaseLeft = 0;
       this.sim = null; this.round = 0; this.scores = [0, 0, 0, 0]; this.pac = 0; this.winner = -1;
+      this.slots = null;               // the seat playing each ghost slot (circle, start position); kept from round to round
     }
     initialPac() {
       if (this.startRole === 'pac') return 0;
       if (this.startRole === 'ghost') return 1 + Math.floor(this.rng() * 3);
+      // With stand-ins, Pac-Man is one of the people playing, as in the original (unless a person is playing alone).
+      const people = [0, 1, 2, 3].filter(i => this.isHuman(i));
+      if (this.fill === 'standin' && people.length >= 2) return people[Math.floor(this.rng() * people.length)];
       return Math.floor(this.rng() * 4);
     }
     start() {
-      this.scores = [0, 0, 0, 0]; this.round = 0; this.winner = -1;
+      this.scores = [0, 0, 0, 0]; this.round = 0; this.winner = -1; this.slots = null;
       this.pac = this.initialPac(); this.scores[this.pac] = this.Sim.CFG.startPts;
       this.begin();
     }
     begin() {
+      if (!this.slots) this.slots = [0, 1, 2, 3].filter(i => i !== this.pac);
       // Seats nobody is playing: either computer players, or grey stand-ins that only wake up when a ghost player touches them.
-      const standin = [0, 1, 2].map(gi => this.fill === 'standin' && !this.isHuman(this.Sim.playerOfGhost({ pacPlayer: this.pac }, gi)));
-      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin });
+      const standin = this.slots.map(p => this.fill === 'standin' && !this.isHuman(p));
+      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, players: this.slots });
       this.phase = 'countdown'; this.phaseLeft = COUNTDOWN;
     }
     /** Advance one fixed step. inputs[i] is the latest direction for human seat i.
@@ -70,6 +75,8 @@
         if (this.phaseLeft <= 0) {
           if (s.overReason === 'won') { this.winner = s.winner; this.phase = 'final'; }
           else if (s.overReason === 'caught') {
+            // the catcher becomes Pac-Man and the old Pac-Man takes over the catcher's ghost (its circle and start)
+            this.slots = this.slots.map(p => p === s.catcher ? s.pacPlayer : p);
             this.pac = s.catcher;
             if (this.isHuman(this.pac)) { this.phase = 'handoff'; this.phaseLeft = HANDOFF; }
             else this.nextRound();
@@ -95,6 +102,7 @@
       const v = this.Sim.view(this.sim, i);
       v.t = 'state'; v.phase = this.phase; v.left_t = Math.max(0, Math.round(this.phaseLeft * 10) / 10); v.round = this.round;
       v.human = [0, 1, 2, 3].map(i => !!this.isHuman(i));
+      v.fill = this.fill;  // seats nobody is playing are 'standin' (grey COM ghosts) or 'cpu' (computer players)
       v.next = this.pac;   // who is Pac-Man in the coming round (the catcher, during a hand-over)
       return v;
     }

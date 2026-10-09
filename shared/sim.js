@@ -27,6 +27,7 @@
     pacSpeed: 0.5 * FPS / CELL,          // 3.73 cells/s
     ghostSpeed: (0.5 + 1 / 256) * FPS / CELL,   // a hair faster than Pac-Man: about 1 px more per 128 px
     frightSpeed: 0.375 * FPS / CELL,     // 2.80 cells/s
+    greySpeed: 0.41 * FPS / CELL,        // a grey stand-in dawdles (a guess: slow enough to run into on purpose, slower than Pac-Man)
     eyeSpeed: 1.0 * FPS / CELL,          // not measured
     frightTime: 10, frightFlash: 2,
     // Pac-Man leaves a trail in his player's colour that ghosts can follow. Look (wide flat ribbon, paler by Pac-Man) is from the original; the length is a guess.
@@ -89,6 +90,8 @@
       pac: ent(START.pac),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
       ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 })),
+      // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
+      gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
       pacPlayer, tick: 0, catcher: -1, steal: 0, winner: -1, time: 0,
       eaten: 0, nextFruit: CFG.fruitFirst, fruit: null, trail: [], trailLast: -1
@@ -96,9 +99,11 @@
   }
   function ent(p) { return { x: p[0] + 0.5, y: p[1] + 0.5, dir: 1, want: 1 }; }
 
-  // The three non-Pac players take ghost slots 0..2 in seat order.
+  // The three non-Pac players take ghost slots 0..2 in seat order, unless the state says who holds which
+  // slot (state.gp): the match keeps the slots from round to round, the old Pac-Man taking the catcher's.
   function ghostIndexOf(state, player) {
     if (player === state.pacPlayer) return -1;
+    if (state.gp) return state.gp.indexOf(player);
     let gi = 0;
     for (let p = 0; p < 4; p++) { if (p === state.pacPlayer) continue; if (p === player) return gi; gi++; }
     return -1;
@@ -109,6 +114,7 @@
     return g.grey ? -1 : (g.claim >= 0 ? g.claim : playerOfGhost(state, gi));
   }
   function playerOfGhost(state, gi) {
+    if (state.gp) return gi >= 0 && gi < state.gp.length ? state.gp[gi] : -1;
     let n = 0;
     for (let p = 0; p < 4; p++) { if (p === state.pacPlayer) continue; if (n === gi) return p; n++; }
     return -1;
@@ -217,7 +223,7 @@
       }
       const inp = inputs.ghosts[i];
       if (inp != null) g.want = inp;
-      step(g, g.mode === 'fright' ? CFG.frightSpeed : CFG.ghostSpeed, dt, 'ghost');
+      step(g, g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed, dt, 'ghost');
       if (g.grey) continue;                       // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
       if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7) {
         s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; g.sightLeft = CFG.fruitSightTime; s.events.push('fruitghost');
@@ -293,7 +299,7 @@
     const vis = e => gi < 0 || seen(e.x, e.y);
     const out = {
       tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, over: s.over, why: s.overReason,
-      pacPlayer: s.pacPlayer, scores: s.scores.slice(), rs: s.roundScores.slice(), me: gi, ev: s.events.slice(),
+      pacPlayer: s.pacPlayer, gp: s.gp, scores: s.scores.slice(), rs: s.roundScores.slice(), me: gi, ev: s.events.slice(),
       catcher: s.catcher, steal: s.steal, winner: s.winner, sight, boost: gi >= 0 ? me.sightLeft : 0, fruitUp: !!s.fruit,
       fruit: s.fruit && vis(s.fruit) ? { x: s.fruit.x, y: s.fruit.y } : null,
       pac: vis(s.pac) ? q(s.pac) : null,
@@ -540,9 +546,12 @@
       const fx = Math.floor(s.fruit.x), fy = Math.floor(s.fruit.y), d = pathStep(g.x, g.y, 'ghost', (x, y) => x === fx && y === fy);
       if (d != null && distMap(g.x, g.y, 'ghost')[tileIdx(fx, fy)] <= 9) return d;
     }
-    const tm = team(s, level), me = tm.rank[gi];
     let tx = -1, ty = -1;
-    if (tm.has && !(level === 0 && rng() < 0.2)) {
+    const tm = team(s, level), me = tm.rank[gi];
+    if (g.standin) {
+      // A woken stand-in hunts Pac-Man down: it always knows where he is and goes straight for him.
+      tx = Math.floor(s.pac.x); ty = Math.floor(s.pac.y);
+    } else if (tm.has && !(level === 0 && rng() < 0.2)) {
       // Pac-Man is known (seen now, or just out of sight). The nearest ghost chases; the others cut him off ahead.
       const px = Math.floor(tm.px), py = Math.floor(tm.py);
       tx = px; ty = py;
