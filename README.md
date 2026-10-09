@@ -47,6 +47,12 @@ counter shows how many pellets are left. Pac-Man sees the whole maze.
   they do, or by itself after 15 seconds. If the catcher has left, a CPU takes over and play goes on at once.
 - Controls: arrow keys or WASD, swipe on touch screens, on-screen arrows on phones, or a gamepad.
   `M` toggles music, `Esc` leaves the match.
+- **Arrangement levels**: the maze menu's last group holds levels that are not part of the original. They
+  borrow mechanics from the 1996 arcade *Pac-Man Arrangement*: dash arrows that hurl whoever steps on them
+  along a corridor (a dashing Pac-Man knocks ghosts dizzy instead of being caught), paired jump pads that fly
+  you across the maze, and capsules that appear where the fruit would and that Pac-Man and ghosts alike can
+  take (speed, a mirror clone, the pot, fast digestion, points). They sit on mazes your disc holds but the
+  original never lists; the six original stages are untouched. See the end of `FIDELITY.md`.
 
 ## Playing with friends
 

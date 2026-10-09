@@ -77,3 +77,23 @@ and what is still a best guess.
   and the order in which the results screen shows the ranking and then the winner. These were matched by eye
   to the original's pictures or guessed.
 - The dotted bar next to Pac-Man's score in the player panel and the "COM" labels are not drawn.
+
+## Arrangement levels (not part of the original)
+
+The maze menu's last group holds levels of this project's own, borrowed from the 1996 arcade *Pac-Man Arrangement* (Namco Classic Collection Vol. 2). They are laid over mazes the disc holds without a menu entry (numbers 9 and 7, named here Dash Park and Jump Forest) and over the built-in maze, so the six original stages stay exactly as they are and the three screens keep their original art. Reference: a full arcade longplay (frames read one by one for the numbers marked measured), Wikipedia's Namco Classic Collection Vol. 2 article, Hardcore Gaming 101, StrategyWiki and the Pac-Man wiki's item table.
+
+| Mechanic | Here | How it was decided |
+|---|---|---|
+| Dash arrows | Orange arrows at both ends of a corridor. Stepping on one hurls you along it at 2.5 times walking speed with no steering until the first wall or the far arrow, which does not fire until you leave it. A dashing Pac-Man knocks normal ghosts aside, dizzy (stars) for 2 s, and eats frightened ones in the usual chain; a dashing ghost catches as usual. Everyone uses them, ghosts included | Speed measured on the arcade demo (a 19-cell row in about 0.8 s); the dizziness about 2 s in the demo; the arcade only lets Pac-Man use them, letting ghosts too is this game's choice |
+| Jump pads | Pads in colour pairs. Stepping on one flies you to its partner in 0.6 s, out of play in the air, landing facing the longest open run; the partner does not fire until left | The flight is about half a second in the longplay; the landing rule is a guess |
+| What appears at the fruit spot | Fruit or a capsule, drawn with weights fruit 3, red/cyan/pink/orange 2, gold 1, at the fruit's own times | The arcade's odds are unknown; the draw uses the match's seeded random source so every client agrees |
+| Red capsule | Double speed for 10 s; Pac-Man also chews pellets without pausing | Arcade: double speed for 10 s and big dots do not slow him |
+| Cyan capsule | A mirror clone for 10 s: it copies the taker's moves mirrored about the centre line (every level's maze is symmetric). Pac-Man's clone eats pellets and frightened ghosts and vanishes when a normal ghost touches it, nothing stolen; a ghost's clone catches Pac-Man for its owner and is eaten for the chain points, nothing charged, while its owner is frightened | Arcade: the clone mirrors Pac-Man horizontally from the centre, eats dots and vulnerable ghosts, for 10 s; the ghost-side clone is this game's reading of the arcade's merged-ghost power |
+| Pink capsule | Taken by Pac-Man: every ghost is pulled into the pot in the house for 4 s. Taken by a ghost: the hop, a flight to a random cell every 3 s for 10 s, untouchable in the air | Arcade: the pot holds the ghosts about 4 s; the hop is the arcade's merged-ghost power for the pink ghost, given to any ghost here by choice |
+| Orange capsule | Taken by Pac-Man: pellets digested without pausing for 10 s. Taken by a ghost: it drops up to ten big pellets on empty cells behind it for 10 s; a big pellet pays 50 and holds Pac-Man half a second, and does not count towards clearing the maze | Arcade: faster digestion; the big dots are the arcade's merged-ghost power for the orange ghost |
+| Gold capsule | 100 points, nothing else | Arcade |
+| Capsule points | 400 for the coloured capsules (the fruit's value here), 100 for gold | The arcade gives 1,000; 400 keeps the match balance of the original's 7,000 target (user's choice) |
+| Looks and sounds | Pads are flat marks on the stage floor, capsules two-tone pills, big pellets larger pink dots, a flight lifts the body along an arc, dizziness shows three stars, clones are see-through (grey on the handheld). The sounds use effect slots the disc leaves unnamed, with synthesised fallbacks | This game's own; the arcade's capsule sprites are two-tone pills |
+
+Left out for now: the arcade's rare magic wand (ghosts become edible gift boxes), the fifth ghost that merges with the others, and the arcade's own mazes.
+
