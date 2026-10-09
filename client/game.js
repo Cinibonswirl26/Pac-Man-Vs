@@ -127,6 +127,56 @@
   }
   const fire = (id, p) => SM.fire(id, Object.assign({ me: snap ? snap.me : 0 }, p));
   const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
+  // What the original plays, found by matching its sound output against the disc's streams (see FIDELITY.md):
+  // the opening theme on the title and menus; on the Original Pac-Man stage the classic start jingle through the
+  // countdown, then no music but a siren while the round runs, and after a catch a short looping tune through the
+  // exchange and hand-over screens. The siren and that tune are sequenced by the game's own synthesiser, not streams,
+  // so they are synthesised here from their measured pitches. The pacmania streams are used on the other stages.
+  const MENU_TRACK = 'Pac_Opening_Comp_LR', START_JINGLE = 'pacmanBGM00_FX_LR', CLEAR_JINGLE = 'Pac_Arr_Clear_LR';
+  const onOriginalStage = () => !curDisc || curDisc.stage === 1;
+  // The siren: a square-ish tone that holds at 563 Hz, climbs to 844 Hz and falls back, every 0.43 s (measured).
+  const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13 };
+  let siren = null;
+  function setSiren(on) {
+    if (!on) { if (siren) { try { siren.o.stop(); } catch { /* ended */ } siren = null; } return; }
+    if (siren || !audio()) return;
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; g.gain.value = 0.07;
+    o.connect(g); g.connect(master); o.start();
+    siren = { o, g, next: ac.currentTime };
+  }
+  function scheduleSiren() {
+    if (!siren) return;
+    const { lo, hi, hold, rise, fall } = SIREN, f = siren.o.frequency;
+    while (siren.next < ac.currentTime + 1) {        // keep a second of sweeps scheduled ahead
+      const t = Math.max(siren.next, ac.currentTime);
+      f.setValueAtTime(lo, t); f.setValueAtTime(lo, t + hold); f.linearRampToValueAtTime(hi, t + hold + rise); f.linearRampToValueAtTime(lo, t + hold + rise + fall);
+      siren.next = t + hold + rise + fall;
+    }
+  }
+  // The tune after a catch: one voice, a 4-second loop (notes read off the original's output: start s, length s, note).
+  const N = n => 440 * Math.pow(2, (n - 69) / 12), NOTE = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
+  const pitch = s => N(NOTE[s.slice(0, -1)] + 12 * (+s.slice(-1) + 1));
+  const TUNE = [[0, 0.19, 'C7'], [0.21, 0.11, 'C7'], [0.33, 0.12, 'C7'], [0.54, 0.13, 'A6'], [0.67, 0.14, 'G6'], [0.82, 0.22, 'C7'], [1.04, 0.1, 'D#7'],
+    [1.38, 0.1, 'E7'], [1.54, 0.1, 'E7'], [1.69, 0.08, 'E7'], [1.78, 0.08, 'D#7'], [1.91, 0.06, 'C#7'], [1.97, 0.25, 'C7'], [2.25, 0.11, 'C7'], [2.38, 0.1, 'C7'],
+    [2.59, 0.13, 'A6'], [2.73, 0.15, 'G6'], [2.88, 0.15, 'C7'], [3.09, 0.7, 'A6'], [3.78, 0.08, 'G#6'], [3.86, 0.12, 'G6']], TUNE_LEN = 4.0;
+  let tune = null;
+  function setTune(on) {
+    if (!on) { if (tune) { tune.nodes.forEach(n => { try { n.stop(); } catch { /* ended */ } }); tune = null; } return; }
+    if (tune || !audio()) return;
+    tune = { next: ac.currentTime + 0.05, nodes: [] };
+  }
+  function scheduleTune() {
+    if (!tune) return;
+    while (tune.next < ac.currentTime + 1.5) {
+      const t0 = tune.next;
+      for (const [at, len, note] of TUNE) {
+        const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; o.frequency.value = pitch(note);
+        g.gain.setValueAtTime(0.06, t0 + at); g.gain.setValueAtTime(0.06, t0 + at + len - 0.01); g.gain.linearRampToValueAtTime(0, t0 + at + len);
+        o.connect(g); g.connect(master); o.start(t0 + at); o.stop(t0 + at + len + 0.02); tune.nodes.push(o);
+      }
+      tune.nodes = tune.nodes.slice(-60); tune.next = t0 + TUNE_LEN;
+    }
+  }
 
   // ------------------------------------------------------------------ disc assets
   const art = { pac: [], logo: null, press: null, mazes: [], three: null, screens: null, handheld: null };
@@ -232,7 +282,7 @@
       if (screenView) { screenView.canvas.remove(); screenView = null; }
       st.className = 'note ok'; st.textContent = `Loaded ${d.title} (${d.id}). Original logo, sprites, music${art.three ? ', 3D ghost view' : ''} are on.`;
       if (remember) { try { await idbSet('disc', blob); } catch { /* storage unavailable */ } }
-      if (!mode) playMusic('Pac_Op_loop73_LR', true);
+      if (!mode) playMusic(MENU_TRACK, true);
     } catch (e) { st.className = 'note err'; st.textContent = 'Could not use that file: ' + e.message; }
   }
   function idb() { return new Promise((res, rej) => { const r = indexedDB.open('pacvs', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
@@ -264,9 +314,9 @@
   function toMenu(msg) {
     stopLoops();
     if (ws) { try { send({ t: 'leave' }); ws.close(); } catch { /* closing */ } }
-    mode = null; room = null; offline = null; snap = null; stopMusic(); screen('menu'); setMaze(null);
+    mode = null; room = null; offline = null; snap = null; stopMusic(); setSiren(false); setTune(false); screen('menu'); setMaze(null);
     $('menuErr').textContent = msg || '';
-    if (music.disc) playMusic('Pac_Op_loop73_LR', true);
+    if (music.disc) playMusic(MENU_TRACK, true);
   }
   function renderLobby() {
     $('roomCode').textContent = room.code;
@@ -459,6 +509,8 @@
   function onSnap(force) {
     if (!snap) return;
     fxDetect(snap);
+    if (snap.phase === 'roundover' && snap.why === 'caught' && !tune) setTune(performance.now() - phaseT0 >= PacMatch.CAUGHT * 1000);
+    scheduleSiren(); scheduleTune();
     if (snap.phase !== lastPhase || force) {
       if (snap.phase !== lastPhase) {
         phaseT0 = performance.now();
@@ -467,8 +519,16 @@
       }
       if (snap.phase === 'countdown' && snap.phase !== lastPhase) lastDir = -1;
       lastPhase = snap.phase;
-      if (snap.phase === 'countdown' || snap.phase === 'play') playMusic(GAME_TRACKS[(snap.round || 0) % 4], true); else stopMusic();
+      if (onOriginalStage()) {
+        if (snap.phase === 'countdown') playMusic(START_JINGLE, false);
+        else if (snap.phase === 'roundover' && snap.why === 'cleared') playMusic(CLEAR_JINGLE, false);
+        else if (snap.phase !== 'play') stopMusic();
+      } else if (snap.phase === 'countdown' || snap.phase === 'play') playMusic(GAME_TRACKS[(snap.round || 0) % 4], true); else stopMusic();
     }
+    // the siren runs while the round is on and no ghost is frightened or flying home; the tune after a catch runs from the exchange screen to the next round
+    setSiren(onOriginalStage() && snap.phase === 'play' && !(snap.frightLeft > 0) && !snap.ghosts.some(g => g && g.m === 'e'));
+    setTune(snap.why === 'caught' && (snap.phase === 'handoff' || (snap.phase === 'roundover' && performance.now() - phaseT0 >= PacMatch.CAUGHT * 1000)));
+    scheduleSiren(); scheduleTune();
     if (snap.phase === 'countdown') { const c = Math.ceil(snap.left_t); if (c !== lastCount) { lastCount = c; tone(c > 0 ? 520 : 880, 0.12, 'square', 0.1); } }
     renderHud(); renderBanner();
   }

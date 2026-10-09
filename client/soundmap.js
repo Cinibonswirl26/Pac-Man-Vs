@@ -13,7 +13,7 @@
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v6';
+  const KEY = 'pacvs.soundmap.v7';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
@@ -30,7 +30,7 @@
     26: 'Pac-Man ate the fruit', 27: 'Pac-Man ate the fruit (other)', 28: 'One thousand points left', 29: 'Five hundred points left',
     30: 'End of the game', 31: 'Go', 32: 'Ready', 33: 'Go go go!', 34: 'You can do it!', 35: 'Title'
   };
-  const SFX_NAMES = { 6: 'fruit appears chime', 8: 'power pellet eaten', 9: 'pellet eaten', 10: 'frightened ghosts (loops)', 11: 'ghost eaten (rising sweep)', 12: 'ghost "wee-woo" siren (loops)', 13: 'fruit taken / ghost eaten thump', 1: 'beep' };
+  const SFX_NAMES = { 4: 'Pac-Man caught (the knock)', 6: 'fruit appears chime', 8: 'power pellet eaten', 9: 'pellet eaten', 10: 'frightened ghosts (loops)', 11: 'ghost eaten (rising sweep)', 12: 'ghost "wee-woo" siren (loops)', 13: 'fruit taken / ghost eaten thump', 1: 'beep' };
 
   // Every moment the game can make a sound for. `per` says what the index means for 'index' cues.
   const EVENTS = [
@@ -51,7 +51,7 @@
     { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18, 19])] },
     { id: 'pts1000', label: '1000 points to the target', when: 'Anybody is within 1000 of winning', cues: [voice([28])] },
     { id: 'pts500', label: '500 points to the target', when: 'Anybody is within 500 of winning', cues: [voice([29])] },
-    { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [voice([13, 14, 15, 16], { mode: 'index', force: true })] },
+    { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [sfx([4], { vol: 0.9 }), voice([13, 14, 15, 16], { mode: 'index', force: true, delay: 2200 })] },
     // Timers: counted from the start of each round, so they begin again after Pac-Man clears the maze or is caught.
     { id: 'goGoGo', after: 60, label: '"Go go go!" timer', when: 'One minute into a round, in the game only', cues: [voice([33])] },
     { id: 'youCanDoIt', after: 150, label: '"You can do it!" timer', when: 'Two and a half minutes into a round, in the game only', cues: [voice([34])] },
