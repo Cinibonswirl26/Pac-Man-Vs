@@ -455,7 +455,7 @@ body { background: var(--bg); color: var(--ink); }
     const seen = (x, y) => s.ghosts.some(g => Math.hypot(x - g.x, y - g.y) <= sightOf(g) * CFG.viewReach);
     const vis = e => gi < 0 || seen(e.x, e.y);
     const out = {
-      tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, over: s.over, why: s.overReason,
+      tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, eaten: s.eaten, over: s.over, why: s.overReason,
       pacPlayer: s.pacPlayer, gp: s.gp, scores: s.scores.slice(), rs: s.roundScores.slice(), me: gi, ev: s.events.slice(),
       catcher: s.catcher, steal: s.steal, winner: s.winner, sight, boost: gi >= 0 ? me.sightLeft : 0, fruitUp: !!s.fruit,
       fruit: s.fruit && vis(s.fruit) ? { x: s.fruit.x, y: s.fruit.y } : null,
@@ -3491,7 +3491,9 @@ body { background: var(--bg); color: var(--ink); }
   const MENU_TRACK = 'Pac_Opening_Comp_LR', START_JINGLE = 'pacmanBGM00_FX_LR', CLEAR_JINGLE = 'Pac_Arr_Clear_LR';
   const onOriginalStage = () => !curDisc || curDisc.stage === 1;
   // The siren: a square-ish tone that holds at 563 Hz, climbs to 844 Hz and falls back, every 0.43 s (measured).
-  const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13 };
+  // Every pellet eaten in the round raises the whole sweep by 0.145% (about 0.8 Hz at the bottom); the period does not
+  // change. Measured over a round: 565 Hz at the start, 651 Hz after 106 pellets, steady while nothing is eaten.
+  const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13, perPellet: 0.00145 };
   let siren = null;
   function setSiren(on) {
     if (!on) { if (siren) { try { siren.o.stop(); } catch { /* ended */ } siren = null; } return; }
@@ -3502,7 +3504,8 @@ body { background: var(--bg); color: var(--ink); }
   }
   function scheduleSiren() {
     if (!siren) return;
-    const { lo, hi, hold, rise, fall } = SIREN, f = siren.o.frequency;
+    const { hold, rise, fall } = SIREN, f = siren.o.frequency, k = 1 + SIREN.perPellet * ((snap && snap.eaten) || 0);
+    const lo = SIREN.lo * k, hi = SIREN.hi * k;
     while (siren.next < ac.currentTime + 1) {        // keep a second of sweeps scheduled ahead
       const t = Math.max(siren.next, ac.currentTime);
       f.setValueAtTime(lo, t); f.setValueAtTime(lo, t + hold); f.linearRampToValueAtTime(hi, t + hold + rise); f.linearRampToValueAtTime(lo, t + hold + rise + fall);
