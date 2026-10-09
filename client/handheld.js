@@ -147,14 +147,14 @@
       sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y), 0);
     }
     st.ghosts.forEach(g => {
-      if (g.m === 'r') return;
+      if (g.m === 'r' || g.seat < 0) return;        // eaten ghosts and grey stand-ins are not on the handheld (the original shows a stand-in only once it wakes)
       const foot = Math.floor(fr / 12) % 2 ? 2 : 0;
       if (g.m === 'e') sprite16(sprites, EYES[g.d], 7, sx(g.x), sy(g.y), 0);
       else if (g.m === 'f') {
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
         badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
-      else sprite16(sprites, GHOST_BASE[g.d] + foot, g.seat < 0 ? hw.greyPal : 1 + g.seat, sx(g.x), sy(g.y), 0);
+      else sprite16(sprites, GHOST_BASE[g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y), 0);
     });
     if (st.fruit) sprite16(sprites, CHERRY, 1, sx(st.fruit.x), sy(st.fruit.y), 0);
     // sprite16 pushed in draw-priority order (Pac first); the picture draws the last one first

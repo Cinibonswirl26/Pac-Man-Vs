@@ -28,7 +28,7 @@
     pelletPause: 1 / FPS,                // eating a pellet holds Pac-Man for a frame: 0.4725 px/frame measured over a pellet row against 0.503 cleared
     ghostSpeed: (0.5 + 1 / 256) * FPS / CELL,   // a hair faster than Pac-Man: about 1 px more per 128 px
     frightSpeed: 0.375 * FPS / CELL,     // 2.80 cells/s
-    greySpeed: 0.41 * FPS / CELL,        // a grey stand-in dawdles (a guess: slow enough to run into on purpose, slower than Pac-Man)
+    greySpeed: FPS / CELL / 3,           // a grey stand-in wanders at a third of a pixel a frame: two thirds of ghost speed (measured on the original's radar)
     eyeSpeed: 1.0 * FPS / CELL,          // not measured
     frightTime: 10, frightFlash: 2,
     // Pac-Man leaves a trail in his player's colour that ghosts can follow. Look (wide flat ribbon, paler by Pac-Man) is from the original; the length is a guess.
