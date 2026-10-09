@@ -289,7 +289,7 @@
     const gi = ghostIndexOf(s, player);
     const me = gi < 0 ? s.pac : s.ghosts[gi];
     const sight = gi >= 0 ? sightOf(me) : CFG.ghostSight;
-    const seen = (x, y) => s.ghosts.some(g => !g.grey && Math.hypot(x - g.x, y - g.y) <= sightOf(g) * CFG.viewReach);
+    const seen = (x, y) => s.ghosts.some(g => Math.hypot(x - g.x, y - g.y) <= sightOf(g) * CFG.viewReach);
     const vis = e => gi < 0 || seen(e.x, e.y);
     const out = {
       tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, over: s.over, why: s.overReason,

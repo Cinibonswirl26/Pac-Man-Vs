@@ -147,8 +147,8 @@
     // Badge labels are dark letters: paint them with the vertex colour where the texture is dark.
     const labelMat = Object.assign({}, MODULATE, { stages: [Object.assign({}, MODULATE.stages[0], { op: {
       color: { a: 10, b: 15, c: 8, d: 15, op: 0, bias: 0, scale: 0, clamp: 1, reg: 0 }, alpha: MODULATE.stages[0].op.alpha } })] });
-    function ghostCircle(slot, seat, v, time) {
-      const s = SLOTS[slot], c = seatColor[seat];
+    function ghostCircle(slot, seat, v, time, com) {
+      const s = SLOTS[slot], c = com ? [0.62, 0.62, 0.68] : seatColor[seat];
       // frame colours measured on the original's picture: 63% of the player's colour, the ring a touch brighter
       const dark = [c[0] * 0.63, c[1] * 0.63, c[2] * 0.63, 1];
       const ringCol = [c[0] * 0.66, c[1] * 0.66, c[2] * 0.66, 1];
@@ -199,6 +199,7 @@
       // "P1".."P4" in the badge
       const bx = slot === 2 ? s.x : s.x + (slot === 0 ? -1 : 1) * 104, by = slot === 2 ? s.y - 147 : s.y - 104;
       const light = [Math.min(1, c[0] + 0.29), Math.min(1, c[1] + 0.29), Math.min(1, c[2] + 0.29), 1];
+      if (com) { say('COM', bx, by, 17, [0.12, 0.12, 0.16, 1]); return; }
       const lab = texture('p' + (seat + 1) + '.bti'), L = 34;
       R.quad(labelMat, i => (i === 0 ? lab : null), [
         { x: bx - L / 2, y: by - L / 2, u: 0, v: 0, c: light }, { x: bx + L / 2, y: by - L / 2, u: 1, v: 0, c: light },
@@ -250,10 +251,13 @@
       if (!st.fruitUp) { hide.add('furit_wk'); }
       const texMtx = {};
       if (assets.bgAnim) Object.assign(texMtx, J3D.animateTex(assets.bgAnim, f));
-      drawLayout(scr, { textures, text, hide, texMtx });
-      // scores in the player panels
+      const show = new Set(), com = new Set();
+      for (const g of st.ghosts) if (g.c != null && g.c < 0) { com.add(g.seat); if (scr.byName['P' + (g.seat + 1) + '_COM']) { show.add('P' + (g.seat + 1) + '_COM'); hide.delete('P' + (g.seat + 1) + '_COM'); } }
+      drawLayout(scr, { textures, text, hide, show, texMtx });
+      // scores in the player panels (a stand-in shows COM instead of a score)
       for (let i = 0; i < 4; i++) {
         const p = scr.byName['P' + (i + 1) + '_waku']; if (!p) continue;
+        if (com.has(i)) { if (!scr.byName['P' + (i + 1) + '_COM']) { const b = box(p, 0, 0); drawText(scoreMat, 'COM', { x: b.x + 90, y: b.y, w: b.w - 102, h: b.h }, { fontW: 22, fontH: 22, hBind: 1, charSpace: -1, charColor: [0.7, 0.7, 0.75, 1] }); } continue; }
         const b = box(p, 0, 0);
         drawText(scoreMat, String(st.scores[i]), { x: b.x + 90, y: b.y, w: b.w - 102, h: b.h }, { fontW: 22, fontH: 22, hBind: 1, charSpace: -1, charColor: [1, 1, 1, 1] });
       }
@@ -266,7 +270,7 @@
           R.poly([[tvx(gx - 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy + 4)], [tvx(gx - 4), tvy(gy + 4)]], [c[0], c[1], c[2], 1]);
         }
       }
-      st.ghosts.slice(0, 3).forEach((g, slot) => { if (!(g.c < 0)) ghostCircle(slot, g.c != null ? g.c : g.seat, st.views[slot], st.time); });      // a grey stand-in has no circle
+      st.ghosts.slice(0, 3).forEach((g, slot) => ghostCircle(slot, g.c != null && g.c >= 0 ? g.c : g.seat, st.views[slot], st.time, g.c < 0));      // a grey stand-in gets a grey circle marked COM
       if (st.sparkle !== undefined) sparkles(st.sparkle);
       if (st.caught) caught(st.caught);
       return canvas;
