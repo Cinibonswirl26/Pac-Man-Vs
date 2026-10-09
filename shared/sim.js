@@ -316,7 +316,7 @@
     const seen = (x, y) => s.ghosts.some(g => Math.hypot(x - g.x, y - g.y) <= sightOf(g) * CFG.viewReach);
     const vis = e => gi < 0 || seen(e.x, e.y);
     const out = {
-      tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, over: s.over, why: s.overReason,
+      tick: s.tick, target: s.target, frightLeft: Math.round(s.frightLeft * 100) / 100, left: s.left, eaten: s.eaten, over: s.over, why: s.overReason,
       pacPlayer: s.pacPlayer, gp: s.gp, scores: s.scores.slice(), rs: s.roundScores.slice(), me: gi, ev: s.events.slice(),
       catcher: s.catcher, steal: s.steal, winner: s.winner, sight, boost: gi >= 0 ? me.sightLeft : 0, fruitUp: !!s.fruit,
       fruit: s.fruit && vis(s.fruit) ? { x: s.fruit.x, y: s.fruit.y } : null,

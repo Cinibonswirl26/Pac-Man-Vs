@@ -135,7 +135,9 @@
   const MENU_TRACK = 'Pac_Opening_Comp_LR', START_JINGLE = 'pacmanBGM00_FX_LR', CLEAR_JINGLE = 'Pac_Arr_Clear_LR';
   const onOriginalStage = () => !curDisc || curDisc.stage === 1;
   // The siren: a square-ish tone that holds at 563 Hz, climbs to 844 Hz and falls back, every 0.43 s (measured).
-  const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13 };
+  // Every pellet eaten in the round raises the whole sweep by 0.145% (about 0.8 Hz at the bottom); the period does not
+  // change. Measured over a round: 565 Hz at the start, 651 Hz after 106 pellets, steady while nothing is eaten.
+  const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13, perPellet: 0.00145 };
   let siren = null;
   function setSiren(on) {
     if (!on) { if (siren) { try { siren.o.stop(); } catch { /* ended */ } siren = null; } return; }
@@ -146,7 +148,8 @@
   }
   function scheduleSiren() {
     if (!siren) return;
-    const { lo, hi, hold, rise, fall } = SIREN, f = siren.o.frequency;
+    const { hold, rise, fall } = SIREN, f = siren.o.frequency, k = 1 + SIREN.perPellet * ((snap && snap.eaten) || 0);
+    const lo = SIREN.lo * k, hi = SIREN.hi * k;
     while (siren.next < ac.currentTime + 1) {        // keep a second of sweeps scheduled ahead
       const t = Math.max(siren.next, ac.currentTime);
       f.setValueAtTime(lo, t); f.setValueAtTime(lo, t + hold); f.linearRampToValueAtTime(hi, t + hold + rise); f.linearRampToValueAtTime(lo, t + hold + rise + fall);

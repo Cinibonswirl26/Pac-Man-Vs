@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound Lab</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#07080f; --panel:#12142a; --line:#2a2f6b; --ink:#f2f3ff; --dim:#8f94c7; --pac:#ffd400; --good:#5dff9a; --cyan:#35c8ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 ui-monospace,Menlo,Consolas,monospace; padding:12px 16px 80px; }
+  h1 { font-size:22px; margin:8px 0; color:var(--pac); } h2 { font-size:13px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin:0 0 8px; }
+  a { color:var(--cyan); }
+  button, select, input { font:inherit; color:var(--ink); background:#0b0d20; border:2px solid var(--line); border-radius:6px; padding:6px 10px; min-height:36px; }
+  button { cursor:pointer; } button:hover { border-color:var(--pac); } button.p { background:var(--pac); color:#1a1500; border-color:var(--pac); font-weight:700; }
+  .card { background:var(--panel); border:2px solid var(--line); border-radius:8px; padding:12px; margin-bottom:14px; }
+  .cols { display:grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.6fr); gap:14px; align-items:start; }
+  @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+  .lib { display:grid; grid-template-columns: 1fr; gap:4px; max-height:70vh; overflow:auto; }
+  .snd { display:flex; gap:6px; align-items:center; border:1px solid var(--line); border-radius:6px; padding:3px 6px; }
+  .snd b { width:34px; color:var(--pac); } .snd input.nm { flex:1; min-width:0; border:0; background:transparent; padding:2px 4px; min-height:28px; }
+  .snd small { color:var(--dim); width:44px; text-align:right; }
+  .snd button { min-height:28px; padding:2px 8px; }
+  .ev { border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:10px; }
+  .ev h3 { margin:0; font-size:15px; } .ev p { margin:2px 0 6px; color:var(--dim); font-size:12px; }
+  .cue { display:grid; grid-template-columns: 70px 1fr 74px 66px 92px 86px 96px 70px auto; gap:4px; align-items:center; margin-bottom:4px; }
+  .cue.sel { outline:2px solid var(--cyan); border-radius:6px; }
+  .cue input, .cue select { width:100%; min-width:0; padding:3px 6px; min-height:30px; }
+  .cue label { font-size:11px; color:var(--dim); display:flex; align-items:center; gap:3px; }
+  @media (max-width: 800px) { .cue { grid-template-columns: 1fr 1fr 1fr; } }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .ok { color:var(--good); } .dim { color:var(--dim); }
+  textarea { width:100%; height:120px; background:#0b0d20; color:var(--ink); border:2px solid var(--line); border-radius:6px; font:12px ui-monospace,monospace; }
+</style>
+</head>
+<body>
+<h1>Sound Lab</h1>
+<p class="dim">Listen to every sound on your disc, then say which one plays for each moment in the game. Your choices are saved in this browser and the game uses them straight away. Use <b>Copy settings</b> to send them back to me.</p>
+
+<div class="card" id="load">
+  <h2>1 &middot; Your disc</h2>
+  <div class="bar"><input type="file" id="file" accept=".iso,.ciso,.gcm,.gcz,.rvz"> <span id="stat" class="dim">Not loaded. If you already loaded it in the game, press "Use the disc from the game".</span> <button id="saved">Use the disc from the game</button></div>
+</div>
+
+<div class="cols">
+  <div>
+    <div class="card"><h2>2 &middot; Effects</h2><div class="lib" id="sfx"></div></div>
+    <div class="card"><h2>Announcer lines</h2><div class="lib" id="voice"></div></div>
+    <div class="card"><h2>Pac-Man's screen</h2>
+      <div class="snd"><b>waka</b><span style="flex:1">the "wa-ka" for each pellet</span><button data-hand="waka">&#9654;</button></div>
+      <div class="snd"><b>start</b><span style="flex:1">the sweep that starts a round</span><button data-hand="start">&#9654;</button></div>
+      <p class="dim">These are rebuilt from recordings, not read from the disc. Tell me how they differ from the real ones.</p></div>
+  </div>
+  <div>
+    <div class="card"><h2>3 &middot; What plays when</h2>
+      <p class="dim">Click a row's number box, then use <b>+</b> next to a sound to add it. <b>Test</b> plays the whole event the way the game would. <b>index</b> is the seat (0-3) used by "per seat" cues.</p>
+      <div class="bar" style="margin-bottom:8px"><button class="p" id="save">Save</button><button id="copy">Copy settings</button><button id="paste">Paste settings</button><button id="reset">Reset to defaults</button><span id="msg" class="ok"></span></div>
+      <textarea id="json" hidden></textarea>
+      <div id="events"></div>
+    </div>
+  </div>
+</div>
+<script>
+/* Reads assets out of a disc image the player supplies (.iso or compressed .ciso).
+ * Nothing from the disc is stored on the server or in the repository: the browser
+ * opens the file the user picks and decodes what it needs in memory.
+ * UMD: window.Disc in the browser, module.exports in Node. */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.Disc = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+  const u32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+  const u16 = (b, o) => (b[o] << 8) | b[o + 1];
+  const cstr = (b, o) => { let s = ''; while (b[o]) s += String.fromCharCode(b[o++]); return s; };
+
+  // ---- container readers: async read(offset, length) -> Uint8Array of *disc* bytes ----
+  async function openContainer(blob) {
+    const head = new Uint8Array(await blob.slice(0, 0x8000).arrayBuffer());
+    if (String.fromCharCode(...head.slice(0, 4)) === 'CISO') {
+      const bs = head[4] | (head[5] << 8) | (head[6] << 16) | (head[7] << 24);
+      const phys = new Int32Array(0x7FF8); let n = 0;
+      for (let i = 0; i < 0x7FF8; i++) phys[i] = head[8 + i] === 1 ? n++ : -1;
+      return {
+        kind: 'ciso',
+        async read(off, len) {
+          const out = new Uint8Array(len);
+          let pos = 0;
+          while (pos < len) {
+            const o = off + pos, bi = Math.floor(o / bs), within = o % bs;
+            const take = Math.min(len - pos, bs - within);
+            if (bi < phys.length && phys[bi] >= 0) {
+              const p = 0x8000 + phys[bi] * bs + within;
+              out.set(new Uint8Array(await blob.slice(p, p + take).arrayBuffer()), pos);
+            }
+            pos += take;
+          }
+          return out;
+        }
+      };
+    }
+    return { kind: 'iso', async read(off, len) { return new Uint8Array(await blob.slice(off, off + len).arrayBuffer()); } };
+  }
+
+  async function open(blob) {
+    const c = await openContainer(blob);
+    const boot = await c.read(0, 0x440);
+    const id = String.fromCharCode(...boot.slice(0, 6));
+    if (!/^[A-Z0-9]{6}$/.test(id)) throw new Error('This does not look like a Pac-Man Vs. disc image.');
+    const fstOff = u32(boot, 0x424), fstSize = u32(boot, 0x428);
+    const fst = await c.read(fstOff, fstSize);
+    const count = u32(fst, 8), names = count * 12;
+    const files = new Map(); const stack = [];
+    for (let i = 1; i < count; i++) {
+      const e = i * 12, isDir = fst[e] === 1, name = cstr(fst, names + (u32(fst, e) & 0xFFFFFF));
+      while (stack.length && stack[stack.length - 1].end <= i) stack.pop();
+      const dir = stack.map(d => d.name).join('/');
+      if (isDir) stack.push({ name, end: u32(fst, e + 8) });
+      else files.set((dir ? dir + '/' : '') + name, { off: u32(fst, e + 4), size: u32(fst, e + 8) });
+    }
+    return {
+      id, title: cstr(await c.read(0x20, 0x40), 0), files,
+      has: p => files.has(p),
+      async read(path) {
+        const f = files.get(path); if (!f) throw new Error('missing on disc: ' + path);
+        return c.read(f.off, f.size);
+      }
+    };
+  }
+
+  // ---- Yaz0 + RARC ----
+  function yaz0(src) {
+    if (String.fromCharCode(...src.slice(0, 4)) !== 'Yaz0') return src;
+    const size = u32(src, 4), out = new Uint8Array(size);
+    let s = 16, d = 0;
+    while (d < size) {
+      let code = src[s++];
+      for (let bit = 0; bit < 8 && d < size; bit++, code <<= 1) {
+        if (code & 0x80) out[d++] = src[s++];
+        else {
+          const b1 = src[s++], b2 = src[s++];
+          let n = b1 >> 4; const dist = (((b1 & 15) << 8) | b2) + 1;
+          if (n === 0) n = src[s++] + 18; else n += 2;
+          for (let k = 0; k < n && d < size; k++, d++) out[d] = out[d - dist];
+        }
+      }
+    }
+    return out;
+  }
+  function rarc(b) {
+    if (String.fromCharCode(...b.slice(0, 4)) !== 'RARC') throw new Error('not a RARC archive');
+    const h = 0x20, dataStart = h + u32(b, 0x0C);
+    const nDir = u32(b, h), dirOff = h + u32(b, h + 4), nFile = u32(b, h + 8), fileOff = h + u32(b, h + 12), strOff = h + u32(b, h + 20);
+    const out = new Map();
+    const walk = (di, prefix) => {
+      const d = dirOff + di * 16, first = u32(b, d + 12), cnt = u16(b, d + 10);
+      for (let i = 0; i < cnt; i++) {
+        const f = fileOff + (first + i) * 20, name = cstr(b, strOff + u16(b, f + 6)), attr = u16(b, f + 4);
+        if (name === '.' || name === '..') continue;
+        if (attr & 0x0200) walk(u32(b, f + 8), prefix + name + '/');
+        else out.set(prefix + name, b.subarray(dataStart + u32(b, f + 8), dataStart + u32(b, f + 8) + u32(b, f + 12)));
+      }
+    };
+    walk(0, '');
+    return out;
+  }
+
+  // ---- BTI textures -> RGBA ----
+  const c5 = v => (v << 3) | (v >> 2), c6 = v => (v << 2) | (v >> 4), c4 = v => v * 17, c3 = v => (v << 5) | (v << 2) | (v >> 1);
+  function decodeBTI(b, o) {
+    o = o || 0;
+    const fmt = b[o], w = u16(b, o + 2), h = u16(b, o + 4), palFmt = b[o + 9], nPal = u16(b, o + 10), palOff = u32(b, o + 12), dataOff = u32(b, o + 0x1C);
+    const rgba = new Uint8Array(w * h * 4);
+    const put = (x, y, r, g, bl, a) => { if (x >= w || y >= h) return; const i = (y * w + x) * 4; rgba[i] = r; rgba[i + 1] = g; rgba[i + 2] = bl; rgba[i + 3] = a; };
+    const rgb565 = v => [c5(v >> 11), c6((v >> 5) & 63), c5(v & 31), 255];
+    const rgb5a3 = v => (v & 0x8000) ? [c5((v >> 10) & 31), c5((v >> 5) & 31), c5(v & 31), 255] : [c4((v >> 8) & 15), c4((v >> 4) & 15), c4(v & 15), c3((v >> 12) & 7)];
+    const pal = [];
+    if (nPal) for (let i = 0; i < nPal; i++) { const v = u16(b, o + palOff + i * 2); pal.push(palFmt === 0 ? [v >> 8, v >> 8, v >> 8, v & 255] : palFmt === 1 ? rgb565(v) : rgb5a3(v)); }
+    let p = o + dataOff;
+    const tiles = (bw, bh, fn) => { for (let ty = 0; ty < h; ty += bh) for (let tx = 0; tx < w; tx += bw) fn(tx, ty); };
+    switch (fmt) {
+      // Intensity formats: the intensity is copied into all four channels, alpha included.
+      case 0: tiles(8, 8, (tx, ty) => { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x += 2) { const v = b[p++], i = c4(v >> 4), j = c4(v & 15); put(tx + x, ty + y, i, i, i, i); put(tx + x + 1, ty + y, j, j, j, j); } }); break;
+      case 1: tiles(8, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) { const v = b[p++]; put(tx + x, ty + y, v, v, v, v); } }); break;
+      case 2: tiles(8, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) { const v = b[p++], i = c4(v & 15); put(tx + x, ty + y, i, i, i, c4(v >> 4)); } }); break;
+      case 3: tiles(4, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const a = b[p++], i = b[p++]; put(tx + x, ty + y, i, i, i, a); } }); break;
+      case 4: tiles(4, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const c = rgb565(u16(b, p)); p += 2; put(tx + x, ty + y, ...c); } }); break;
+      case 5: tiles(4, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const c = rgb5a3(u16(b, p)); p += 2; put(tx + x, ty + y, ...c); } }); break;
+      case 6: tiles(4, 4, (tx, ty) => {   // 64-byte tile: 16 x (A,R) then 16 x (G,B)
+        for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const i = (y * 4 + x) * 2; put(tx + x, ty + y, b[p + i + 1], b[p + 32 + i], b[p + 32 + i + 1], b[p + i]); }
+        p += 64;
+      }); break;
+      case 8: tiles(8, 8, (tx, ty) => { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x += 2) { const v = b[p++]; put(tx + x, ty + y, ...pal[v >> 4]); put(tx + x + 1, ty + y, ...pal[v & 15]); } }); break;
+      case 9: tiles(8, 4, (tx, ty) => { for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) put(tx + x, ty + y, ...pal[b[p++]]); }); break;
+      case 14: tiles(8, 8, (tx, ty) => {
+        for (let sb = 0; sb < 4; sb++) {
+          const bx = tx + (sb & 1) * 4, by = ty + (sb >> 1) * 4;
+          const c0 = u16(b, p), c1 = u16(b, p + 2);
+          const A = rgb565(c0), B = rgb565(c1), col = [A, B];
+          if (c0 > c1) { col.push(A.map((v, i) => i < 3 ? ((2 * v + B[i]) / 3) | 0 : 255), A.map((v, i) => i < 3 ? ((v + 2 * B[i]) / 3) | 0 : 255)); }
+          else { col.push(A.map((v, i) => i < 3 ? ((v + B[i]) / 2) | 0 : 255), [0, 0, 0, 0]); }
+          for (let y = 0; y < 4; y++) { const row = b[p + 4 + y]; for (let x = 0; x < 4; x++) put(bx + x, by + y, ...col[(row >> (6 - 2 * x)) & 3]); }
+          p += 8;
+        }
+      }); break;
+      default: throw new Error('unsupported BTI format ' + fmt);
+    }
+    return { w, h, rgba, fmt, wrapS: b[o + 6], wrapT: b[o + 7] };
+  }
+
+  // ---- AST (streamed music, AFC ADPCM) -> Float32 channels ----
+  const AFC = [[0, 0], [2048, 0], [0, 2048], [1024, 1024], [4096, -2048], [3584, -1536], [3072, -1024], [4608, -2560],
+    [4200, -2248], [4800, -2300], [5120, -3072], [2048, -2048], [1024, -1024], [-1024, 1024], [-1024, 0], [-2048, 0]];
+  function decodeAST(b, maxSeconds) {
+    if (String.fromCharCode(...b.slice(0, 4)) !== 'STRM') throw new Error('not an AST stream');
+    const codec = u16(b, 8), ch = u16(b, 0x0C), rate = u32(b, 0x10), total = u32(b, 0x14), loopStart = u32(b, 0x18), loopEnd = u32(b, 0x1C);
+    const limit = Math.min(total, maxSeconds ? Math.floor(maxSeconds * rate) : total);
+    const out = Array.from({ length: ch }, () => new Float32Array(limit));
+    const hist = Array.from({ length: ch }, () => [0, 0]);
+    const pos = new Array(ch).fill(0);
+    let o = 0x40;
+    while (o + 0x20 <= b.length && pos[0] < limit) {
+      if (String.fromCharCode(...b.slice(o, o + 4)) !== 'BLCK') break;
+      const bs = u32(b, o + 4);
+      for (let c = 0; c < ch; c++) {
+        let p = o + 0x20 + c * bs; const end = p + bs;
+        if (codec === 1) { for (; p + 1 < end && pos[c] < limit; p += 2) { let v = u16(b, p); if (v > 32767) v -= 65536; out[c][pos[c]++] = v / 32768; } continue; }
+        while (p + 9 <= end && pos[c] < limit) {
+          const scale = 1 << (b[p] >> 4), [k1, k2] = AFC[b[p] & 15];
+          let h1 = hist[c][0], h2 = hist[c][1];
+          for (let i = 0; i < 16 && pos[c] < limit; i++) {
+            let n = (b[p + 1 + (i >> 1)] >> (i & 1 ? 0 : 4)) & 15; if (n > 7) n -= 16;
+            let s = ((n * scale << 11) + k1 * h1 + k2 * h2) >> 11;
+            s = s > 32767 ? 32767 : s < -32768 ? -32768 : s;
+            h2 = h1; h1 = s; out[c][pos[c]++] = s / 32768;
+          }
+          hist[c][0] = h1; hist[c][1] = h2; p += 9;
+        }
+      }
+      o += 0x20 + bs * ch;
+    }
+    return { channels: out, rate, samples: Math.min(pos[0], limit), loopStart, loopEnd, total };
+  }
+
+  return { open, yaz0, rarc, decodeBTI, decodeAST };
+});
+
+</script>
+<script>
+/* Sound effects and voice lines, read from the player's own disc at run time.
+ * The disc keeps them as 4-bit ADPCM waves in two wave banks (PacManSound_0.aw for effects, Narration_0.aw
+ * for the announcer); a table in JaiInit.aaf says where each wave starts, how long it is and how it loops.
+ * UMD: window.Sound in the browser, module.exports in Node. */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.Sound = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+  const INIT = 'PROOT/AudioRes/JaiInit.aaf', BANKS = 'PROOT/AudioRes/Banks/';
+  // predictor pairs for the 16 filter indexes of the ADPCM frames
+  const COEF = [0, 0, 2048, 0, 0, 2048, 1024, 1024, 4096, -2048, 3584, -1536, 3072, -1024, 4608, -2560,
+    4200, -2248, 4800, -2300, 5120, -3072, 2048, -2048, 1024, -1024, -1024, 1024, -1024, 0, -2048, 0];
+
+  /** Decode `count` samples from 9-byte frames (1 header byte: scale and filter, 16 four-bit samples). */
+  function decodeADPCM(u8, off, size, count) {
+    const out = new Float32Array(count);
+    let h1 = 0, h2 = 0, n = 0;
+    for (let f = off; f + 9 <= off + size && n < count; f += 9) {
+      const hd = u8[f], delta = 1 << (hd >> 4), c0 = COEF[(hd & 15) * 2], c1 = COEF[(hd & 15) * 2 + 1];
+      for (let i = 0; i < 16 && n < count; i++) {
+        const byte = u8[f + 1 + (i >> 1)];
+        let v = (i & 1) ? (byte & 15) : (byte >> 4);
+        if (v >= 8) v -= 16;
+        let s = ((v * delta) << 11) + h1 * c0 + h2 * c1; s >>= 11;
+        if (s > 32767) s = 32767; else if (s < -32768) s = -32768;
+        out[n++] = s / 32768; h2 = h1; h1 = s;
+      }
+    }
+    return out;
+  }
+
+  /** The wave tables: every wave system in the file, as { id, banks: [{ file, waves: [...] }] }. */
+  function parseTables(aaf) {
+    const dv = new DataView(aaf.buffer, aaf.byteOffset, aaf.byteLength), u32 = o => dv.getUint32(o, false);
+    const systems = [];
+    for (let o = 0; o + 0x20 < aaf.length; o += 4) {
+      if (u32(o) !== 0x57535953) continue;   // 'WSYS'
+      const id = u32(o + 8), winf = o + u32(o + 0x10), count = u32(winf + 4), banks = [];
+      for (let i = 0; i < count; i++) {
+        const e = o + u32(winf + 8 + 4 * i);
+        let file = ''; for (let k = 0; k < 0x70 && aaf[e + k]; k++) file += String.fromCharCode(aaf[e + k]);
+        const n = u32(e + 0x70), waves = [];
+        for (let k = 0; k < n; k++) {
+          const w = o + u32(e + 0x74 + 4 * k);
+          waves.push({
+            format: aaf[w + 1], rate: dv.getFloat32(w + 4, false), start: u32(w + 8), size: u32(w + 12),
+            loop: u32(w + 16) === 0xFFFFFFFF, loopStart: u32(w + 20), loopEnd: u32(w + 24), samples: u32(w + 28)
+          });
+        }
+        banks.push({ file, waves });
+      }
+      systems.push({ id, banks });
+    }
+    return systems;
+  }
+
+  /** Read the tables and wave banks from a disc. Returns { sfx: [wave], voice: [wave] } where each wave has
+   *  its encoded bytes; `buffer(ctx, wave)` turns one into an AudioBuffer (cached). */
+  async function load(disc) {
+    const systems = parseTables(new Uint8Array(await disc.read(INIT)));
+    const files = {}, out = { sfx: [], voice: [] };
+    for (const sys of systems) for (const bank of sys.banks) {
+      if (!files[bank.file]) files[bank.file] = new Uint8Array(await disc.read(BANKS + bank.file));
+      const list = /^Narration/i.test(bank.file) ? out.voice : /^PacManSound/i.test(bank.file) ? out.sfx : null;
+      if (list) for (const w of bank.waves) list.push(Object.assign({ data: files[bank.file] }, w));
+    }
+    return out;
+  }
+
+  function buffer(ctx, w) {
+    if (w.buf) return w.buf;
+    const pcm = decodeADPCM(w.data, w.start, w.size, w.samples);
+    const b = ctx.createBuffer(1, pcm.length, w.rate || 32000);
+    b.copyToChannel(pcm, 0);
+    if (w.loop && w.loopEnd > w.loopStart) b.loopRange = [w.loopStart / b.sampleRate, w.loopEnd / b.sampleRate];
+    return (w.buf = b);
+  }
+
+  return { load, buffer, decodeADPCM, parseTables };
+});
+
+</script>
+<script>
+/* The sounds Pac-Man's own screen makes, rebuilt from measurements of the original.
+ * Nothing here is read from the disc: the handheld's sounds are made on the fly by its sound chip, so these are
+ * recreations. Each sound is a list of frames (one per picture, 1/59.7275 s) giving the pitch, and a wave shape;
+ * the pitches, timing, loudness and shapes were measured from recordings of the real thing.
+ * UMD: window.HandSound in the browser, module.exports in Node. */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.HandSound = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+  const FRAME = 1 / 59.7275;
+
+  // Wave shapes as Fourier coefficients: a narrow pulse (12.5% of each cycle high) and a pair of tones an octave apart.
+  const pulse = (duty, n = 40) => {
+    const real = new Float32Array(n), imag = new Float32Array(n);
+    for (let k = 1; k < n; k++) { const a = 2 * Math.sin(Math.PI * k * duty) / (Math.PI * k), ph = Math.PI * k * duty; real[k] = a * Math.cos(ph); imag[k] = a * Math.sin(ph); }
+    return { real, imag };
+  };
+  const WAVES = {
+    pulse: pulse(0.125),
+    octave: { real: Float32Array.from([0, 0.479, -0.484, 0.017, 0.003]), imag: Float32Array.from([0, -0.275, -0.183, 0.025, 0.044]) }
+  };
+
+  // Loudness (fraction of full scale) and the pitch of each frame in Hz, 0 for a pause. `amp` is per frame or one number.
+  const SOUNDS = {
+    // "wa-ka" for every pellet: six rising notes, a rest of two frames, six falling notes
+    waka: { wave: 'pulse', level: 0.09, freq: [220, 277, 329, 392, 440, 495, 0, 0, 495, 440, 392, 329, 277, 220], amp: 1 },
+    // the sweep that starts a round: down from 440 Hz to 130, up to 500, then a short fade
+    start: {
+      wave: 'octave', level: 0.4,
+      freq: [438, 404, 350, 292, 239, 191, 165, 148, 136, 130, 179, 233, 276, 327, 364, 419, 477, 499, 499, 499, 499, 499],
+      amp: [0.23, 0.52, 0.87, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.62, 0.3, 0.13, 0.05]
+    }
+  };
+
+  const waves = new WeakMap();
+  function periodic(ctx, name) {
+    let m = waves.get(ctx); if (!m) waves.set(ctx, m = {});
+    if (!m[name]) m[name] = ctx.createPeriodicWave(WAVES[name].real, WAVES[name].imag);
+    return m[name];
+  }
+
+  /** Play a sound on `ctx` into `dest`. Returns { stop() } so a new sound can cut an old one off. */
+  function play(ctx, dest, name, when) {
+    const def = SOUNDS[name]; if (!def) return null;
+    const t0 = when === undefined ? ctx.currentTime : when;
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.setPeriodicWave(periodic(ctx, def.wave)); osc.connect(g); g.connect(dest);
+    const n = def.freq.length;
+    for (let i = 0; i < n; i++) {
+      const t = t0 + i * FRAME, a = (Array.isArray(def.amp) ? def.amp[i] : def.amp) * def.level;
+      if (def.freq[i] > 0) osc.frequency.setValueAtTime(def.freq[i], t);
+      g.gain.setValueAtTime(def.freq[i] > 0 ? a : 0, t);
+    }
+    g.gain.setValueAtTime(0, t0 + n * FRAME);
+    osc.start(t0); osc.stop(t0 + n * FRAME + 0.02);
+    return { stop() { try { g.gain.cancelScheduledValues(0); g.gain.setValueAtTime(0, ctx.currentTime); osc.stop(); } catch { /* already over */ } } };
+  }
+
+  return { play, SOUNDS, WAVES, FRAME, duration: name => SOUNDS[name].freq.length * FRAME };
+});
+
+</script>
+<script>
+/* Which sound plays for which game event. The defaults are this project's reading of the original; the sound lab
+ * (/client/soundlab.html) lets a player change them, and the choices are kept in the browser and used by the game.
+ * A cue is one sound played for an event:
+ *   kind  'voice' (announcer line), 'sfx' (effect) or 'hand' (Pac-Man's own screen: 'waka' or 'start')
+ *   ids   the numbers of the sounds (or the hand sound's name)
+ *   mode  'one' = play one of ids at random, 'all' = play all of them, 'index' = ids[n] for the player or seat n
+ *   who   'all', 'pac' (only the player who is Pac-Man hears it) or 'ghost' (only the ghost players)
+ *   chance 0..1: how often the cue plays at all (the original speaks after only some power pellets)
+ *   force true = cut in on an announcer line that is still playing;  delay in ms;  vol 0..1
+ * UMD: window.SoundMap in the browser, module.exports in Node. */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.SoundMap = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+  const KEY = 'pacvs.soundmap.v7';
+  const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
+  const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
+  const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
+
+  // Names the lab shows next to each sound. Lines found by speech recognition are named; the rest are for you to name.
+  const VOICE_NAMES = {
+    0: 'Pac-Man ate a Power Pellet!', 1: 'Watch out! Pac-Man ate a Power Pellet!', 2: 'Pac-Man ate a Power-Dot! (Japanese line?)', 3: 'Watch out! Pac-Man ate a Power Dot! (Japanese line?)',
+    4: 'got the fruit (seat 1)', 5: 'got the fruit (seat 2)', 6: 'got the fruit (seat 3)', 7: 'got the fruit (seat 4)',
+    8: 'Fruit appeared', 9: 'Fruit appeared (other)',
+    10: 'Oh no (first ghost in the chain eaten)', 11: 'Oh NO (second ghost in the chain eaten)', 12: 'OH NO! (third ghost in the chain eaten)',
+    13: 'Excellent (seat 1)', 14: 'Excellent (seat 2)', 15: 'Excellent (seat 3)', 16: 'Excellent (seat 4)',
+    17: 'Maze cleared (confirmed in the original)', 18: 'Only ten pellets left', 19: 'Only ten pellets left (other)', 20: "This doesn't look good! (20 pellets left)", 21: 'Unused (warp zone?)',
+    22: 'champion (seat 1)', 23: 'champion (seat 2)', 24: 'champion (seat 3)', 25: 'champion (seat 4)',
+    26: 'Pac-Man ate the fruit', 27: 'Pac-Man ate the fruit (other)', 28: 'One thousand points left', 29: 'Five hundred points left',
+    30: 'End of the game', 31: 'Go', 32: 'Ready', 33: 'Go go go!', 34: 'You can do it!', 35: 'Title'
+  };
+  const SFX_NAMES = { 4: 'Pac-Man caught (the knock)', 6: 'fruit appears chime', 8: 'power pellet eaten', 9: 'pellet eaten', 10: 'frightened ghosts (loops)', 11: 'ghost eaten (rising sweep)', 12: 'ghost "wee-woo" siren (loops)', 13: 'fruit taken / ghost eaten thump', 1: 'beep' };
+
+  // Every moment the game can make a sound for. `per` says what the index means for 'index' cues.
+  const EVENTS = [
+    { id: 'ready', label: 'Round is about to start', when: 'Countdown begins', cues: [voice([32], { force: true })] },
+    { id: 'go', label: 'Round starts', when: 'Countdown ends', cues: [voice([31], { force: true }), hand('start')] },
+    { id: 'pellet', label: 'Pellet eaten', when: 'Each pellet and each power pellet: the "wa-ka" on Pac-Man\'s screen, and the pellet sound for everybody', cues: [hand('waka'), sfx([9], { vol: 0.7 })], note: 'When this has a cue and the disc is loaded, the old beeps are not used' },
+    { id: 'powerPellet', label: 'Power pellet sound', when: 'Pac-Man eats a power pellet', cues: [sfx([8], { vol: 0.9 })] },
+    { id: 'frightLoop', loop: true, label: 'Frightened ghosts loop', when: 'Plays over and over while the ghosts are frightened', cues: [sfx([10], { vol: 0.35 })] },
+    { id: 'eyesLoop', loop: true, label: 'Ghost "wee-woo" siren', when: 'Plays over and over while an eaten ghost is flying home', cues: [sfx([12], { vol: 0.35 })] },
+    { id: 'ghostEatenSfx', label: 'Ghost eaten sound', when: 'Pac-Man eats a frightened ghost (the rising sweep and the thump)', cues: [sfx([11, 13], { mode: 'all', vol: 0.8 })] },
+    { id: 'powerPac', label: 'Power pellet - Pac-Man side', when: 'Pac-Man eats a power pellet (said to Pac-Man); the original spoke after about 3 in 5', cues: [voice([0, 2], { force: true, who: 'pac', chance: 0.6 })] },
+    { id: 'powerGhost', label: 'Power pellet - ghost side', when: 'Pac-Man eats a power pellet (said to the ghosts)', cues: [voice([1, 3], { force: true, chance: 0.6 })] },
+    { id: 'eatGhost', label: 'Ghost eaten', when: 'index = how many ghosts this power pellet has eaten so far (0 = first)', per: 'chain', cues: [voice([10, 11, 12], { mode: 'index' })] },
+    { id: 'fruitAppears', label: 'Fruit appears', when: 'The fruit shows up in the maze', cues: [sfx([6]), voice([8, 9])] },
+    { id: 'fruitGhost', label: 'Fruit taken by a ghost', when: 'index = the ghost player\'s seat', per: 'seat', cues: [sfx([13]), voice([4, 5, 6, 7], { mode: 'index', force: true })] },
+    { id: 'fruitPac', label: 'Fruit taken by Pac-Man', when: 'Pac-Man reaches the fruit', cues: [sfx([13]), voice([26, 27], { force: true })] },
+    { id: 'twentyLeft', label: 'Twenty pellets left', when: 'Twenty pellets remain', cues: [voice([20])] },
+    { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18, 19])] },
+    { id: 'pts1000', label: '1000 points to the target', when: 'Anybody is within 1000 of winning', cues: [voice([28])] },
+    { id: 'pts500', label: '500 points to the target', when: 'Anybody is within 500 of winning', cues: [voice([29])] },
+    { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [sfx([4], { vol: 0.9 }), voice([13, 14, 15, 16], { mode: 'index', force: true, delay: 2200 })] },
+    // Timers: counted from the start of each round, so they begin again after Pac-Man clears the maze or is caught.
+    { id: 'goGoGo', after: 60, label: '"Go go go!" timer', when: 'One minute into a round, in the game only', cues: [voice([33])] },
+    { id: 'youCanDoIt', after: 150, label: '"You can do it!" timer', when: 'Two and a half minutes into a round, in the game only', cues: [voice([34])] },
+    { id: 'mazeCleared', label: 'Maze cleared', when: 'Pac-Man eats the last pellet', cues: [voice([17], { force: true })] },
+    { id: 'final', label: 'Target score reached', when: 'A player reaches the target score ("End of the game")', cues: [voice([30], { force: true })] },
+    { id: 'title', label: 'Game boots', when: 'The disc has just been loaded (title line)', cues: [voice([35], { force: true })] },
+    { id: 'champion', label: 'Champion', when: 'Shortly after the match ends; index = the winner\'s seat', per: 'seat', cues: [voice([22, 23, 24, 25], { mode: 'index', force: true, delay: 1700 })] }
+  ];
+
+  const clone = o => JSON.parse(JSON.stringify(o));
+  function defaults() { const m = {}; for (const e of EVENTS) m[e.id] = clone(e.cues); return m; }
+  function load() {
+    const m = defaults();
+    try { const o = JSON.parse(localStorage.getItem(KEY)); if (o && typeof o === 'object') for (const id of Object.keys(m)) if (Array.isArray(o[id])) m[id] = o[id]; } catch { /* none saved */ }
+    return m;
+  }
+  function save(map) { try { localStorage.setItem(KEY, JSON.stringify(map)); return true; } catch { return false; } }
+
+  /** `out` is what actually makes noise: { voice(i, force, vol), sfx(i, vol), hand(name), ready() }. */
+  function create(out, map) {
+    map = map || load();
+    const api = {
+      map,
+      reload() { api.map = load(); },
+      /** Does this event have something to play (so the game should not use its old beep)? */
+      handled: id => out.ready() && !!(api.map[id] && api.map[id].length),
+      /** Play an event's cues. p = { index (seat), me (the local player's ghost number, -1 when Pac-Man) }. */
+      fire(id, p) {
+        p = p || {};
+        for (const c of api.map[id] || []) {
+          if (c.who === 'pac' && !(p.me < 0)) continue;
+          if (c.who === 'ghost' && !(p.me >= 0)) continue;
+          let ids = c.ids || [];
+          if (c.mode === 'one') ids = ids.length ? [ids[Math.floor(Math.random() * ids.length)]] : [];
+          else if (c.mode === 'index') ids = ids[p.index] != null ? [ids[p.index]] : [];
+          if (c.chance != null && c.chance < 1 && Math.random() >= c.chance) continue;
+          const go = () => { for (const i of ids) { if (c.kind === 'voice') out.voice(+i, !!c.force, c.vol); else if (c.kind === 'sfx') out.sfx(+i, c.vol); else if (c.kind === 'hand') out.hand(String(i)); } };
+          if (c.delay > 0) setTimeout(go, c.delay); else go();
+        }
+      }
+    };
+    return api;
+  }
+  return { EVENTS, VOICE_NAMES, SFX_NAMES, defaults, load, save, create, KEY };
+});
+
+</script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  let ac = null, master = null, snd = null, map = SoundMap.load(), focus = null, names = {};
+  try { names = JSON.parse(localStorage.getItem('pacvs.soundnames') || '{}'); } catch {}
+  const audio = () => { if (!ac) { ac = new AudioContext(); master = ac.createGain(); master.gain.value = 0.8; master.connect(ac.destination); } if (ac.state === 'suspended') ac.resume(); return ac; };
+  const flash = t => { $('msg').textContent = t; setTimeout(() => { $('msg').textContent = ''; }, 2500); };
+
+  function play(w, vol) { const a = audio(), src = a.createBufferSource(), g = a.createGain(); src.buffer = Sound.buffer(a, w); g.gain.value = vol == null ? 1 : vol; src.connect(g); g.connect(master); src.start(); return src; }
+  const engine = {
+    voice: (i, force, vol) => { if (snd.voice[i]) play(snd.voice[i], vol); }, sfx: (i, vol) => { if (snd.sfx[i]) play(snd.sfx[i], vol); },
+    hand: name => HandSound.play(audio(), master, name), ready: () => !!snd
+  };
+  const sm = () => SoundMap.create(engine, map);
+
+  function lib(kind) {
+    const box = $(kind); box.textContent = '';
+    snd[kind].forEach((w, i) => {
+      const row = document.createElement('div'); row.className = 'snd';
+      const key = kind + i, def = (kind === 'voice' ? SoundMap.VOICE_NAMES : SoundMap.SFX_NAMES)[i] || '';
+      row.innerHTML = `<b>${i}</b><input class="nm" placeholder="name it" value="${(names[key] != null ? names[key] : def).replace(/"/g, '&quot;')}"><small>${(w.samples / (w.rate || 32000)).toFixed(1)}s</small><button title="play">&#9654;</button><button title="add to the selected cue">+</button>`;
+      const [pl, add] = row.querySelectorAll('button');
+      pl.onclick = () => play(w);
+      add.onclick = () => { if (!focus) return flash('Click a cue first'); const c = focus.cue; if (c.kind !== kind) c.kind = kind; c.ids = (c.ids || []).filter(x => typeof x === 'number'); c.ids.push(i); draw(); };
+      row.querySelector('.nm').onchange = e => { names[key] = e.target.value; localStorage.setItem('pacvs.soundnames', JSON.stringify(names)); };
+      box.appendChild(row);
+    });
+  }
+
+  function draw() {
+    const box = $('events'); box.textContent = '';
+    for (const ev of SoundMap.EVENTS) {
+      const d = document.createElement('div'); d.className = 'ev';
+      d.innerHTML = `<h3>${ev.label}</h3><p>${ev.when}${ev.note ? ' &middot; ' + ev.note : ''}</p>`;
+      const cues = map[ev.id] = map[ev.id] || [];
+      cues.forEach((c, k) => {
+        const r = document.createElement('div'); r.className = 'cue' + (focus && focus.cue === c ? ' sel' : '');
+        const opt = (v, list) => list.map(x => `<option${x === v ? ' selected' : ''}>${x}</option>`).join('');
+        r.innerHTML = `<select data-f="kind">${opt(c.kind, ['voice', 'sfx', 'hand'])}</select>
+          <input data-f="ids" value="${(c.ids || []).join(', ')}" title="sound numbers, comma separated (waka or start for Pac-Man's screen)">
+          <select data-f="mode" title="one = random one of them, all = all of them, index = by seat">${opt(c.mode, ['one', 'all', 'index'])}</select>
+          <select data-f="who">${opt(c.who, ['all', 'pac', 'ghost'])}</select>
+          <label>ms<input data-f="delay" type="number" min="0" step="100" value="${c.delay || 0}"></label>
+          <label>chance<input data-f="chance" type="number" min="0" max="1" step="0.1" value="${c.chance == null ? 1 : c.chance}"></label>
+          <label>vol<input data-f="vol" type="number" min="0" max="1" step="0.1" value="${c.vol == null ? 1 : c.vol}"></label>
+          <label><input data-f="force" type="checkbox"${c.force ? ' checked' : ''}>cut in</label><button title="remove">&times;</button>`;
+        r.addEventListener('focusin', () => { if (!focus || focus.cue !== c) { focus = { cue: c }; document.querySelectorAll('.cue.sel').forEach(x => x.classList.remove('sel')); r.classList.add('sel'); } });
+        r.querySelectorAll('[data-f]').forEach(el => el.onchange = () => {
+          const f = el.dataset.f;
+          if (f === 'ids') c.ids = el.value.split(',').map(x => x.trim()).filter(Boolean).map(x => /^\d+$/.test(x) ? +x : x);
+          else if (f === 'force') c.force = el.checked; else if (f === 'delay' || f === 'vol' || f === 'chance') c[f] = +el.value; else c[f] = el.value;
+          if (f === 'kind') draw();
+        });
+        r.querySelector('button').onclick = () => { cues.splice(k, 1); draw(); };
+        d.appendChild(r);
+      });
+      const bar = document.createElement('div'); bar.className = 'bar';
+      bar.innerHTML = `<button>+ cue</button><label class="dim">index <select>${[0, 1, 2, 3].map(i => `<option>${i}</option>`).join('')}</select></label><label class="dim">heard by <select><option value="-1">Pac-Man</option><option value="0">a ghost</option></select></label><button class="p">&#9654; Test</button>`;
+      const [add, , , test] = [bar.querySelector('button'), 0, 0, bar.querySelector('button.p')];
+      const sel = bar.querySelectorAll('select');
+      add.onclick = () => { cues.push({ kind: 'voice', ids: [], mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }); draw(); };
+      test.onclick = () => { if (!snd) return flash('Load the disc first'); sm().fire(ev.id, { index: +sel[0].value, me: +sel[1].value }); };
+      d.appendChild(bar); box.appendChild(d);
+    }
+  }
+
+  async function ready(disc, label) {
+    $('stat').textContent = 'Reading sounds...';
+    try { snd = await Sound.load(disc); } catch (e) { $('stat').textContent = 'Could not read sounds: ' + e.message; return; }
+    $('stat').innerHTML = `<span class="ok">${label}: ${snd.sfx.length} effects, ${snd.voice.length} announcer lines</span>`;
+    lib('sfx'); lib('voice'); draw();
+  }
+  $('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; audio(); try { await ready(await Disc.open(f), f.name); } catch (err) { $('stat').textContent = 'Not a disc image I can read: ' + err.message; } };
+  $('saved').onclick = async () => {
+    audio();
+    try {
+      const db = await new Promise((res, rej) => { const r = indexedDB.open('pacvs', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      const blob = await new Promise((res, rej) => { const r = db.transaction('kv').objectStore('kv').get('disc'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      if (!blob) return $('stat').textContent = 'The game has no saved disc in this browser. Choose the file here instead.';
+      await ready(await Disc.open(blob), 'Disc from the game');
+    } catch (err) { $('stat').textContent = 'Could not use the saved disc: ' + err.message; }
+  };
+  document.querySelectorAll('[data-hand]').forEach(b => b.onclick = () => HandSound.play(audio(), master, b.dataset.hand));
+  $('save').onclick = () => flash(SoundMap.save(map) ? 'Saved. Reload the game to use it.' : 'Could not save in this browser');
+  $('reset').onclick = () => { map = SoundMap.defaults(); focus = null; draw(); flash('Defaults restored (press Save to keep)'); };
+  $('copy').onclick = async () => {
+    const t = JSON.stringify({ map, names }, null, 1);
+    try { await navigator.clipboard.writeText(t); flash('Copied. Paste it into the chat.'); } catch { $('json').hidden = false; $('json').value = t; $('json').select(); flash('Select all and copy'); }
+  };
+  $('paste').onclick = () => {
+    $('json').hidden = false;
+    if (!$('json').value.trim()) { $('json').placeholder = 'Paste settings here, then press Paste settings again'; return; }
+    try { const o = JSON.parse($('json').value); map = Object.assign(SoundMap.defaults(), o.map || o); if (o.names) names = o.names; $('json').hidden = true; if (snd) { lib('sfx'); lib('voice'); } draw(); flash('Loaded (press Save to keep)'); } catch { flash('That is not valid settings'); }
+  };
+  draw();
+})();
+</script>
+</body>
+</html>
