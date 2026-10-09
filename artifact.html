@@ -3309,7 +3309,7 @@ body { background: var(--bg); color: var(--ink); }
   const PAC_FRAMES = [[68, 70, 72], [8, 10, 12], [14, 64, 66], [2, 4, 6]];   // mouth phases facing up, right, down, left
   const PAC_DEATH = [72, 74, 76, 78];
   const GHOST_BASE = [200, 196, 204, 192];         // body frames facing up, right, down, left (two feet frames each, 2 tiles apart)
-  const FRIGHT = [132, 134], EYES = [140, 136, 142, 138];
+  const FRIGHT = [132, 134], EYES = [140, 138, 142, 136];   // eyes looking up, right, down, left (pupils drawn at that side of the whites)
   const CHERRY = 384, DIGIT0 = 388, BADGE = 420;      // BADGE: the player-number badge (two tiles per player) shown over frightened ghosts
   const FPS = 59.7275;
   const START_BANNER = 448;                        // "Press START!" is 11 tiles across and 2 down at (40, 88); it blinks, 32 frames on and 32 off
