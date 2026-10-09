@@ -186,13 +186,14 @@
       else if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), fl, wz(v.fruit.y), 0, 0.75));
       // the arc of a flight: the sim moves the flyer along the ground line, the picture lifts it
       const lift = e => e && e.a ? 1500 * Math.sin(Math.PI * e.a[4]) : 0;
+      const squash = (m, e) => e && e.sq ? m4.mul(m, [e.sq[0], 0, 0, 0, 0, e.sq[1], 0, 0, 0, 0, e.sq[0], 0, 0, 0, 0, 1]) : m;   // wide and tall factors about the body's base
       const dying = v.pac && v.pac.dying >= 0 ? v.pac.dying : -1, D = (v.pac && v.pac.death) || { spin: 0.22, shrink: 0.14, flatAt: 2 };
       // caught: two turns while shrinking to nothing, then out of sight until he reappears lying on his side
       const gone = dying >= D.spin + D.shrink && dying < D.flatAt, flat = dying >= D.flatAt;
       if (v.pac && v.pac.x < v.W && !gone) {     // out of sight in the hidden part of the tunnel otherwise
         let yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0, scale = 1;
         if (dying >= 0 && !flat) { yaw += Math.min(dying, D.spin + D.shrink) / D.spin * 2 * Math.PI; scale = dying < D.spin ? 1 : Math.max(0.001, 1 - (dying - D.spin) / D.shrink); }
-        let pm = m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380) + lift(v.pac), wz(v.pac.y), yaw, scale);
+        let pm = squash(m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380) + lift(v.pac), wz(v.pac.y), yaw, scale), v.pac);
         if (flat) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
         R.draw(pac, pm);
       }
@@ -235,7 +236,7 @@
           if (g.m === 'e') skin = skins.toumei;
           opts = { textures: { ghost_r: skin, 'ghost_eye.0': eyes[blink] } };
         }
-        R.draw(ghost, m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw, scale), opts);
+        R.draw(ghost, squash(m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw, scale), g), opts);
       }
       // dizzy (knocked aside by a dash): three stars circling over the ghost
       const stars = [];

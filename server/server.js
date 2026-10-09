@@ -38,7 +38,7 @@ class Room {
     this.kinds = [0, 1, 2, 3].map(i => Room.kind(kinds && kinds[i], this.fill));
     this.names = ['CPU', 'CPU', 'CPU', 'CPU'];
     this.host = -1;
-    this.inputs = [null, null, null, null];
+    this.inputs = [null, null, null, null]; this.acts = [false, false, false, false];
     this.match = new Match(i => !!this.slots[i], undefined, { maze: this.maze, target: this.target, fill: this.fill, kinds: this.kinds });
     this.timer = null;
   }
@@ -82,7 +82,8 @@ class Room {
   tick() {
     const m = this.match;
     if (!m.active()) return;
-    if (m.tick(this.inputs)) { if (m.phase === 'countdown') this.inputs = [null, null, null, null]; this.broadcastRoom(); }
+    const acts = this.acts; this.acts = [false, false, false, false];
+    if (m.tick(this.inputs, undefined, acts)) { if (m.phase === 'countdown') this.inputs = [null, null, null, null]; this.broadcastRoom(); }
     for (let i = 0; i < 4; i++) if (this.slots[i]) this.send(i, m.view(i));
   }
 }
@@ -135,6 +136,7 @@ wss.on('connection', ws => {
       case 'start': if (r && r.host === ws.slot) r.start(); break;
       case 'seat': if (r && r.host === ws.slot) r.setKind(m.i, m.kind); break;
       case 'in': if (r && Number.isInteger(m.d) && m.d >= 0 && m.d <= 3) r.inputs[ws.slot] = m.d; break;
+      case 'act': if (r && m.a === 'hop') r.acts[ws.slot] = true; break;
       case 'ready': if (r && r.match.ready(ws.slot)) { r.inputs = [null, null, null, null]; r.broadcastRoom(); } break;
       case 'leave': if (r) r.remove(ws); break;
       case 'ping': ws.send(JSON.stringify({ t: 'pong', c: m.c })); break;

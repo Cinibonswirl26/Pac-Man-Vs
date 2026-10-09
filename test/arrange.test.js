@@ -142,9 +142,11 @@ const give = (s, kind, e) => { spawn(s, kind); put(e, 11, 13, 1); LV.update(s, i
   ok(!s.over && !g.clone && s.scores[0] >= 1800 && s.scores[0] < 1900 && s.scores[o] === so && g.mode === 'fright', 'a frightened mirror is eaten for 200, nothing charged, the owner stays');
   s = LV.newRound([1600, 0, 0, 0], 0, { rng: S.mulberry(3) }); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'pink', g);
   ok(near(g.hopLeft, S.CFG.capsuleTime, 0.05), 'pink: the ghost gets the hop');
-  LV.update(s, idle); ok(g.air && s.events.includes('hop'), 'it hops off at once');
-  let hops = 1; for (let n = 0; n < 300; n++) { LV.update(s, idle); if (s.events.includes('hop')) hops++; }
-  ok(hops >= 3 && hops <= 4 && g.hopLeft === 0 && !g.air, `about one hop every 3 s for 10 s (${hops} hops), then no more`);
+  run(s, 30); ok(!g.air && !s.events.includes('hop'), 'nothing happens until the button is pressed');
+  LV.update(s, { pac: null, ghosts: [null, null, null], hop: [true, false, false] }); ok(g.air && s.events.includes('hop'), 'the button sends it off to a random cell');
+  const dest = [g.air.x1, g.air.y1]; LV.update(s, { pac: null, ghosts: [null, null, null], hop: [true, false, false] }); ok(g.air && g.air.x1 === dest[0], 'pressing again in the air does nothing');
+  run(s, 20); ok(!g.air && Math.abs(g.x - dest[0]) < 0.4 && Math.abs(g.y - dest[1]) < 0.4, 'it lands where it was sent');
+  run(s, 300); LV.update(s, { pac: null, ghosts: [null, null, null], hop: [true, false, false] }); ok(g.hopLeft === 0 && !g.air, 'after 10 s the button does nothing');
   s = LV.newRound([1600, 0, 0, 0], 0); park(s); g = s.ghosts[0]; put(s.pac, 3, 1, 1); give(s, 'orange', g);
   for (let x = 1; x <= 21; x++) s.pellets[13 * 23 + x] = 0; put(g, 5, 13, 1); run(s, 100, { pac: null, ghosts: [1, null, null] });   // a cleared row
   const nb = s.big.reduce((a, b) => a + b, 0);

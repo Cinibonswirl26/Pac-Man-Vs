@@ -64,7 +64,7 @@
     }
     /** Advance one fixed step. inputs[i] is the latest direction for human seat i.
      *  Returns true when the phase changed (callers re-broadcast room info). */
-    tick(inputs, dt) {
+    tick(inputs, dt, acts) {
       dt = dt || this.Sim.CFG.tick;
       const s = this.sim;
       if (!s) return false;
@@ -73,10 +73,12 @@
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) this.phase = 'play';
       } else if (this.phase === 'play') {
-        const inp = { pac: this.isHuman(s.pacPlayer) ? inputs[s.pacPlayer] : this.Sim.cpuPac(s, this.rng, this.level), ghosts: [] };
+        const inp = { pac: this.isHuman(s.pacPlayer) ? inputs[s.pacPlayer] : this.Sim.cpuPac(s, this.rng, this.level), ghosts: [], hop: [] };
         for (let gi = 0; gi < 3; gi++) {
-          const p = this.Sim.playerOfGhost(s, gi);
+          const p = this.Sim.playerOfGhost(s, gi), g = s.ghosts[gi];
           inp.ghosts.push(this.isHuman(p) ? inputs[p] : this.Sim.cpuGhost(s, gi, this.rng, this.level));
+          // the hop button (Arrangement levels): a person's press, or a computer player hopping about every 3 s while it can
+          inp.hop.push(this.isHuman(p) ? !!(acts && acts[p]) : !!(g.hopLeft > 0 && !g.air && this.rng() < (dt || this.Sim.CFG.tick) / 3));
         }
         this.Sim.update(s, inp, dt);
         if (s.over) { this.phase = 'roundover'; this.phaseLeft = ROUND_END + (s.overReason === 'caught' ? CAUGHT : 0); }

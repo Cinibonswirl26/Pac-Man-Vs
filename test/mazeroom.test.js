@@ -37,7 +37,7 @@ server.listen(0, async () => {
   w3.send(JSON.stringify({ t: 'create', name: 'A', maze: { ...m, arrange: arr } }));
   await new Promise(r => setTimeout(r, 200));
   const room3 = q3.find(x => x.t === 'room'); ok(room3 && room3.maze && room3.maze.arrange && room3.maze.arrange.pads.length === 4, 'the room message carries the overlay to joiners');
-  w.send(JSON.stringify({ t: 'start' }));
+  w.send(JSON.stringify({ t: 'act', a: 'hop' })); w.send(JSON.stringify({ t: 'start' })); w.send(JSON.stringify({ t: 'act', a: 'hop' }));
   await new Promise(r => setTimeout(r, 1200));
   const st = q.filter(x => x.t === 'state').pop();
   ok(st && st.pellets.length === m.rows.length * m.rows[0].length, 'state pellets length should match the custom maze');

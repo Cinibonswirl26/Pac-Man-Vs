@@ -57,6 +57,7 @@ body { background: var(--bg); color: var(--ink); }
   #banner .handoff .sm { font-size: clamp(12px, 2.2vw, 15px); }
   #pad { display: none; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); gap: 6px; padding: 8px; }
   #pad button { padding: 0; font-size: 22px; }
+  #hop { position: fixed; right: 16px; bottom: 16px; width: 92px; height: 92px; border-radius: 50%; border: 3px solid #ff6ec8; background: rgba(255,110,200,0.25); color: #fff; font-weight: 700; font-size: 16px; z-index: 5; }
   @media (pointer: coarse) { #pad { display: grid; } }
   @media (max-width: 520px) { #hud { grid-template-columns: repeat(2, 1fr); } #seats { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -133,6 +134,7 @@ body { background: var(--bg); color: var(--ink); }
   <div id="hud"></div>
   <div id="status"><span id="roleTxt"></span><span id="timeTxt"></span></div>
   <div id="stage"><canvas id="cv" aria-label="Game board"></canvas><div id="banner"></div></div>
+  <button id="hop" class="hidden" aria-label="Hop">HOP</button>
   <div id="pad"><span></span><button data-d="0" aria-label="Up">▲</button><span></span><button data-d="3" aria-label="Left">◀</button><button data-d="2" aria-label="Down">▼</button><button data-d="1" aria-label="Right">▶</button></div>
 </section>
 
@@ -196,7 +198,7 @@ body { background: var(--bg); color: var(--ink); }
     // cyan: a mirror clone for 10 s; pink: every ghost into the pot in the house for 4 s (a ghost taking it hops
     // about instead); orange: pellets digested without pausing for 10 s (a ghost drops big pellets that slow
     // Pac-Man); gold: 100 points and nothing else. Points are fruit-like here (the arcade gave 1000).
-    speedMult: 2, capsuleTime: 10, potTime: 4, hopEvery: 3, capsulePts: 400, goldPts: 100, bigPause: 0.5, bigPts: 50, bigMax: 10,
+    speedMult: 2, capsuleTime: 10, potTime: 4, capsulePts: 400, goldPts: 100, bigPause: 0.5, bigPts: 50, bigMax: 10,
     itemOdds: [['fruit', 3], ['red', 2], ['cyan', 2], ['pink', 2], ['orange', 2], ['gold', 1]]
   };
 
@@ -253,7 +255,7 @@ body { background: var(--bg); color: var(--ink); }
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
       pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
-      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, air: null, onPad: -1, stun: 0, speedLeft: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0, hopNext: 0 } : {})),
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, air: null, onPad: -1, stun: 0, speedLeft: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
@@ -399,7 +401,7 @@ body { background: var(--bg); color: var(--ink); }
     s.events.push(g ? 'capsuleghost' : 'capsule'); s.lastItem = kind;
     if (kind === 'red') (g || s.pac).speedLeft = CFG.capsuleTime;
     else if (kind === 'cyan') { const e = g || s.pac; e.clone = { x: mirrorX(e), y: e.y, dir: MIRDIR[e.dir], left: CFG.capsuleTime }; }
-    else if (kind === 'pink') { if (g) { g.hopLeft = CFG.capsuleTime; g.hopNext = 0; } else potGhosts(s); }
+    else if (kind === 'pink') { if (g) g.hopLeft = CFG.capsuleTime; else potGhosts(s); }
     else if (kind === 'orange') { if (g) { g.dropLeft = CFG.capsuleTime; g.dropped = 0; g.dropAt = null; } else s.pac.digest = CFG.capsuleTime; }
     award(s, who, kind === 'gold' ? CFG.goldPts : CFG.capsulePts); return s.over;
   }
@@ -430,7 +432,7 @@ body { background: var(--bg); color: var(--ink); }
       if (g.speedLeft > 0) g.speedLeft = Math.max(0, g.speedLeft - dt);
       if (g.dropLeft > 0) g.dropLeft = Math.max(0, g.dropLeft - dt);
       if (g.clone && (g.clone.left -= dt) <= 0) { g.clone = null; s.events.push('clonegone'); }
-      if (g.hopLeft > 0) { g.hopLeft = Math.max(0, g.hopLeft - dt); g.hopNext -= dt; }
+      if (g.hopLeft > 0) g.hopLeft = Math.max(0, g.hopLeft - dt);
     }
     if (s.pot > 0 && (s.pot -= dt) <= 0) { s.pot = 0; s.ghosts.forEach(g => { g.potted = false; }); }
   }
@@ -499,7 +501,7 @@ body { background: var(--bg); color: var(--ink); }
     s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'caught';
   }
 
-  // inputs: {pac: dir|null, ghosts: [dir|null x3]} already mapped from players
+  // inputs: {pac: dir|null, ghosts: [dir|null x3], hop: [bool x3] (the hop button, Arrangement levels)} already mapped from players
   function update(s, inputs, dt) {
     if (s.over) return;
     dt = dt || CFG.tick;
@@ -545,9 +547,9 @@ body { background: var(--bg); color: var(--ink); }
       if (g.air) { flyStep(s, g, 'ghost', dt); if (ARR) moveClone(g); continue; }          // in the air: out of play until it lands
       if (g.stun > 0) { g.stun = Math.max(0, g.stun - dt); continue; }   // knocked dizzy by a dash: cannot move, catch or take anything
       if (g.potted) continue;                                            // held in the pot
-      if (g.hopLeft > 0 && g.hopNext <= 0 && !g.grey) {                  // the hop: off to a random cell
+      if (g.hopLeft > 0 && inputs.hop && inputs.hop[i] && !g.grey) {       // the hop, on its player's button: off to a random cell
         const t = hopTarget(s);
-        if (t) { g.air = { x0: g.x, y0: g.y, x1: t[0] + 0.5, y1: t[1] + 0.5, t: 0, dur: CFG.jumpTime, to: -1 }; g.dash = 0; g.hopNext = CFG.hopEvery; s.events.push('hop'); continue; }
+        if (t) { g.air = { x0: g.x, y0: g.y, x1: t[0] + 0.5, y1: t[1] + 0.5, t: 0, dur: CFG.jumpTime, to: -1 }; g.dash = 0; s.events.push('hop'); continue; }
       }
       const inp = inputs.ghosts[i];
       if (inp != null && !g.dash) g.want = inp;
@@ -1060,7 +1062,7 @@ body { background: var(--bg); color: var(--ink); }
     }
     /** Advance one fixed step. inputs[i] is the latest direction for human seat i.
      *  Returns true when the phase changed (callers re-broadcast room info). */
-    tick(inputs, dt) {
+    tick(inputs, dt, acts) {
       dt = dt || this.Sim.CFG.tick;
       const s = this.sim;
       if (!s) return false;
@@ -1069,10 +1071,12 @@ body { background: var(--bg); color: var(--ink); }
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) this.phase = 'play';
       } else if (this.phase === 'play') {
-        const inp = { pac: this.isHuman(s.pacPlayer) ? inputs[s.pacPlayer] : this.Sim.cpuPac(s, this.rng, this.level), ghosts: [] };
+        const inp = { pac: this.isHuman(s.pacPlayer) ? inputs[s.pacPlayer] : this.Sim.cpuPac(s, this.rng, this.level), ghosts: [], hop: [] };
         for (let gi = 0; gi < 3; gi++) {
-          const p = this.Sim.playerOfGhost(s, gi);
+          const p = this.Sim.playerOfGhost(s, gi), g = s.ghosts[gi];
           inp.ghosts.push(this.isHuman(p) ? inputs[p] : this.Sim.cpuGhost(s, gi, this.rng, this.level));
+          // the hop button (Arrangement levels): a person's press, or a computer player hopping about every 3 s while it can
+          inp.hop.push(this.isHuman(p) ? !!(acts && acts[p]) : !!(g.hopLeft > 0 && !g.air && this.rng() < (dt || this.Sim.CFG.tick) / 3));
         }
         this.Sim.update(s, inp, dt);
         if (s.over) { this.phase = 'roundover'; this.phaseLeft = ROUND_END + (s.overReason === 'caught' ? CAUGHT : 0); }
@@ -2831,13 +2835,14 @@ body { background: var(--bg); color: var(--ink); }
       else if (v.fruit) R.draw(cherry, m4.trs(wx(v.fruit.x), fl, wz(v.fruit.y), 0, 0.75));
       // the arc of a flight: the sim moves the flyer along the ground line, the picture lifts it
       const lift = e => e && e.a ? 1500 * Math.sin(Math.PI * e.a[4]) : 0;
+      const squash = (m, e) => e && e.sq ? m4.mul(m, [e.sq[0], 0, 0, 0, 0, e.sq[1], 0, 0, 0, 0, e.sq[0], 0, 0, 0, 0, 1]) : m;   // wide and tall factors about the body's base
       const dying = v.pac && v.pac.dying >= 0 ? v.pac.dying : -1, D = (v.pac && v.pac.death) || { spin: 0.22, shrink: 0.14, flatAt: 2 };
       // caught: two turns while shrinking to nothing, then out of sight until he reappears lying on his side
       const gone = dying >= D.spin + D.shrink && dying < D.flatAt, flat = dying >= D.flatAt;
       if (v.pac && v.pac.x < v.W && !gone) {     // out of sight in the hidden part of the tunnel otherwise
         let yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0, scale = 1;
         if (dying >= 0 && !flat) { yaw += Math.min(dying, D.spin + D.shrink) / D.spin * 2 * Math.PI; scale = dying < D.spin ? 1 : Math.max(0.001, 1 - (dying - D.spin) / D.shrink); }
-        let pm = m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380) + lift(v.pac), wz(v.pac.y), yaw, scale);
+        let pm = squash(m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380) + lift(v.pac), wz(v.pac.y), yaw, scale), v.pac);
         if (flat) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
         R.draw(pac, pm);
       }
@@ -2880,7 +2885,7 @@ body { background: var(--bg); color: var(--ink); }
           if (g.m === 'e') skin = skins.toumei;
           opts = { textures: { ghost_r: skin, 'ghost_eye.0': eyes[blink] } };
         }
-        R.draw(ghost, m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw, scale), opts);
+        R.draw(ghost, squash(m4.trs(wx(g.x), fl + 150 + lift(g), wz(g.y), g.yaw, scale), g), opts);
       }
       // dizzy (knocked aside by a dash): three stars circling over the ghost
       const stars = [];
@@ -3197,7 +3202,26 @@ body { background: var(--bg); color: var(--ink); }
 
   /** Sprites: [{tile, pal, x, y, hf, vf}] of 8 x 8 pieces, drawn in the order given (later on top). */
   function drawSprites(f, hw, list) {
-    for (const s of list) blit(f, s.pix || hw.objTile(s.tile), s.palette || hw.objPal[s.pal], s.x, s.y, (s.hf ? 1 : 0) | (s.vf ? 2 : 0), false);
+    for (const s of list) {
+      if (s.sq) blit16(f, s.tiles.map(t => hw.objTile(t)), hw.objPal[s.pal], s.x, s.y, s.hf, s.sq);
+      else blit(f, s.pix || hw.objTile(s.tile), s.palette || hw.objPal[s.pal], s.x, s.y, (s.hf ? 1 : 0) | (s.vf ? 2 : 0), false);
+    }
+  }
+  /** A 16 x 16 sprite (tiles: top-left, top-right, bottom-left, bottom-right) squashed or stretched by [wide, tall] about its
+   *  bottom centre, nearest-neighbour (Arrangement levels: the hop of a flight). */
+  function blit16(f, tiles, pal, x, y, hf, sq) {
+    const w = Math.max(1, Math.round(16 * sq[0])), h = Math.max(1, Math.round(16 * sq[1])), x0 = Math.round(x + 8 - w / 2), y0 = Math.round(y + 16 - h);
+    for (let j = 0; j < h; j++) {
+      const sy = y0 + j; if (sy < 0 || sy >= H) continue;
+      const ty = Math.min(15, Math.floor(j * 16 / h));
+      for (let i = 0; i < w; i++) {
+        const sx = x0 + i; if (sx < 0 || sx >= W) continue;
+        let tx = Math.min(15, Math.floor(i * 16 / w)); if (hf) tx = 15 - tx;
+        const t = tiles[(ty >> 3) * 2 + (tx >> 3)], v = t[(ty & 7) * 8 + (tx & 7)];
+        if (!v) continue;
+        const c = pal[v], o = (sy * W + sx) * 4; f.data[o] = c[0]; f.data[o + 1] = c[1]; f.data[o + 2] = c[2]; f.data[o + 3] = 255;
+      }
+    }
   }
 
   // ---- Arrangement levels: marks of this project's own (8 x 8 four-bit pixels, drawn as sprites) ------------------
@@ -3259,8 +3283,9 @@ body { background: var(--bg); color: var(--ink); }
   }
 
   /** A 16 x 16 sprite made of four tiles (2 across, 32 tiles apart in the picture sheet). */
-  function sprite16(list, base, pal, x, y, flip) {
+  function sprite16(list, base, pal, x, y, flip, sq) {
     const hf = flip & 1 ? 1 : 0;
+    if (sq) { list.push({ tiles: [base, base + 1, base + 32, base + 33], pal, x, y, hf, sq }); return; }
     const piece = (dx, dy, t) => list.push({ tile: t, pal, x: x + (hf ? 8 - dx : dx), y: y + dy, hf, vf: 0 });
     piece(0, 0, base); piece(8, 0, base + 1); piece(0, 8, base + 32); piece(8, 8, base + 33);
   }
@@ -3305,7 +3330,7 @@ body { background: var(--bg); color: var(--ink); }
         const phase = st.pac.moving ? Math.floor(fr / 2) % 4 : (fr % 16 < 12 ? 0 : 1);
         base = phase === 0 ? 0 : PAC_FRAMES[st.pac.d][phase - 1];
       }
-      sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y) - lift(st.pac), 0);
+      sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y) - lift(st.pac), 0, st.pac.sq);
     }
     st.ghosts.forEach(g => {
       if (g.m === 'r') return;
@@ -3316,7 +3341,7 @@ body { background: var(--bg); color: var(--ink); }
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
         badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
-      else sprite16(sprites, GHOST_BASE[g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0);
+      else sprite16(sprites, GHOST_BASE[g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0, g.sq);
       if (g.st > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(g.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(g.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     });
     if (st.fruit && st.fruit.k && st.fruit.k !== 'fruit') sprites.push({ pix: PILL, palette: PAL.pill[st.fruit.k] || PAL.pill.gold, x: sx(st.fruit.x) + 4, y: sy(st.fruit.y) + 4, hf: 0, vf: 0 });
@@ -3976,8 +4001,8 @@ body { background: var(--bg); color: var(--ink); }
     Handheld.render(art.handheld, ps.frame, {
       banner: waiting,
       seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: waiting ? freshPellets() : snap.pellets,
-      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a } : null,
-      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st } : null).filter(Boolean),
+      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a, sq: squashOf('pac', snap.pac, now) } : null,
+      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st, sq: squashOf('g' + i, snap.ghosts[i], now) } : null).filter(Boolean),
       pacSeat: waiting ? snap.next : snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: waiting ? null : snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
       pads: waiting ? null : arrPads(), clones: waiting ? [] : (snap.clones || []).map(c => Object.assign({}, c, { seat: c.of < 0 ? -1 : gcolor(c.of) })), big: waiting ? [] : snap.big,
       pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })),
@@ -4123,7 +4148,7 @@ body { background: var(--bg); color: var(--ink); }
     mode = 'offline'; you = 0; room = null;
     const kinds = soloOpts.kinds || ['human', 'standin', 'standin', 'standin'];
     names = [playerName(), ...[1, 2, 3].map(i => kindName(kinds[i]) + ' ' + i)];
-    offline = { match: new PacMatch.Match(i => i === 0, undefined, soloOpts), inputs: [null, null, null, null], acc: 0, last: performance.now() };
+    offline = { match: new PacMatch.Match(i => i === 0, undefined, soloOpts), inputs: [null, null, null, null], acts: [false, false, false, false], acc: 0, last: performance.now() };
     offline.match.start(); snap = offline.match.view(0); showGame();
   }
   function offlineFrame(now) {
@@ -4132,7 +4157,7 @@ body { background: var(--bg); color: var(--ink); }
     while (o.acc >= CFG.tick && m.phase !== 'final') {
       o.acc -= CFG.tick;
       const prev = m.phase;
-      m.tick(o.inputs);
+      m.tick(o.inputs, undefined, o.acts); o.acts.fill(false);
       if (m.phase === 'countdown' && prev !== 'countdown') o.inputs.fill(null);
       if (m.phase === 'play' || prev === 'play') playEvents(m.sim.events);
     }
@@ -4146,6 +4171,13 @@ body { background: var(--bg); color: var(--ink); }
     if (mode === 'online') send({ t: 'in', d }); else if (offline) offline.inputs[0] = d;
     lastDir = d;
   }
+  /** Whether my ghost holds the hop (Arrangement levels, the pink capsule): the button then triggers a hop. */
+  const canHop = () => !!(snap && snap.phase === 'play' && snap.me >= 0 && snap.ghosts[snap.me] && snap.ghosts[snap.me].hp > 0);
+  function hop() {
+    if (!canHop()) return false;
+    if (mode === 'online') send({ t: 'act', a: 'hop' }); else if (offline) offline.acts[0] = true;
+    return true;
+  }
   // Hand-over: after a catch the new Pac-Man says when they are ready (the original's exchange screen asks them to press Start).
   const myHandoff = () => !!(snap && snap.phase === 'handoff' && snap.next === you);
   function ready() {
@@ -4157,10 +4189,12 @@ body { background: var(--bg); color: var(--ink); }
     if (e.target && e.target.tagName === 'INPUT') return;
     if (myHandoff() && e.code !== 'Escape' && e.code !== 'KeyM') { e.preventDefault(); ready(); return; }
     if (e.code in KEYS) { e.preventDefault(); if (mode) setDir(KEYS[e.code]); }
+    else if (e.code === 'Space' || e.code === 'KeyJ') { if (mode) { e.preventDefault(); hop(); } }
     else if (e.code === 'KeyM') { music.enabled = !music.enabled; if (!music.enabled) stopMusic(); else onSnap(true); }
     else if (e.code === 'Escape' && mode) toMenu();
   });
   document.querySelectorAll('#pad button').forEach(b => { b.addEventListener('pointerdown', e => { e.preventDefault(); setDir(+b.dataset.d); }); });
+  $('hop').addEventListener('pointerdown', e => { e.preventDefault(); hop(); });
   let tx = 0, ty = 0;
   const cv = $('cv'), g = cv.getContext('2d');
   $('stage').addEventListener('pointerdown', () => { ready(); });
@@ -4171,11 +4205,13 @@ body { background: var(--bg); color: var(--ink); }
     setDir(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
     tx = e.touches[0].clientX; ty = e.touches[0].clientY;
   }, { passive: true });
+  let padA = false;
   function pollPad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
       if (!p) continue;
       if (myHandoff() && ((p.buttons[0] && p.buttons[0].pressed) || (p.buttons[9] && p.buttons[9].pressed))) { ready(); break; }
+      const a = !!(p.buttons[0] && p.buttons[0].pressed); if (a && !padA) hop(); padA = a;
       let d = -1;
       if (p.buttons[12] && p.buttons[12].pressed) d = 0; else if (p.buttons[15] && p.buttons[15].pressed) d = 1;
       else if (p.buttons[13] && p.buttons[13].pressed) d = 2; else if (p.buttons[14] && p.buttons[14].pressed) d = 3;
@@ -4420,7 +4456,12 @@ body { background: var(--bg); color: var(--ink); }
     g.fillStyle = col; g.beginPath(); g.roundRect(-w / 2, 0, w, h / 2, w / 2); g.fill();
     g.restore();
   }
-  const flight = (e, u) => { if (e && e.a) { const k = Math.sin(Math.PI * e.a[4]); g.translate(0, -k * u * 0.8); g.translate(e.x * u, e.y * u); g.scale(1 + 0.4 * k, 1 + 0.4 * k); g.translate(-e.x * u, -e.y * u); } };
+  const flight = (e, u, key, now) => {
+    if (!e) return;
+    const sq = squashOf(key, e, now), k = e.a ? Math.sin(Math.PI * e.a[4]) : 0;
+    if (!sq && !k) return;
+    g.translate(0, -k * u * 0.8); g.translate(e.x * u, e.y * u); g.scale((1 + 0.3 * k) * (sq ? sq[0] : 1), (1 + 0.3 * k) * (sq ? sq[1] : 1)); g.translate(-e.x * u, -e.y * u);
+  };
   function drawStars(gh, u, now) {
     g.fillStyle = '#ffeb50';
     for (let k = 0; k < 3; k++) { const a = now / 200 + k * 2.1, x = gh.x * u + Math.cos(a) * u * 0.5, y = gh.y * u - u * 0.45 + Math.sin(a) * u * 0.12; g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? u * 0.05 : u * 0.11, b = i / 10 * 2 * Math.PI; g.lineTo(x + Math.cos(b) * r, y + Math.sin(b) * r); } g.closePath(); g.fill(); }
@@ -4455,6 +4496,7 @@ body { background: var(--bg); color: var(--ink); }
     if (mode === 'offline' && offline) offlineFrame(now);
     pollPad();
     if (!snap) return;
+    { const h = $('hop'), on = canHop(); if (h.classList.contains('hidden') === on) h.classList.toggle('hidden', !on); if (on) h.textContent = 'HOP ' + Math.ceil(snap.ghosts[snap.me].hp) + 's'; }
     sm.pac = approach(sm.pac, snap.respawning ? null : snap.pac, dt);
     // Pac-Man turns round smoothly instead of snapping to his new heading
     if (sm.pac) {
@@ -4487,9 +4529,9 @@ body { background: var(--bg); color: var(--ink); }
     for (const i of snap.big || []) { g.fillStyle = '#ff9ab0'; g.beginPath(); g.arc(((i % W) + 0.5) * u, (Math.floor(i / W) + 0.5) * u, u * 0.18, 0, 7); g.fill(); }
     if (snap.fruit && snap.fruit.k && snap.fruit.k !== 'fruit') drawCapsule(snap.fruit, u, now); else if (snap.fruit) drawFruit(snap.fruit, u, now);
     for (const c of snap.clones || []) { g.globalAlpha = 0.5; if (c.of < 0) drawPac(c, u, now, false); else drawGhost(c, c.c >= 0 ? SEAT_COLORS[c.c] : GREY, u, now, false); g.globalAlpha = 1; }
-    sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { g.save(); flight(sg, u); drawGhost(gh, gcss(i), u, now, snap.me === i); g.restore(); if (sg.st > 0) drawStars(gh, u, now); } });
+    sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { g.save(); flight(sg, u, 'g' + i, now); drawGhost(gh, gcss(i), u, now, snap.me === i); g.restore(); if (sg.st > 0) drawStars(gh, u, now); } });
     drawTrail(u);
-    if (sm.pac) { g.save(); flight(snap.pac, u); drawPac(sm.pac, u, now, snap.me < 0); g.restore(); }
+    if (sm.pac) { g.save(); flight(snap.pac, u, 'pac', now); drawPac(sm.pac, u, now, snap.me < 0); g.restore(); }
     // Ghost players see a circular window around themselves, a minimap of the ghosts, and the pellet count.
     if (snap.me >= 0 && sm.ghosts[snap.me]) {
       const f = fogCv.getContext('2d'), me = sm.ghosts[snap.me], col = SEAT_COLORS[you];
@@ -4516,7 +4558,7 @@ body { background: var(--bg); color: var(--ink); }
       const target = View3D.YAW[gh.d] || 0;
       let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st });
+      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
@@ -4529,8 +4571,19 @@ body { background: var(--bg); color: var(--ink); }
   }
   const u3 = () => cell * dpr;
   const caughtAge = () => isCaught() ? (performance.now() - phaseT0) / 1000 : -1;
-  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH, a: snap.pac && snap.pac.a });
+  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH, a: snap.pac && snap.pac.a, sq: squashOf('pac', snap.pac, performance.now()) });
   const arrPads = () => (S.maze.arrange && S.maze.arrange.pads) || null;
+  // Squash and stretch for a flight (Arrangement levels): a squat on take-off, a stretch on the way up and down, a squat on
+  // landing that eases back. [wide, tall] scale factors from the flight's progress; landings are remembered per body.
+  const SQ = [[0, 1.3, 0.7], [0.15, 0.8, 1.35], [0.5, 0.9, 1.15], [0.85, 0.8, 1.3], [1, 1.3, 0.7]], SQ_LAND = 0.18;
+  const landed = new Map();
+  function squashOf(key, e, now) {
+    const was = landed.get(key);
+    if (e && e.a) { landed.set(key, { air: true, t: 0 }); const k = e.a[4]; let i = 1; while (i < SQ.length - 1 && SQ[i][0] < k) i++; const a = SQ[i - 1], b = SQ[i], u = (k - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u]; }
+    if (was && was.air) { landed.set(key, { air: false, t: now }); return [1.3, 0.7]; }
+    if (was && now - was.t < SQ_LAND * 1000) { const u = (now - was.t) / (SQ_LAND * 1000); return [1.3 - 0.3 * u, 0.7 + 0.3 * u]; }
+    return null;
+  }
   // the ghosts' circles pull back once Pac-Man reappears lying flat (like the fruit zoom, eased over half a second)
   const pullBack = () => { const a = caughtAge(); return a < DEATH.flatAt ? 1 : 1 + (DEATH.pullBack - 1) * Math.min(1, (a - DEATH.flatAt) / DEATH.pullTime); };
   function fitScreen(scr) {
@@ -4560,7 +4613,7 @@ body { background: var(--bg); color: var(--ink); }
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st });
+      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);

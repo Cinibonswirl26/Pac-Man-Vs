@@ -251,8 +251,8 @@
     Handheld.render(art.handheld, ps.frame, {
       banner: waiting,
       seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: waiting ? freshPellets() : snap.pellets,
-      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a } : null,
-      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st } : null).filter(Boolean),
+      pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a, sq: squashOf('pac', snap.pac, now) } : null,
+      ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st, sq: squashOf('g' + i, snap.ghosts[i], now) } : null).filter(Boolean),
       pacSeat: waiting ? snap.next : snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: waiting ? null : snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
       pads: waiting ? null : arrPads(), clones: waiting ? [] : (snap.clones || []).map(c => Object.assign({}, c, { seat: c.of < 0 ? -1 : gcolor(c.of) })), big: waiting ? [] : snap.big,
       pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })),
@@ -398,7 +398,7 @@
     mode = 'offline'; you = 0; room = null;
     const kinds = soloOpts.kinds || ['human', 'standin', 'standin', 'standin'];
     names = [playerName(), ...[1, 2, 3].map(i => kindName(kinds[i]) + ' ' + i)];
-    offline = { match: new PacMatch.Match(i => i === 0, undefined, soloOpts), inputs: [null, null, null, null], acc: 0, last: performance.now() };
+    offline = { match: new PacMatch.Match(i => i === 0, undefined, soloOpts), inputs: [null, null, null, null], acts: [false, false, false, false], acc: 0, last: performance.now() };
     offline.match.start(); snap = offline.match.view(0); showGame();
   }
   function offlineFrame(now) {
@@ -407,7 +407,7 @@
     while (o.acc >= CFG.tick && m.phase !== 'final') {
       o.acc -= CFG.tick;
       const prev = m.phase;
-      m.tick(o.inputs);
+      m.tick(o.inputs, undefined, o.acts); o.acts.fill(false);
       if (m.phase === 'countdown' && prev !== 'countdown') o.inputs.fill(null);
       if (m.phase === 'play' || prev === 'play') playEvents(m.sim.events);
     }
@@ -421,6 +421,13 @@
     if (mode === 'online') send({ t: 'in', d }); else if (offline) offline.inputs[0] = d;
     lastDir = d;
   }
+  /** Whether my ghost holds the hop (Arrangement levels, the pink capsule): the button then triggers a hop. */
+  const canHop = () => !!(snap && snap.phase === 'play' && snap.me >= 0 && snap.ghosts[snap.me] && snap.ghosts[snap.me].hp > 0);
+  function hop() {
+    if (!canHop()) return false;
+    if (mode === 'online') send({ t: 'act', a: 'hop' }); else if (offline) offline.acts[0] = true;
+    return true;
+  }
   // Hand-over: after a catch the new Pac-Man says when they are ready (the original's exchange screen asks them to press Start).
   const myHandoff = () => !!(snap && snap.phase === 'handoff' && snap.next === you);
   function ready() {
@@ -432,10 +439,12 @@
     if (e.target && e.target.tagName === 'INPUT') return;
     if (myHandoff() && e.code !== 'Escape' && e.code !== 'KeyM') { e.preventDefault(); ready(); return; }
     if (e.code in KEYS) { e.preventDefault(); if (mode) setDir(KEYS[e.code]); }
+    else if (e.code === 'Space' || e.code === 'KeyJ') { if (mode) { e.preventDefault(); hop(); } }
     else if (e.code === 'KeyM') { music.enabled = !music.enabled; if (!music.enabled) stopMusic(); else onSnap(true); }
     else if (e.code === 'Escape' && mode) toMenu();
   });
   document.querySelectorAll('#pad button').forEach(b => { b.addEventListener('pointerdown', e => { e.preventDefault(); setDir(+b.dataset.d); }); });
+  $('hop').addEventListener('pointerdown', e => { e.preventDefault(); hop(); });
   let tx = 0, ty = 0;
   const cv = $('cv'), g = cv.getContext('2d');
   $('stage').addEventListener('pointerdown', () => { ready(); });
@@ -446,11 +455,13 @@
     setDir(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
     tx = e.touches[0].clientX; ty = e.touches[0].clientY;
   }, { passive: true });
+  let padA = false;
   function pollPad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
       if (!p) continue;
       if (myHandoff() && ((p.buttons[0] && p.buttons[0].pressed) || (p.buttons[9] && p.buttons[9].pressed))) { ready(); break; }
+      const a = !!(p.buttons[0] && p.buttons[0].pressed); if (a && !padA) hop(); padA = a;
       let d = -1;
       if (p.buttons[12] && p.buttons[12].pressed) d = 0; else if (p.buttons[15] && p.buttons[15].pressed) d = 1;
       else if (p.buttons[13] && p.buttons[13].pressed) d = 2; else if (p.buttons[14] && p.buttons[14].pressed) d = 3;
@@ -695,7 +706,12 @@
     g.fillStyle = col; g.beginPath(); g.roundRect(-w / 2, 0, w, h / 2, w / 2); g.fill();
     g.restore();
   }
-  const flight = (e, u) => { if (e && e.a) { const k = Math.sin(Math.PI * e.a[4]); g.translate(0, -k * u * 0.8); g.translate(e.x * u, e.y * u); g.scale(1 + 0.4 * k, 1 + 0.4 * k); g.translate(-e.x * u, -e.y * u); } };
+  const flight = (e, u, key, now) => {
+    if (!e) return;
+    const sq = squashOf(key, e, now), k = e.a ? Math.sin(Math.PI * e.a[4]) : 0;
+    if (!sq && !k) return;
+    g.translate(0, -k * u * 0.8); g.translate(e.x * u, e.y * u); g.scale((1 + 0.3 * k) * (sq ? sq[0] : 1), (1 + 0.3 * k) * (sq ? sq[1] : 1)); g.translate(-e.x * u, -e.y * u);
+  };
   function drawStars(gh, u, now) {
     g.fillStyle = '#ffeb50';
     for (let k = 0; k < 3; k++) { const a = now / 200 + k * 2.1, x = gh.x * u + Math.cos(a) * u * 0.5, y = gh.y * u - u * 0.45 + Math.sin(a) * u * 0.12; g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? u * 0.05 : u * 0.11, b = i / 10 * 2 * Math.PI; g.lineTo(x + Math.cos(b) * r, y + Math.sin(b) * r); } g.closePath(); g.fill(); }
@@ -730,6 +746,7 @@
     if (mode === 'offline' && offline) offlineFrame(now);
     pollPad();
     if (!snap) return;
+    { const h = $('hop'), on = canHop(); if (h.classList.contains('hidden') === on) h.classList.toggle('hidden', !on); if (on) h.textContent = 'HOP ' + Math.ceil(snap.ghosts[snap.me].hp) + 's'; }
     sm.pac = approach(sm.pac, snap.respawning ? null : snap.pac, dt);
     // Pac-Man turns round smoothly instead of snapping to his new heading
     if (sm.pac) {
@@ -762,9 +779,9 @@
     for (const i of snap.big || []) { g.fillStyle = '#ff9ab0'; g.beginPath(); g.arc(((i % W) + 0.5) * u, (Math.floor(i / W) + 0.5) * u, u * 0.18, 0, 7); g.fill(); }
     if (snap.fruit && snap.fruit.k && snap.fruit.k !== 'fruit') drawCapsule(snap.fruit, u, now); else if (snap.fruit) drawFruit(snap.fruit, u, now);
     for (const c of snap.clones || []) { g.globalAlpha = 0.5; if (c.of < 0) drawPac(c, u, now, false); else drawGhost(c, c.c >= 0 ? SEAT_COLORS[c.c] : GREY, u, now, false); g.globalAlpha = 1; }
-    sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { g.save(); flight(sg, u); drawGhost(gh, gcss(i), u, now, snap.me === i); g.restore(); if (sg.st > 0) drawStars(gh, u, now); } });
+    sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { g.save(); flight(sg, u, 'g' + i, now); drawGhost(gh, gcss(i), u, now, snap.me === i); g.restore(); if (sg.st > 0) drawStars(gh, u, now); } });
     drawTrail(u);
-    if (sm.pac) { g.save(); flight(snap.pac, u); drawPac(sm.pac, u, now, snap.me < 0); g.restore(); }
+    if (sm.pac) { g.save(); flight(snap.pac, u, 'pac', now); drawPac(sm.pac, u, now, snap.me < 0); g.restore(); }
     // Ghost players see a circular window around themselves, a minimap of the ghosts, and the pellet count.
     if (snap.me >= 0 && sm.ghosts[snap.me]) {
       const f = fogCv.getContext('2d'), me = sm.ghosts[snap.me], col = SEAT_COLORS[you];
@@ -791,7 +808,7 @@
       const target = View3D.YAW[gh.d] || 0;
       let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st });
+      ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     let img;
@@ -804,8 +821,19 @@
   }
   const u3 = () => cell * dpr;
   const caughtAge = () => isCaught() ? (performance.now() - phaseT0) / 1000 : -1;
-  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH, a: snap.pac && snap.pac.a });
+  const pacView = () => sm.pac && Object.assign({}, sm.pac, { yaw: Math.PI / 2 - (sm.pacAng === null ? 0 : sm.pacAng), dying: caughtAge(), death: DEATH, a: snap.pac && snap.pac.a, sq: squashOf('pac', snap.pac, performance.now()) });
   const arrPads = () => (S.maze.arrange && S.maze.arrange.pads) || null;
+  // Squash and stretch for a flight (Arrangement levels): a squat on take-off, a stretch on the way up and down, a squat on
+  // landing that eases back. [wide, tall] scale factors from the flight's progress; landings are remembered per body.
+  const SQ = [[0, 1.3, 0.7], [0.15, 0.8, 1.35], [0.5, 0.9, 1.15], [0.85, 0.8, 1.3], [1, 1.3, 0.7]], SQ_LAND = 0.18;
+  const landed = new Map();
+  function squashOf(key, e, now) {
+    const was = landed.get(key);
+    if (e && e.a) { landed.set(key, { air: true, t: 0 }); const k = e.a[4]; let i = 1; while (i < SQ.length - 1 && SQ[i][0] < k) i++; const a = SQ[i - 1], b = SQ[i], u = (k - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u]; }
+    if (was && was.air) { landed.set(key, { air: false, t: now }); return [1.3, 0.7]; }
+    if (was && now - was.t < SQ_LAND * 1000) { const u = (now - was.t) / (SQ_LAND * 1000); return [1.3 - 0.3 * u, 0.7 + 0.3 * u]; }
+    return null;
+  }
   // the ghosts' circles pull back once Pac-Man reappears lying flat (like the fruit zoom, eased over half a second)
   const pullBack = () => { const a = caughtAge(); return a < DEATH.flatAt ? 1 : 1 + (DEATH.pullBack - 1) * Math.min(1, (a - DEATH.flatAt) / DEATH.pullTime); };
   function fitScreen(scr) {
@@ -835,7 +863,7 @@
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st });
+      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);

@@ -67,7 +67,26 @@
 
   /** Sprites: [{tile, pal, x, y, hf, vf}] of 8 x 8 pieces, drawn in the order given (later on top). */
   function drawSprites(f, hw, list) {
-    for (const s of list) blit(f, s.pix || hw.objTile(s.tile), s.palette || hw.objPal[s.pal], s.x, s.y, (s.hf ? 1 : 0) | (s.vf ? 2 : 0), false);
+    for (const s of list) {
+      if (s.sq) blit16(f, s.tiles.map(t => hw.objTile(t)), hw.objPal[s.pal], s.x, s.y, s.hf, s.sq);
+      else blit(f, s.pix || hw.objTile(s.tile), s.palette || hw.objPal[s.pal], s.x, s.y, (s.hf ? 1 : 0) | (s.vf ? 2 : 0), false);
+    }
+  }
+  /** A 16 x 16 sprite (tiles: top-left, top-right, bottom-left, bottom-right) squashed or stretched by [wide, tall] about its
+   *  bottom centre, nearest-neighbour (Arrangement levels: the hop of a flight). */
+  function blit16(f, tiles, pal, x, y, hf, sq) {
+    const w = Math.max(1, Math.round(16 * sq[0])), h = Math.max(1, Math.round(16 * sq[1])), x0 = Math.round(x + 8 - w / 2), y0 = Math.round(y + 16 - h);
+    for (let j = 0; j < h; j++) {
+      const sy = y0 + j; if (sy < 0 || sy >= H) continue;
+      const ty = Math.min(15, Math.floor(j * 16 / h));
+      for (let i = 0; i < w; i++) {
+        const sx = x0 + i; if (sx < 0 || sx >= W) continue;
+        let tx = Math.min(15, Math.floor(i * 16 / w)); if (hf) tx = 15 - tx;
+        const t = tiles[(ty >> 3) * 2 + (tx >> 3)], v = t[(ty & 7) * 8 + (tx & 7)];
+        if (!v) continue;
+        const c = pal[v], o = (sy * W + sx) * 4; f.data[o] = c[0]; f.data[o + 1] = c[1]; f.data[o + 2] = c[2]; f.data[o + 3] = 255;
+      }
+    }
   }
 
   // ---- Arrangement levels: marks of this project's own (8 x 8 four-bit pixels, drawn as sprites) ------------------
@@ -129,8 +148,9 @@
   }
 
   /** A 16 x 16 sprite made of four tiles (2 across, 32 tiles apart in the picture sheet). */
-  function sprite16(list, base, pal, x, y, flip) {
+  function sprite16(list, base, pal, x, y, flip, sq) {
     const hf = flip & 1 ? 1 : 0;
+    if (sq) { list.push({ tiles: [base, base + 1, base + 32, base + 33], pal, x, y, hf, sq }); return; }
     const piece = (dx, dy, t) => list.push({ tile: t, pal, x: x + (hf ? 8 - dx : dx), y: y + dy, hf, vf: 0 });
     piece(0, 0, base); piece(8, 0, base + 1); piece(0, 8, base + 32); piece(8, 8, base + 33);
   }
@@ -175,7 +195,7 @@
         const phase = st.pac.moving ? Math.floor(fr / 2) % 4 : (fr % 16 < 12 ? 0 : 1);
         base = phase === 0 ? 0 : PAC_FRAMES[st.pac.d][phase - 1];
       }
-      sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y) - lift(st.pac), 0);
+      sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y) - lift(st.pac), 0, st.pac.sq);
     }
     st.ghosts.forEach(g => {
       if (g.m === 'r') return;
@@ -186,7 +206,7 @@
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
         badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
-      else sprite16(sprites, GHOST_BASE[g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0);
+      else sprite16(sprites, GHOST_BASE[g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0, g.sq);
       if (g.st > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(g.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(g.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     });
     if (st.fruit && st.fruit.k && st.fruit.k !== 'fruit') sprites.push({ pix: PILL, palette: PAL.pill[st.fruit.k] || PAL.pill.gold, x: sx(st.fruit.x) + 4, y: sy(st.fruit.y) + 4, hf: 0, vf: 0 });
