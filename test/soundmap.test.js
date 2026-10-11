@@ -7,7 +7,7 @@ const m = SM.create(out);
 m.fire('fruitGhost', { index: 2, me: 0 }); ok(log.join() === 's13,v6', 'fruit taken by the ghost in seat 2: ' + log);
 ok(SM.EVENTS.find(e => e.id === 'goGoGo').after === 60 && SM.EVENTS.find(e => e.id === 'youCanDoIt').after === 150, 'timers: 60 s and 150 s'); ok(m.handled('ghostEatenSfx') && m.handled('frightLoop') && m.handled('eyesLoop') && m.handled('powerPellet'), 'new sound events'); log.length = 0; m.fire('pellet', { me: 0 }); ok(log.join() === 's9', 'pellet sound for a ghost: ' + log); log.length = 0; m.fire('go', { me: -1 }); ok(log.join() === 'v31,hstart', 'Pac-Man hears the start sweep: ' + log);
 log.length = 0; m.fire('go', { me: 1 }); ok(log.join() === 'v31', 'ghosts do not: ' + log);
-m.fire('eatGhost', { index: 1 }); ok(log.pop() === 'v11', 'second ghost in the chain'); log.length = 0; m.fire('mazeCleared'); ok(log.pop() === 'v17', 'maze cleared line'); log.length = 0; m.fire('caught', { index: 3 }); ok(log.join() === 's4' && SM.EVENTS.find(e => e.id === 'caught').cues[1].delay > 0 && SM.EVENTS.find(e => e.id === 'caught').cues[1].ids[3] === 16, 'the knock at once, excellent for seat 3 after a delay: ' + log);
+m.fire('eatGhost', { index: 1 }); ok(log.pop() === 'v11', 'second ghost in the chain'); log.length = 0; m.fire('mazeCleared'); ok(log.pop() === 'v17', 'maze cleared line'); log.length = 0; m.fire('caught', { index: 3 }); ok(log.join() === 'v16' && SM.EVENTS.find(e => e.id === 'caught').cues[1].delay === 2100 && SM.EVENTS.find(e => e.id === 'caught').cues[0].ids[3] === 16, 'excellent for seat 3 at once, the knock after 2.1 s: ' + log);
 ok(m.handled('pellet') && !m.handled('nothing'), 'handled');
 for (const e of SM.EVENTS) ok(m.map[e.id].length, e.id + ' has a default');
 // music by stage

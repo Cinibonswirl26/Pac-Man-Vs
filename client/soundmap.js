@@ -13,7 +13,7 @@
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v7';
+  const KEY = 'pacvs.soundmap.v8';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
@@ -51,7 +51,9 @@
     { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18, 19])] },
     { id: 'pts1000', label: '1000 points to the target', when: 'Anybody is within 1000 of winning', cues: [voice([28])] },
     { id: 'pts500', label: '500 points to the target', when: 'Anybody is within 500 of winning', cues: [voice([29])] },
-    { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [sfx([4], { vol: 0.9 }), voice([13, 14, 15, 16], { mode: 'index', force: true, delay: 2200 })] },
+    // measured on the original: the "Excellent" line starts the instant Pac-Man is caught (the siren stops with it); the knock
+    // comes 2.1 s later, as the EXCELLENT box appears
+    { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [voice([13, 14, 15, 16], { mode: 'index', force: true }), sfx([4], { vol: 0.9, delay: 2100 })] },
     // Timers: counted from the start of each round, so they begin again after Pac-Man clears the maze or is caught.
     { id: 'goGoGo', after: 60, label: '"Go go go!" timer', when: 'One minute into a round, in the game only', cues: [voice([33])] },
     { id: 'youCanDoIt', after: 150, label: '"You can do it!" timer', when: 'Two and a half minutes into a round, in the game only', cues: [voice([34])] },

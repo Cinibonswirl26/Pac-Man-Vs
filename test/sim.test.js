@@ -215,7 +215,11 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   s3.pellets.fill(0); s3.pellets[(s3.pac.y | 0) * S.W + ((s3.pac.x | 0) + 1)] = 2; s3.left = 5;
   s3.pac.x += 0.9; S.update(s3, idle);
   ok(s3.frightLeft > 0, 'the power pellet was eaten');
-  ok(s3.ghosts[0].mode === 'normal' && s3.ghosts[0].grey, 'a power pellet does not frighten a grey ghost');
+  ok(s3.ghosts[0].mode === 'fright' && s3.ghosts[0].grey, 'a power pellet frightens a grey ghost too');
+  // a frightened grey ghost can be eaten: Pac-Man gets the chain points, nobody is charged, and it comes back grey
+  s3.ghosts[0].x = s3.pac.x; s3.ghosts[0].y = s3.pac.y; s3.ghosts[1].x = 1.5; s3.ghosts[1].y = 1.5; s3.ghosts[2].x = 17.5; s3.ghosts[2].y = 1.5;
+  const sc3 = s3.scores.slice(); S.update(s3, idle);
+  ok(s3.ghosts[0].mode === 'eyes' && s3.ghosts[0].grey && s3.scores[0] === sc3[0] + S.CFG.ghostChain[0] && s3.scores.slice(1).join() === sc3.slice(1).join(), 'Pac-Man eats a frightened grey ghost for 200, nobody loses any');
   // A grey stand-in dawdles (so a ghost can run into it on purpose); woken, it moves at ghost speed and hunts Pac-Man down.
   ok(S.CFG.greySpeed < S.CFG.pacSpeed && S.CFG.greySpeed < S.CFG.ghostSpeed, 'grey stand-ins are slower than Pac-Man and the ghosts');
   const RIGHT = S.DIRS.findIndex(d => d[0] === 1);

@@ -496,9 +496,10 @@
   }
   // Effects on the shared screen: points floating over whoever scored, stars when the fruit goes, the catch impact.
   const fx = { pops: [], sparkle: -1, burst: null, dust: [], sparks: [], lastPuff: new Map() }, FX_POP = 1.3, FX_BURST = 1.1, FX_SPARK = 0.8, FX_DUST = 0.45, FX_DASH = 0.5;
-  // Pac-Man's end as the ghosts see it (measured on the original, see FIDELITY.md): he spins round twice while shrinking
-  // to nothing, the rays and the points come once he is gone, the circles pull back and show him lying flat at 2 s.
-  const DEATH = { spin: 0.22, shrink: 0.14, burstAt: 0.5, flatAt: 2.0, pullBack: 1.6, pullTime: 0.5 };
+  // Pac-Man's end as the ghosts see it (measured on the original, see FIDELITY.md): on contact the "Excellent" line starts
+  // and he spins round twice while shrinking to nothing; the rays and the points come once he is gone; at 1 s he is back
+  // lying on his side and the circles pull back; the picture goes amber and the EXCELLENT box and the knock come at 2 s.
+  const DEATH = { spin: 0.22, shrink: 0.14, burstAt: 0.4, flatAt: 1.0, pullBack: 1.6, pullTime: 0.5 };
   let fxPrev = null;
   function fxDetect(cur) {
     const prev = fxPrev; fxPrev = cur;

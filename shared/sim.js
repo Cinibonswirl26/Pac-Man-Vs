@@ -120,8 +120,9 @@
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
       pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
-      // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
-      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
+      // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it.
+      // opts.claims[i]: the player whose colour a stand-in already wears from the last round (it keeps it until eaten), or -1
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]) && !(opts.claims && opts.claims[i] >= 0 && opts.claims[i] !== pacPlayer), standin: !!(opts.standin && opts.standin[i]), claim: opts.standin && opts.standin[i] && opts.claims && opts.claims[i] >= 0 && opts.claims[i] !== pacPlayer ? opts.claims[i] : -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
@@ -368,7 +369,7 @@
     s.events.push(power ? 'power' : 'pellet');
     if (power) {
       s.frightLeft = CFG.frightTime; s.chain = 0;
-      s.ghosts.forEach(g => { if (g.mode === 'normal' && !g.grey) { g.mode = 'fright'; g.want = OPP[g.dir]; } });
+      s.ghosts.forEach(g => { if (g.mode === 'normal') { g.mode = 'fright'; g.want = OPP[g.dir]; } });   // grey stand-ins too
     }
     award(s, s.pacPlayer, power ? CFG.powerPts : CFG.pelletPts);
     if (s.over) return true;
@@ -456,9 +457,9 @@
       moveEnt(s, g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1), dt, 'ghost');
       padCheck(s, g, 'ghost');
       if (ARR) { moveClone(g); if (g.dropLeft > 0) dropBig(s, g); }
-      if (g.grey || g.air) continue;              // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
+      if ((g.grey && g.mode !== 'fright') || g.air) continue;   // a grey stand-in takes no part: no fruit, Pac-Man passes through it; frightened, it can be eaten
       if (s.pac.air) continue;                    // nobody touches Pac-Man while he is in the air
-      if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7 && takeItem(s, i)) return;
+      if (s.fruit && g.mode !== 'eyes' && !g.grey && dist(g, s.fruit) < 0.7 && takeItem(s, i)) return;
       if (dist(g, s.pac) < CFG.catchDist || (ARR && (sweptHit(s.pac, g) || sweptHit(g, s.pac)))) {
         if (g.mode === 'fright') { if (eatGhost(s, i)) return; }
         else if (g.mode === 'normal' && s.pac.dash) { g.stun = CFG.stunTime; s.events.push('stun'); }   // a dashing Pac-Man knocks a ghost aside and leaves it dizzy
@@ -636,7 +637,7 @@
   function ghostArrival(s) {
     const best = new Float32Array(T).fill(1e9);
     for (const g of s.ghosts) {
-      if (g.mode === 'eyes' || g.grey) continue;
+      if (g.mode === 'eyes' || (g.grey && g.mode !== 'fright')) continue;
       const harmless = g.mode === 'fright' && s.frightLeft > 3;
       if (harmless) continue;
       // a ghost still inside the house is counted from the exit, a moment later

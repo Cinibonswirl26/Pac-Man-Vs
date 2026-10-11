@@ -266,8 +266,9 @@ body { background: var(--bg); color: var(--ink); }
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
       pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
-      // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it
-      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]), standin: !!(opts.standin && opts.standin[i]), claim: -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
+      // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it.
+      // opts.claims[i]: the player whose colour a stand-in already wears from the last round (it keeps it until eaten), or -1
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]) && !(opts.claims && opts.claims[i] >= 0 && opts.claims[i] !== pacPlayer), standin: !!(opts.standin && opts.standin[i]), claim: opts.standin && opts.standin[i] && opts.claims && opts.claims[i] >= 0 && opts.claims[i] !== pacPlayer ? opts.claims[i] : -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
@@ -514,7 +515,7 @@ body { background: var(--bg); color: var(--ink); }
     s.events.push(power ? 'power' : 'pellet');
     if (power) {
       s.frightLeft = CFG.frightTime; s.chain = 0;
-      s.ghosts.forEach(g => { if (g.mode === 'normal' && !g.grey) { g.mode = 'fright'; g.want = OPP[g.dir]; } });
+      s.ghosts.forEach(g => { if (g.mode === 'normal') { g.mode = 'fright'; g.want = OPP[g.dir]; } });   // grey stand-ins too
     }
     award(s, s.pacPlayer, power ? CFG.powerPts : CFG.pelletPts);
     if (s.over) return true;
@@ -602,9 +603,9 @@ body { background: var(--bg); color: var(--ink); }
       moveEnt(s, g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1), dt, 'ghost');
       padCheck(s, g, 'ghost');
       if (ARR) { moveClone(g); if (g.dropLeft > 0) dropBig(s, g); }
-      if (g.grey || g.air) continue;              // a grey stand-in takes no part: it cannot take the fruit or touch Pac-Man
+      if ((g.grey && g.mode !== 'fright') || g.air) continue;   // a grey stand-in takes no part: no fruit, Pac-Man passes through it; frightened, it can be eaten
       if (s.pac.air) continue;                    // nobody touches Pac-Man while he is in the air
-      if (s.fruit && g.mode !== 'eyes' && dist(g, s.fruit) < 0.7 && takeItem(s, i)) return;
+      if (s.fruit && g.mode !== 'eyes' && !g.grey && dist(g, s.fruit) < 0.7 && takeItem(s, i)) return;
       if (dist(g, s.pac) < CFG.catchDist || (ARR && (sweptHit(s.pac, g) || sweptHit(g, s.pac)))) {
         if (g.mode === 'fright') { if (eatGhost(s, i)) return; }
         else if (g.mode === 'normal' && s.pac.dash) { g.stun = CFG.stunTime; s.events.push('stun'); }   // a dashing Pac-Man knocks a ghost aside and leaves it dizzy
@@ -782,7 +783,7 @@ body { background: var(--bg); color: var(--ink); }
   function ghostArrival(s) {
     const best = new Float32Array(T).fill(1e9);
     for (const g of s.ghosts) {
-      if (g.mode === 'eyes' || g.grey) continue;
+      if (g.mode === 'eyes' || (g.grey && g.mode !== 'fright')) continue;
       const harmless = g.mode === 'fright' && s.frightLeft > 3;
       if (harmless) continue;
       // a ghost still inside the house is counted from the exit, a moment later
@@ -1119,7 +1120,9 @@ body { background: var(--bg); color: var(--ink); }
       if (!this.slots) this.slots = [0, 1, 2, 3].filter(i => i !== this.pac);
       // Seats nobody is playing: either computer players, or grey stand-ins that only wake up when a ghost player touches them.
       const standin = this.slots.map(p => this.kindOf(p) === 'standin');
-      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, players: this.slots, rng: this.rng });
+      // a stand-in that a ghost woke keeps that player's colour from round to round, until it is eaten (or its player is Pac-Man now)
+      const claims = this.sim ? this.sim.ghosts.map(g => g.standin && !g.grey ? g.claim : -1) : null;
+      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, claims, players: this.slots, rng: this.rng });
       this.phase = 'countdown'; this.phaseLeft = COUNTDOWN;
     }
     /** Advance one fixed step. inputs[i] is the latest direction for human seat i.
@@ -1763,7 +1766,7 @@ body { background: var(--bg); color: var(--ink); }
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v7';
+  const KEY = 'pacvs.soundmap.v8';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
@@ -1801,7 +1804,9 @@ body { background: var(--bg); color: var(--ink); }
     { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18, 19])] },
     { id: 'pts1000', label: '1000 points to the target', when: 'Anybody is within 1000 of winning', cues: [voice([28])] },
     { id: 'pts500', label: '500 points to the target', when: 'Anybody is within 500 of winning', cues: [voice([29])] },
-    { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [sfx([4], { vol: 0.9 }), voice([13, 14, 15, 16], { mode: 'index', force: true, delay: 2200 })] },
+    // measured on the original: the "Excellent" line starts the instant Pac-Man is caught (the siren stops with it); the knock
+    // comes 2.1 s later, as the EXCELLENT box appears
+    { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [voice([13, 14, 15, 16], { mode: 'index', force: true }), sfx([4], { vol: 0.9, delay: 2100 })] },
     // Timers: counted from the start of each round, so they begin again after Pac-Man clears the maze or is caught.
     { id: 'goGoGo', after: 60, label: '"Go go go!" timer', when: 'One minute into a round, in the game only', cues: [voice([33])] },
     { id: 'youCanDoIt', after: 150, label: '"You can do it!" timer', when: 'Two and a half minutes into a round, in the game only', cues: [voice([34])] },
@@ -3431,8 +3436,13 @@ body { background: var(--bg); color: var(--ink); }
     }
     if (st.pac) {
       let base;
-      if (st.caught !== undefined && st.caught !== null) base = PAC_DEATH[Math.min(PAC_DEATH.length - 1, Math.floor(st.caught * 3))];
-      else {
+      // caught (measured on the original's handheld): the classic end over 2.1 s: the mouth opens wider and wider for about
+      // 1.8 s, then a burst of sparks for 0.3 s, then nothing until the next round
+      if (st.caught !== undefined && st.caught !== null) {
+        if (st.caught >= 2.1) return;
+        if (st.caught >= 1.8) { for (let k = 0; k < 4; k++) { const a = fr / 5 + k * 1.57, r = 4 + 6 * (st.caught - 1.8) / 0.3; badges.push({ pix: STAR, palette: PAL.star, x: sx(st.pac.x) + 4 + Math.round(Math.cos(a) * r), y: sy(st.pac.y) + 4 + Math.round(Math.sin(a) * r), hf: 0, vf: 0 }); } return; }
+        base = PAC_DEATH[Math.min(PAC_DEATH.length - 1, Math.floor(st.caught / 1.8 * PAC_DEATH.length))];
+      } else {
         const phase = st.pac.moving ? Math.floor(fr / 2) % 4 : (fr % 16 < 12 ? 0 : 1);
         base = phase === 0 ? 0 : PAC_FRAMES[st.pac.d][phase - 1];
         if (st.pac.ds >= 2) base = PAC_FRAMES[[0, 1, 2, 3][Math.floor(fr / 2) % 4]][2];     // a dasher spins while the dash is strong: wide open, facing round in turn
@@ -3444,12 +3454,13 @@ body { background: var(--bg); color: var(--ink); }
     st.ghosts.forEach(g => {
       if (g.m === 'r') return;
       const foot = Math.floor(fr / 12) % 2 ? 2 : 0;
-      // eaten ghosts are a pair of eyes; so is a grey stand-in on the original's handheld (a body only once it wakes)
-      if (g.m === 'e' || g.seat < 0) sprite16(sprites, EYES[g.d], 7, sx(g.x), sy(g.y), 0);
-      else if (g.m === 'f') {
+      // eaten ghosts are a pair of eyes; so is a grey stand-in on the original's handheld (a body only once it wakes);
+      // frightened, a stand-in looks like any frightened ghost, without a player badge
+      if (g.m === 'f') {
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
-        badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
+        if (g.seat >= 0) badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
+      else if (g.m === 'e' || g.seat < 0) sprite16(sprites, EYES[g.d], 7, sx(g.x), sy(g.y), 0);
       else sprite16(sprites, GHOST_BASE[g.ds >= 2 ? Math.floor(fr / 2) % 4 : g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0, g.sq);
       if (g.st > 0 || g.bk > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(g.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(g.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     });
@@ -3750,9 +3761,9 @@ body { background: var(--bg); color: var(--ink); }
     const FULL = [[0, 0], [TVW, 0], [TVW, TVH], [0, TVH]];
     function caught(c) {
       const clamp = x => Math.max(0, Math.min(1, x));
-      const dim = clamp((c.t - 1.4) / 1.0), out = clamp((c.t - (c.total - 0.9)) / 0.9);
+      const dim = clamp((c.t - 1.3) / 0.7), out = clamp((c.t - (c.total - 0.9)) / 0.9);
       if (dim > 0) R.poly(FULL, [0.5, 0.28, 0, 0.62 * dim]);
-      if (c.t > 2.2) {
+      if (c.t > 2.0) {
         const hide = new Set(['CT_null', 'UR_null', 'UL_null', 'PUS_NL', 'GMS_NULL', 'Cng_NULL']);
         drawLayout(assets.mes, { hide, text: { MESSAGE: 'EXCELLENT' }, textures: { Ic_MON: ICONS[c.seat], pn_1: 'p' + (c.seat + 1) + '.bti' } });
       }
@@ -4370,9 +4381,10 @@ body { background: var(--bg); color: var(--ink); }
   }
   // Effects on the shared screen: points floating over whoever scored, stars when the fruit goes, the catch impact.
   const fx = { pops: [], sparkle: -1, burst: null, dust: [], sparks: [], lastPuff: new Map() }, FX_POP = 1.3, FX_BURST = 1.1, FX_SPARK = 0.8, FX_DUST = 0.45, FX_DASH = 0.5;
-  // Pac-Man's end as the ghosts see it (measured on the original, see FIDELITY.md): he spins round twice while shrinking
-  // to nothing, the rays and the points come once he is gone, the circles pull back and show him lying flat at 2 s.
-  const DEATH = { spin: 0.22, shrink: 0.14, burstAt: 0.5, flatAt: 2.0, pullBack: 1.6, pullTime: 0.5 };
+  // Pac-Man's end as the ghosts see it (measured on the original, see FIDELITY.md): on contact the "Excellent" line starts
+  // and he spins round twice while shrinking to nothing; the rays and the points come once he is gone; at 1 s he is back
+  // lying on his side and the circles pull back; the picture goes amber and the EXCELLENT box and the knock come at 2 s.
+  const DEATH = { spin: 0.22, shrink: 0.14, burstAt: 0.4, flatAt: 1.0, pullBack: 1.6, pullTime: 0.5 };
   let fxPrev = null;
   function fxDetect(cur) {
     const prev = fxPrev; fxPrev = cur;

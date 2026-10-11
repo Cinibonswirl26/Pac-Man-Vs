@@ -194,8 +194,13 @@
     }
     if (st.pac) {
       let base;
-      if (st.caught !== undefined && st.caught !== null) base = PAC_DEATH[Math.min(PAC_DEATH.length - 1, Math.floor(st.caught * 3))];
-      else {
+      // caught (measured on the original's handheld): the classic end over 2.1 s: the mouth opens wider and wider for about
+      // 1.8 s, then a burst of sparks for 0.3 s, then nothing until the next round
+      if (st.caught !== undefined && st.caught !== null) {
+        if (st.caught >= 2.1) return;
+        if (st.caught >= 1.8) { for (let k = 0; k < 4; k++) { const a = fr / 5 + k * 1.57, r = 4 + 6 * (st.caught - 1.8) / 0.3; badges.push({ pix: STAR, palette: PAL.star, x: sx(st.pac.x) + 4 + Math.round(Math.cos(a) * r), y: sy(st.pac.y) + 4 + Math.round(Math.sin(a) * r), hf: 0, vf: 0 }); } return; }
+        base = PAC_DEATH[Math.min(PAC_DEATH.length - 1, Math.floor(st.caught / 1.8 * PAC_DEATH.length))];
+      } else {
         const phase = st.pac.moving ? Math.floor(fr / 2) % 4 : (fr % 16 < 12 ? 0 : 1);
         base = phase === 0 ? 0 : PAC_FRAMES[st.pac.d][phase - 1];
         if (st.pac.ds >= 2) base = PAC_FRAMES[[0, 1, 2, 3][Math.floor(fr / 2) % 4]][2];     // a dasher spins while the dash is strong: wide open, facing round in turn
@@ -207,12 +212,13 @@
     st.ghosts.forEach(g => {
       if (g.m === 'r') return;
       const foot = Math.floor(fr / 12) % 2 ? 2 : 0;
-      // eaten ghosts are a pair of eyes; so is a grey stand-in on the original's handheld (a body only once it wakes)
-      if (g.m === 'e' || g.seat < 0) sprite16(sprites, EYES[g.d], 7, sx(g.x), sy(g.y), 0);
-      else if (g.m === 'f') {
+      // eaten ghosts are a pair of eyes; so is a grey stand-in on the original's handheld (a body only once it wakes);
+      // frightened, a stand-in looks like any frightened ghost, without a player badge
+      if (g.m === 'f') {
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
-        badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
+        if (g.seat >= 0) badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
+      else if (g.m === 'e' || g.seat < 0) sprite16(sprites, EYES[g.d], 7, sx(g.x), sy(g.y), 0);
       else sprite16(sprites, GHOST_BASE[g.ds >= 2 ? Math.floor(fr / 2) % 4 : g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0, g.sq);
       if (g.st > 0 || g.bk > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(g.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(g.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     });
