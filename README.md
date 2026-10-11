@@ -75,6 +75,20 @@ The server has to be reachable by everyone. Either:
 
 Rooms live in memory and disappear when everyone leaves.
 
+### Free: host from your own PC
+
+Double-click `host/Play-Online-Windows.cmd` (Windows) or run `host/play-online-mac-linux.sh` (Mac, Linux). The
+first run downloads a portable Node and Cloudflare's tunnel tool into `host/tools` (about 60 MB); then it starts
+the server and prints a public `https://....trycloudflare.com` link. Send that link to your friends. The link lasts
+while the window is open and changes each time you start. Nothing to sign up for.
+
+### Free: Render.com
+
+`render.yaml` at the repository root is a Render blueprint. Sign in to https://render.com with GitHub, choose
+**New → Blueprint**, pick this repository, press **Apply**: you get `https://pacvs-xxxx.onrender.com`. The free
+plan sleeps after 15 minutes without visitors and takes half a minute to wake on the next visit; rooms are lost
+when it sleeps. No card needed.
+
 ### Deploying to Fly.io
 
 The easy way is the GitHub Action in `.github/workflows/fly.yml`, which deploys every push of this folder:

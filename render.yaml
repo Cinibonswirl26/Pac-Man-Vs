@@ -1,0 +1,12 @@
+# Render.com blueprint: a free web service running the game server (sleeps after 15 min idle, wakes on the next visit).
+services:
+  - type: web
+    name: pacvs
+    runtime: node
+    plan: free
+    rootDir: pacvs
+    buildCommand: npm ci --omit=dev
+    startCommand: node server/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
