@@ -1,7 +1,7 @@
-# Fly.io config. Change `app` to your own app name (names are global), then `fly deploy`.
+# Fly.io config. The GitHub Action (.github/workflows/fly.yml) deploys with `--app pacvs-<github user>`;
+# by hand, pass `--app yourname` to `fly deploy` or add an `app = "..."` line here.
 # Rooms live in memory, so keep one machine running at all times: a second machine would split the players,
 # and a stopped one would drop every room.
-app = "pacvs"
 primary_region = "iad"
 
 [build]

@@ -77,18 +77,20 @@ Rooms live in memory and disappear when everyone leaves.
 
 ### Deploying to Fly.io
 
-A `Dockerfile` and `fly.toml` are included. With the [flyctl](https://fly.io/docs/flyctl/) tool signed in:
+The easy way is the GitHub Action in `.github/workflows/fly.yml`, which deploys every push of this folder:
+1. Make a Fly.io account at https://fly.io (it asks for a card; the smallest machine is a couple of dollars a month).
+2. On the Fly.io dashboard open **Tokens** (https://fly.io/dashboard/personal/tokens), create a token and copy it.
+3. On the GitHub repository open **Settings → Secrets and variables → Actions → New repository secret**, name it
+   `FLY_API_TOKEN`, paste the token.
+4. Open the **Actions** tab, pick **Deploy to Fly.io**, press **Run workflow** (or just push a change).
 
-```
-cd pacvs
-fly apps create my-pacvs          # pick a free name, then put it in fly.toml under `app`
-fly deploy
-fly open                          # https://my-pacvs.fly.dev
-```
+The first run creates the app `pacvs-<your GitHub user>` and starts it; the game is then at
+`https://pacvs-<your GitHub user>.fly.dev`. Every later push deploys again by itself.
 
-The config keeps one machine running at all times (`auto_stop_machines = "off"`, `min_machines_running = 1`):
-rooms live in memory, so a stopped machine would drop them and a second machine would split the players. The
-smallest shared machine is plenty for a few rooms. `fly deploy` again after each change.
+By hand instead, with [flyctl](https://fly.io/docs/flyctl/) signed in: `cd pacvs && fly apps create NAME &&
+fly deploy --app NAME --ha=false`. The config keeps one machine running at all times
+(`auto_stop_machines = "off"`, `min_machines_running = 1`): rooms live in memory, so a stopped machine would drop
+them and a second machine would split the players. The smallest shared machine is plenty for a few rooms.
 
 ## Using your own disc image
 
