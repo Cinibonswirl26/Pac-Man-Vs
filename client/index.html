@@ -100,6 +100,10 @@
     <label class="note" for="mazeSel">Maze
       <select id="mazeSel"><option value="builtin">Built-in maze</option></select></label>
     <button id="solo" class="primary">Start single player</button>
+    <div class="row" id="serverRow" hidden>
+      <label class="note" for="server">Game server <input id="server" type="text" placeholder="address or room link" aria-label="Game server address" style="width:16em"></label>
+      <span class="note">the address a host printed, or where the game is hosted</span>
+    </div>
     <div class="row" id="online">
       <button id="find" class="primary">Find a game</button>
       <label class="note" for="fillCpu"><input type="checkbox" id="fillCpu" checked> Fill empty seats with computer players 60 s after two players meet</label>

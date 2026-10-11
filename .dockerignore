@@ -1,6 +1,7 @@
 node_modules
 test
 host
+android
 .github
 artifact.html
 soundlab_art.html

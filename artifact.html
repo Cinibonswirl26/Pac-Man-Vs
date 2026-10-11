@@ -96,6 +96,10 @@ body { background: var(--bg); color: var(--ink); }
     <label class="note" for="mazeSel">Maze
       <select id="mazeSel"><option value="builtin">Built-in maze</option></select></label>
     <button id="solo" class="primary">Start single player</button>
+    <div class="row" id="serverRow" hidden>
+      <label class="note" for="server">Game server <input id="server" type="text" placeholder="address or room link" aria-label="Game server address" style="width:16em"></label>
+      <span class="note">the address a host printed, or where the game is hosted</span>
+    </div>
     <div class="row" id="online" hidden>
       <button id="find" class="primary">Find a game</button>
       <label class="note" for="fillCpu"><input type="checkbox" id="fillCpu" checked> Fill empty seats with computer players 60 s after two players meet</label>
@@ -4215,8 +4219,21 @@ body { background: var(--bg); color: var(--ink); }
   async function idbGet(k) { const db = await idb(); return new Promise((res, rej) => { const r = db.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 
   // ------------------------------------------------------------------ networking
+  // The page normally comes from the game server itself. Packaged as an app it is loaded from the app's own files,
+  // and the player types in where the server is (what a host's window printed, or a room link).
+  const STANDALONE = !!window.PACVS_APP || location.protocol === 'file:' || /androidplatform\.net$/.test(location.hostname);
+  function serverOrigin() {
+    if (!STANDALONE) return location.origin;
+    let v = ($('server').value || '').trim();
+    if (!v) return null;
+    if (!/^https?:\/\//i.test(v)) v = 'http://' + v;
+    try { return new URL(v).origin; } catch { return null; }
+  }
   function connect(then) {
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+    const origin = serverOrigin();
+    if (!origin) { $('menuErr').textContent = 'Enter the game server address first (the one the host\'s window shows).'; return; }
+    store.set('pacvs.server', $('server').value.trim());
+    const url = origin.replace(/^http/, 'ws') + '/ws';
     ws = new WebSocket(url);
     ws.onopen = then;
     ws.onmessage = e => onMsg(JSON.parse(e.data));
@@ -4291,7 +4308,7 @@ body { background: var(--bg); color: var(--ink); }
   $('start').onclick = () => send({ t: 'start' });
   $('leave').onclick = () => toMenu();
   $('copyLink').onclick = async () => {
-    const link = `${location.origin}/?room=${room.code}`;
+    const link = `${serverOrigin() || location.origin}/?room=${room.code}`;
     try { await navigator.clipboard.writeText(link); $('lobbyNote').textContent = 'Invite link copied.'; }
     catch { $('lobbyNote').textContent = 'Copy this link: ' + link; }
   };
@@ -4867,6 +4884,13 @@ body { background: var(--bg); color: var(--ink); }
   $('name').value = store.get('pacvs.name') || ''; if (store.get('pacvs.fillCpu') === '0') $('fillCpu').checked = false;
   try { const o = JSON.parse(store.get('pacvs.solo') || 'null'); if (o) { $('soloRole').value = o.start; $('soloLevel').value = String(o.level); $('target').value = String(o.target); if (o.kinds) [1, 2, 3].forEach(i => { if (o.kinds[i] === 'cpu' || o.kinds[i] === 'standin') $('kind' + i).value = o.kinds[i]; }); else if (o.fill === 'cpu') [1, 2, 3].forEach(i => { $('kind' + i).value = 'cpu'; }); } } catch { /* defaults */ }
   fillMazes();                                    // the built-in maze and its Arrangement level are there before any disc is read
+  if (STANDALONE) {
+    $('serverRow').hidden = false; $('server').value = store.get('pacvs.server') || '';
+    $('server').onchange = () => {                                        // a pasted room link fills the code in too
+      const m = /[?&]room=([A-Za-z0-9]{1,4})/.exec($('server').value);
+      if (m) $('code').value = m[1].toUpperCase();
+    };
+  }
   const qr = new URLSearchParams(location.search).get('room');
   if (qr) { $('code').value = qr.toUpperCase().slice(0, 4); $('menuErr').textContent = 'Enter your name and press Join to enter room ' + $('code').value + '.'; }
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });

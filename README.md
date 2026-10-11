@@ -90,6 +90,17 @@ demand from the Actions tab); open the run and download **PacManVs-exe**. Or bui
 Windows Node once). The file packs only this folder's page files and the server; nothing from any disc or
 cartridge is in it, players still bring their own copy in the browser. `--port=8081` starts on another port.
 
+### The Android app
+
+`PacManVs.apk` is the game's page wrapped as a phone app: full-screen landscape, the disc picked from the phone's
+files with the page's own button, and a **Game server** box on the menu where you type the address a host's
+window printed (or paste a room link, which fills the room code in too). It has no server of its own; it joins
+one of the above. The GitHub Action in `.github/workflows/apk.yml` builds it on every push of the page files
+and attaches **PacManVs-apk** to the run; or build it yourself with the Android SDK: `gradle -p android
+assembleDebug` (writes `android/app/build/outputs/apk/debug/app-debug.apk`). It is signed with a debug key,
+so the phone asks once to allow installs from your browser or file manager. The app packs only this folder's
+page files, nothing from any disc or cartridge.
+
 ### Free: host from your own PC with a tunnel
 
 Double-click `host/Play-Online-Windows.cmd` (Windows) or run `host/play-online-mac-linux.sh` (Mac, Linux). The
