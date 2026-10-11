@@ -330,7 +330,9 @@
     function exchange(st, width) {
       frameStart(width);
       drawLayout(assets.exchange, { text: { TIME: String(st.target) } });
-      const k = Math.min(1, Math.max(0, (st.time - 1.2) / 1.2));   // scores slide from before to after
+      // the points count across at about 120 a second (measured: 1,600 took about 13 s), from 1.2 s in
+      const moved = st.loser >= 0 ? Math.max(1, st.before[st.loser] - st.after[st.loser]) : 1, countT = moved / 120;
+      const k = Math.min(1, Math.max(0, (st.time - 1.2) / countT));
       const order = rowOrder(st);
       order.forEach((i, col) => {
         const cx = 90 + 152 * col, cy = 211;
@@ -348,7 +350,7 @@
         if (i === st.loser) { sprite(ringMat, 'lost.bti', cx, 128, 144, 52); say('-' + (st.before[i] - st.after[i]), cx, 350, 20); }
         if (i === st.winner) { sprite(ringMat, 'win.bti', cx, 128, 144, 52); say('+' + (st.after[i] - st.before[i]), cx, 350, 20); }
       });
-      if (st.time > 2.6) {   // the arrow points at the next Pac-Man
+      if (st.time > 1.2 + countT + 1.5) {   // once the count is done, the arrow points at the next Pac-Man
         const col = order.indexOf(st.winner), cx = 90 + 152 * col;
         sprite(ringMat, 'yajirushi.bti', cx + (col < 3 ? 120 : -120), 405, 128, 40, null, col >= 3);
       }

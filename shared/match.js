@@ -12,6 +12,9 @@
 })(typeof self !== 'undefined' ? self : this, function (Sim) {
   'use strict';
   const COUNTDOWN = 3.5, ROUND_END = 5, HANDOFF = 15;
+  // after a catch: CAUGHT seconds of the catch and the EXCELLENT box, then the exchange screen counts the stolen points across at
+  // 120 a second from 1.2 s in and shows the arrow 1.5 s after (measured); the hand-over wait for the new Pac-Man starts then
+  const EXCHANGE = steal => 1.2 + Math.max(1, steal || 0) / 120 + 1.5;
   const CAUGHT = 7;       // after a catch: the impact, the amber message, then the exchange screen (measured, see FIDELITY.md)
 
   class Match {
@@ -59,11 +62,9 @@
       if (!this.slots) this.slots = [0, 1, 2, 3].filter(i => i !== this.pac);
       // Seats nobody is playing: either computer players, or grey stand-ins that only wake up when a ghost player touches them.
       const standin = this.slots.map(p => this.kindOf(p) === 'standin');
-      // a stand-in that a ghost woke stays woken from round to round until it is eaten, wearing the colour of whoever plays the
-      // waking ghost's slot now (measured on the original: after a catch the old Pac-Man takes over the catcher's slot, and the
-      // stand-ins that slot woke turn to the new occupant's colour)
-      const claims = this.sim ? this.sim.ghosts.map(g => g.standin && !g.grey ? g.claim : -1) : null;
-      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, claims, players: this.slots, rng: this.rng });
+      // every stand-in starts the round grey again (measured on the original: a stand-in woken in one round is grey at the
+      // start of the next)
+      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, players: this.slots, rng: this.rng });
       this.phase = 'countdown'; this.phaseLeft = COUNTDOWN;
     }
     /** Advance one fixed step. inputs[i] is the latest direction for human seat i.
@@ -85,7 +86,7 @@
           inp.act.push(this.isHuman(p) ? !!(acts && acts[p]) : this.Sim.cpuAct(s, gi, this.rng, dt || this.Sim.CFG.tick));
         }
         this.Sim.update(s, inp, dt);
-        if (s.over) { this.phase = 'roundover'; this.phaseLeft = ROUND_END + (s.overReason === 'caught' ? CAUGHT : 0); }
+        if (s.over) { this.phase = 'roundover'; this.phaseLeft = s.overReason === 'caught' ? CAUGHT + EXCHANGE(s.steal) : ROUND_END; }
       } else if (this.phase === 'roundover') {
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) {
@@ -124,5 +125,5 @@
       return v;
     }
   }
-  return { Match, COUNTDOWN, ROUND_END, HANDOFF, CAUGHT };
+  return { Match, COUNTDOWN, ROUND_END, HANDOFF, CAUGHT, EXCHANGE };
 });

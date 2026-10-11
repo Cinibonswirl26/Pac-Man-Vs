@@ -121,8 +121,7 @@
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
       pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it.
-      // opts.claims[i]: the ghost slot that woke stand-in i in an earlier round (it stays woken until eaten; it wears the colour
-      // of whoever plays that slot now, since the old Pac-Man takes over the catcher's slot), or -1
+      // opts.claims[i]: the ghost slot stand-in i is already woken by (tests only; a match starts every stand-in grey), or -1
       ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]) && !(opts.claims && opts.claims[i] >= 0), standin: !!(opts.standin && opts.standin[i]), claim: opts.standin && opts.standin[i] && opts.claims && opts.claims[i] >= 0 ? opts.claims[i] : -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
@@ -674,7 +673,7 @@
     let st = pacMemo.get(s); if (!st) pacMemo.set(s, st = { left: s.left, t: s.time });
     if (st.left !== s.left || s.time < st.t) { st.left = s.left; st.t = s.time; }
     const idle = s.time - st.t, nerve = idle < 6 ? 1 : Math.max(0.15, 1 - (idle - 6) / 12);
-    const margin = (level === 0 ? 0.9 : level === 1 ? 0.45 : 0.6) * nerve;
+    const margin = (level === 0 ? 0.9 : level === 1 ? 0.45 : 0.4) * nerve;
     const safe = i => ga[i] - pd[i] / CFG.pacSpeed > margin;
     const sx = Math.floor(p.x), sy = Math.floor(p.y);
     const skip = (x, y) => !safe(tileIdx(x, y)) && !(x === sx && y === sy);

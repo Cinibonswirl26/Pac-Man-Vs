@@ -267,8 +267,7 @@ body { background: var(--bg); color: var(--ink); }
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
       pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it.
-      // opts.claims[i]: the ghost slot that woke stand-in i in an earlier round (it stays woken until eaten; it wears the colour
-      // of whoever plays that slot now, since the old Pac-Man takes over the catcher's slot), or -1
+      // opts.claims[i]: the ghost slot stand-in i is already woken by (tests only; a match starts every stand-in grey), or -1
       ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]) && !(opts.claims && opts.claims[i] >= 0), standin: !!(opts.standin && opts.standin[i]), claim: opts.standin && opts.standin[i] && opts.claims && opts.claims[i] >= 0 ? opts.claims[i] : -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
@@ -820,7 +819,7 @@ body { background: var(--bg); color: var(--ink); }
     let st = pacMemo.get(s); if (!st) pacMemo.set(s, st = { left: s.left, t: s.time });
     if (st.left !== s.left || s.time < st.t) { st.left = s.left; st.t = s.time; }
     const idle = s.time - st.t, nerve = idle < 6 ? 1 : Math.max(0.15, 1 - (idle - 6) / 12);
-    const margin = (level === 0 ? 0.9 : level === 1 ? 0.45 : 0.6) * nerve;
+    const margin = (level === 0 ? 0.9 : level === 1 ? 0.45 : 0.4) * nerve;
     const safe = i => ga[i] - pd[i] / CFG.pacSpeed > margin;
     const sx = Math.floor(p.x), sy = Math.floor(p.y);
     const skip = (x, y) => !safe(tileIdx(x, y)) && !(x === sx && y === sy);
@@ -1074,6 +1073,9 @@ body { background: var(--bg); color: var(--ink); }
 })(typeof self !== 'undefined' ? self : this, function (Sim) {
   'use strict';
   const COUNTDOWN = 3.5, ROUND_END = 5, HANDOFF = 15;
+  // after a catch: CAUGHT seconds of the catch and the EXCELLENT box, then the exchange screen counts the stolen points across at
+  // 120 a second from 1.2 s in and shows the arrow 1.5 s after (measured); the hand-over wait for the new Pac-Man starts then
+  const EXCHANGE = steal => 1.2 + Math.max(1, steal || 0) / 120 + 1.5;
   const CAUGHT = 7;       // after a catch: the impact, the amber message, then the exchange screen (measured, see FIDELITY.md)
 
   class Match {
@@ -1121,11 +1123,9 @@ body { background: var(--bg); color: var(--ink); }
       if (!this.slots) this.slots = [0, 1, 2, 3].filter(i => i !== this.pac);
       // Seats nobody is playing: either computer players, or grey stand-ins that only wake up when a ghost player touches them.
       const standin = this.slots.map(p => this.kindOf(p) === 'standin');
-      // a stand-in that a ghost woke stays woken from round to round until it is eaten, wearing the colour of whoever plays the
-      // waking ghost's slot now (measured on the original: after a catch the old Pac-Man takes over the catcher's slot, and the
-      // stand-ins that slot woke turn to the new occupant's colour)
-      const claims = this.sim ? this.sim.ghosts.map(g => g.standin && !g.grey ? g.claim : -1) : null;
-      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, claims, players: this.slots, rng: this.rng });
+      // every stand-in starts the round grey again (measured on the original: a stand-in woken in one round is grey at the
+      // start of the next)
+      this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, players: this.slots, rng: this.rng });
       this.phase = 'countdown'; this.phaseLeft = COUNTDOWN;
     }
     /** Advance one fixed step. inputs[i] is the latest direction for human seat i.
@@ -1147,7 +1147,7 @@ body { background: var(--bg); color: var(--ink); }
           inp.act.push(this.isHuman(p) ? !!(acts && acts[p]) : this.Sim.cpuAct(s, gi, this.rng, dt || this.Sim.CFG.tick));
         }
         this.Sim.update(s, inp, dt);
-        if (s.over) { this.phase = 'roundover'; this.phaseLeft = ROUND_END + (s.overReason === 'caught' ? CAUGHT : 0); }
+        if (s.over) { this.phase = 'roundover'; this.phaseLeft = s.overReason === 'caught' ? CAUGHT + EXCHANGE(s.steal) : ROUND_END; }
       } else if (this.phase === 'roundover') {
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) {
@@ -1186,7 +1186,7 @@ body { background: var(--bg); color: var(--ink); }
       return v;
     }
   }
-  return { Match, COUNTDOWN, ROUND_END, HANDOFF, CAUGHT };
+  return { Match, COUNTDOWN, ROUND_END, HANDOFF, CAUGHT, EXCHANGE };
 });
 
 </script>
@@ -3833,7 +3833,9 @@ body { background: var(--bg); color: var(--ink); }
     function exchange(st, width) {
       frameStart(width);
       drawLayout(assets.exchange, { text: { TIME: String(st.target) } });
-      const k = Math.min(1, Math.max(0, (st.time - 1.2) / 1.2));   // scores slide from before to after
+      // the points count across at about 120 a second (measured: 1,600 took about 13 s), from 1.2 s in
+      const moved = st.loser >= 0 ? Math.max(1, st.before[st.loser] - st.after[st.loser]) : 1, countT = moved / 120;
+      const k = Math.min(1, Math.max(0, (st.time - 1.2) / countT));
       const order = rowOrder(st);
       order.forEach((i, col) => {
         const cx = 90 + 152 * col, cy = 211;
@@ -3851,7 +3853,7 @@ body { background: var(--bg); color: var(--ink); }
         if (i === st.loser) { sprite(ringMat, 'lost.bti', cx, 128, 144, 52); say('-' + (st.before[i] - st.after[i]), cx, 350, 20); }
         if (i === st.winner) { sprite(ringMat, 'win.bti', cx, 128, 144, 52); say('+' + (st.after[i] - st.before[i]), cx, 350, 20); }
       });
-      if (st.time > 2.6) {   // the arrow points at the next Pac-Man
+      if (st.time > 1.2 + countT + 1.5) {   // once the count is done, the arrow points at the next Pac-Man
         const col = order.indexOf(st.winner), cx = 90 + 152 * col;
         sprite(ringMat, 'yajirushi.bti', cx + (col < 3 ? 120 : -120), 405, 128, 40, null, col >= 3);
       }
@@ -4341,8 +4343,10 @@ body { background: var(--bg); color: var(--ink); }
   }
   // Hand-over: after a catch the new Pac-Man says when they are ready (the original's exchange screen asks them to press Start).
   const myHandoff = () => !!(snap && snap.phase === 'handoff' && snap.next === you);
+  // the exchange screen first counts the stolen points across (about 120 a second), then asks the new Pac-Man to press Start
+  const exchangeDone = () => !snap || !art.screens || performance.now() - exchangeT0 >= PacMatch.EXCHANGE(snap.steal) * 1000;
   function ready() {
-    if (!myHandoff()) return false;
+    if (!myHandoff() || !exchangeDone()) return false;
     if (mode === 'online') send({ t: 'ready' }); else if (offline) offline.match.ready(0);
     return true;
   }
@@ -4531,7 +4535,7 @@ body { background: var(--bg); color: var(--ink); }
     if (snap.phase === 'handoff') {
       const secs = Math.ceil(snap.left_t), nx = names[snap.next];
       html = myHandoff()
-        ? `<div class="handoff"><div class="big">You are Pac-Man next</div><div class="sm">Press any key or tap when ready · starts in ${secs} s</div><button class="primary" id="readyBtn">Ready</button></div>`
+        ? (exchangeDone() ? `<div class="handoff"><div class="big">You are Pac-Man next</div><div class="sm">Press any key or tap when ready · starts in ${secs} s</div><button class="primary" id="readyBtn">Ready</button></div>` : '')
         : `<div class="handoff"><div class="big">${esc(nx)} is Pac-Man next</div><div class="sm">Waiting for ${esc(nx)} to get ready · ${secs} s</div></div>`;
     } else if (onDisc && snap.phase === 'roundover') html = '';
     else if (onDisc && snap.phase === 'final') {

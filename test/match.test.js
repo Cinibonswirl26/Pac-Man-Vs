@@ -86,22 +86,15 @@ for (const seed of [3, 7, 11]) {
     s.ghosts[gi].grey = false; s.ghosts[gi].claim = oslot;                  // woken by the other person's ghost (its slot)
     s.over = true; s.overReason = 'cleared'; m.phase = 'play';               // the round ends without a catch
     while (m.phase !== 'countdown') m.tick([null, null, null, null]);
-    ok(!m.sim.ghosts[gi].grey && m.sim.ghosts[gi].claim === oslot && m.Sim.colorOf(m.sim, gi) === other, 'a woken stand-in keeps its colour into the next round');
-    m.sim.ghosts[gi].mode = 'fright'; m.sim.frightLeft = 5; m.sim.ghosts[gi].x = m.sim.pac.x; m.sim.ghosts[gi].y = m.sim.pac.y;
-    m.sim.ghosts.forEach((g, k) => { if (k !== gi) { g.x = 1.5; g.y = 1.5; } });
-    m.phase = 'play'; m.tick([null, null, null, null]);
-    ok(m.sim.ghosts[gi].mode === 'eyes' && m.sim.ghosts[gi].grey, 'eaten, it is grey again');
-    m.sim.over = true; m.sim.overReason = 'cleared'; m.phase = 'play'; while (m.phase !== 'countdown') m.tick([null, null, null, null]);
-    ok(m.sim.ghosts[gi].grey, 'and stays grey next round');
+    ok(m.sim.ghosts[gi].grey && m.sim.ghosts[gi].claim === -1, 'a woken stand-in is grey again when the next round starts (measured on the original)');
     const m2 = new Match(i => i < 2, 5, { kinds: ['human', 'human', 'standin', 'standin'] }); m2.start();
     const s2 = m2.sim, g2 = m2.Sim.ghostIndexOf(s2, 2), o2 = [0, 1].find(p => p !== m2.pac);
-    const oldPac = m2.pac, slot2 = m2.Sim.ghostIndexOf(s2, o2);
+    const slot2 = m2.Sim.ghostIndexOf(s2, o2);
     s2.ghosts[g2].grey = false; s2.ghosts[g2].claim = slot2;
     s2.catcher = o2; s2.over = true; s2.overReason = 'caught'; m2.phase = 'play';   // that player catches Pac-Man and is Pac-Man next
     while (m2.phase !== 'handoff' && m2.phase !== 'countdown') m2.tick([null, null, null, null]);
     if (m2.phase === 'handoff') { m2.ready(o2); }
-    const g3 = m2.Sim.ghostIndexOf(m2.sim, 2);
-    ok(m2.pac === o2 && !m2.sim.ghosts[g3].grey && m2.Sim.colorOf(m2.sim, g3) === oldPac, 'when its waker becomes Pac-Man the stand-in stays woken in the colour of the old Pac-Man, who takes over that slot (measured on the original)');
+    ok(m2.pac === o2 && m2.sim.ghosts[m2.Sim.ghostIndexOf(m2.sim, 2)].grey, 'grey again after a catch too');
   }
 }
 console.log(fails ? fails + ' FAILED' : 'match flow ok'); process.exit(fails ? 1 : 0);

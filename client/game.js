@@ -448,8 +448,10 @@
   }
   // Hand-over: after a catch the new Pac-Man says when they are ready (the original's exchange screen asks them to press Start).
   const myHandoff = () => !!(snap && snap.phase === 'handoff' && snap.next === you);
+  // the exchange screen first counts the stolen points across (about 120 a second), then asks the new Pac-Man to press Start
+  const exchangeDone = () => !snap || !art.screens || performance.now() - exchangeT0 >= PacMatch.EXCHANGE(snap.steal) * 1000;
   function ready() {
-    if (!myHandoff()) return false;
+    if (!myHandoff() || !exchangeDone()) return false;
     if (mode === 'online') send({ t: 'ready' }); else if (offline) offline.match.ready(0);
     return true;
   }
@@ -638,7 +640,7 @@
     if (snap.phase === 'handoff') {
       const secs = Math.ceil(snap.left_t), nx = names[snap.next];
       html = myHandoff()
-        ? `<div class="handoff"><div class="big">You are Pac-Man next</div><div class="sm">Press any key or tap when ready · starts in ${secs} s</div><button class="primary" id="readyBtn">Ready</button></div>`
+        ? (exchangeDone() ? `<div class="handoff"><div class="big">You are Pac-Man next</div><div class="sm">Press any key or tap when ready · starts in ${secs} s</div><button class="primary" id="readyBtn">Ready</button></div>` : '')
         : `<div class="handoff"><div class="big">${esc(nx)} is Pac-Man next</div><div class="sm">Waiting for ${esc(nx)} to get ready · ${secs} s</div></div>`;
     } else if (onDisc && snap.phase === 'roundover') html = '';
     else if (onDisc && snap.phase === 'final') {
