@@ -338,21 +338,35 @@
   // ------------------------------------------------------------------ menu / lobby
   function playerName() { const n = $('name').value.trim() || 'Player'; store.set('pacvs.name', n); return n; }
   function toMenu(msg) {
-    stopLoops();
+    stopLoops(); clearInterval(lobbyTick); lobbyTick = null;
     if (ws) { try { send({ t: 'leave' }); ws.close(); } catch { /* closing */ } }
     mode = null; room = null; offline = null; snap = null; stopMusic(); setSiren(false); setTune(false); screen('menu'); setMaze(null);
     $('menuErr').textContent = msg || '';
     if (music.disc) playMusic(MENU_TRACK, true);
   }
+  let lobbyTick = null;
   function renderLobby() {
     $('roomCode').textContent = room.code;
-    const host = room.host === you;
+    const host = room.host === you, humans = room.players.filter(p => !p.cpu).length;
     // an empty seat: the host picks what plays it, everyone else sees the choice
     const pick = (i, k) => `<select class="kindSel" data-seat="${i}" aria-label="Seat ${i + 1}"><option value="standin"${k === 'standin' ? ' selected' : ''}>Stand-in ghost</option><option value="cpu"${k === 'cpu' ? ' selected' : ''}>Computer player</option></select>`;
-    $('seats').innerHTML = room.players.map((p, i) => `<div class="seat ${i === you ? 'me' : ''}"><span class="dot" style="background:${SEAT_COLORS[i]}"></span>${p.cpu ? (host ? pick(i, p.kind || room.fill) : '<b>' + kindName(p.kind || room.fill) + '</b>') : '<b>' + esc(p.name) + '</b>'}<span class="note">${i === you ? '(you)' : ''}${i === room.host ? ' host' : ''}</span></div>`).join('');
+    $('seats').innerHTML = room.players.map((p, i) => `<div class="seat ${i === you ? 'me' : ''}"><span class="dot" style="background:${SEAT_COLORS[i]}"></span>${p.cpu ? (host && !room.quick ? pick(i, p.kind || room.fill) : '<b>' + (room.quick ? 'Open seat' : kindName(p.kind || room.fill)) + '</b>') : '<b>' + esc(p.name) + '</b>'}<span class="note">${i === you ? '(you)' : ''}${i === room.host ? ' host' : ''}</span></div>`).join('');
     for (const sel of document.querySelectorAll('#seats .kindSel')) sel.onchange = () => send({ t: 'seat', i: +sel.dataset.seat, kind: sel.value });
-    $('start').classList.toggle('hidden', !host);
-    $('lobbyNote').textContent = host ? 'You are the host. Start whenever everyone is in.' : 'Waiting for the host to start.';
+    clearInterval(lobbyTick); lobbyTick = null;
+    if (room.quick) {
+      // quick match: starts by itself; the host may start early once a second person is in
+      $('start').classList.toggle('hidden', !host || humans < 2);
+      const got = Date.now(), note = () => {
+        const left = room.startsIn == null ? null : Math.max(0, room.startsIn - Math.round((Date.now() - got) / 1000));
+        $('lobbyNote').textContent = humans < 2 ? `Looking for players… ${humans} of 4. The match starts ${room.autoFill ? 'a minute after the second player arrives' : 'when four players are in'}; share the room code to bring friends.`
+          : left != null ? `${humans} of 4 players. Starting in ${left} s, or as soon as four are in; empty seats go to computer players.`
+          : `${humans} of 4 players. Waiting for four players.`;
+      };
+      note(); if (room.startsIn != null) lobbyTick = setInterval(note, 1000);
+    } else {
+      $('start').classList.toggle('hidden', !host);
+      $('lobbyNote').textContent = host ? 'You are the host. Start whenever everyone is in.' : 'Waiting for the host to start.';
+    }
   }
   /** The colour seat ghost i wears right now (-1 = a grey stand-in): its player's, or the colour of the ghost that woke it. */
   const gcolor = i => { const c = snap.ghosts[i] && snap.ghosts[i].c; return c == null ? S.playerOfGhost(snap, i) : c; };
@@ -369,6 +383,7 @@
     store.set('pacvs.solo', JSON.stringify({ start: opts.start, level: opts.level, target: opts.target, kinds: opts.kinds })); store.set('pacvs.maze', $('mazeSel').value); startOffline(opts);
   };
   $('host').onclick = () => { audio(); $('menuErr').textContent = ''; store.set('pacvs.maze', $('mazeSel').value); connect(() => send({ t: 'create', name: playerName(), maze: mazeOf(), target: +$('target').value, kinds: seatKinds() })); };
+  $('find').onclick = () => { audio(); $('menuErr').textContent = ''; store.set('pacvs.fillCpu', $('fillCpu').checked ? '1' : '0'); connect(() => send({ t: 'find', name: playerName(), fill: $('fillCpu').checked })); };
   $('join').onclick = () => {
     audio(); const c = $('code').value.trim().toUpperCase();
     if (c.length !== 4) { $('menuErr').textContent = 'Room codes have 4 letters.'; return; }
@@ -944,7 +959,7 @@
   }
 
   // ------------------------------------------------------------------ boot
-  $('name').value = store.get('pacvs.name') || '';
+  $('name').value = store.get('pacvs.name') || ''; if (store.get('pacvs.fillCpu') === '0') $('fillCpu').checked = false;
   try { const o = JSON.parse(store.get('pacvs.solo') || 'null'); if (o) { $('soloRole').value = o.start; $('soloLevel').value = String(o.level); $('target').value = String(o.target); if (o.kinds) [1, 2, 3].forEach(i => { if (o.kinds[i] === 'cpu' || o.kinds[i] === 'standin') $('kind' + i).value = o.kinds[i]; }); else if (o.fill === 'cpu') [1, 2, 3].forEach(i => { $('kind' + i).value = 'cpu'; }); } } catch { /* defaults */ }
   fillMazes();                                    // the built-in maze and its Arrangement level are there before any disc is read
   const qr = new URLSearchParams(location.search).get('room');

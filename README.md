@@ -59,6 +59,12 @@ counter shows how many pellets are left. Pac-Man sees the whole maze.
 
 ## Playing with friends
 
+**Find a game** on the menu is the quick match: the server puts you in an open room with whoever else is looking,
+or opens one for you. With the box ticked (the default), the match starts a minute after the second player
+arrives, or as soon as four are in, and empty seats go to computer players; untick it to wait for four people.
+The first player in can also start early once a second one is there. Quick rooms play the built-in maze, so
+nobody needs a disc. The room code still works, so friends can join a quick room too.
+
 The server has to be reachable by everyone. Either:
 - run `npm start` on a machine with a public address or port forward, or
 - run it locally and expose it with a tunnel (for example `cloudflared tunnel --url http://localhost:8080`
@@ -68,6 +74,21 @@ The server has to be reachable by everyone. Either:
   (wss automatically under https).
 
 Rooms live in memory and disappear when everyone leaves.
+
+### Deploying to Fly.io
+
+A `Dockerfile` and `fly.toml` are included. With the [flyctl](https://fly.io/docs/flyctl/) tool signed in:
+
+```
+cd pacvs
+fly apps create my-pacvs          # pick a free name, then put it in fly.toml under `app`
+fly deploy
+fly open                          # https://my-pacvs.fly.dev
+```
+
+The config keeps one machine running at all times (`auto_stop_machines = "off"`, `min_machines_running = 1`):
+rooms live in memory, so a stopped machine would drop them and a second machine would split the players. The
+smallest shared machine is plenty for a few rooms. `fly deploy` again after each change.
 
 ## Using your own disc image
 

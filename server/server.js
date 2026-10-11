@@ -29,6 +29,10 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 2048 });
 const rooms = new Map();
+// Quick match: "Find a game" puts a player into an open quick room with the same fill setting, or opens one. A room
+// that fills empty seats starts 60 s after its second player arrives (or at once with four); one that does not
+// waits for four people. Quick rooms play the built-in maze at the default target so nobody needs a disc.
+const QUICK_WAIT = +process.env.QUICK_WAIT || 60;
 
 class Room {
   constructor(code, maze, target, fill, kinds) {
@@ -41,6 +45,17 @@ class Room {
     this.inputs = [null, null, null, null]; this.acts = [false, false, false, false];
     this.match = new Match(i => !!this.slots[i], undefined, { maze: this.maze, target: this.target, fill: this.fill, kinds: this.kinds });
     this.timer = null;
+    this.quick = false; this.autoFill = false; this.startAt = 0; this.waitTimer = null;   // quick match (see QUICK_WAIT)
+  }
+  /** A quick room: starts with four people, or QUICK_WAIT s after the second person when it fills seats with computer players. */
+  checkQuick() {
+    if (!this.quick || this.match.phase !== 'lobby') return;
+    const n = this.humans();
+    if (n >= 4) return this.start();
+    if (this.autoFill && n >= 2 && !this.waitTimer) {
+      this.startAt = Date.now() + QUICK_WAIT * 1000;
+      this.waitTimer = setTimeout(() => { this.waitTimer = null; if (this.match.phase === 'lobby' && this.humans() >= 2) this.start(); }, QUICK_WAIT * 1000);
+    } else if (n < 2 && this.waitTimer) { clearTimeout(this.waitTimer); this.waitTimer = null; this.startAt = 0; }
   }
   static kind(k, dflt) { return k === 'standin' || k === 'cpu' ? k : dflt; }
   humans() { return this.slots.filter(Boolean).length; }
@@ -62,18 +77,21 @@ class Room {
     this.slots[i] = null; this.names[i] = 'CPU'; this.inputs[i] = null;
     ws.room = null;
     if (this.host === i) this.host = this.slots.findIndex(Boolean);
-    if (!this.humans()) { clearInterval(this.timer); rooms.delete(this.code); return; }
-    this.broadcastRoom();
+    if (!this.humans()) { clearInterval(this.timer); clearTimeout(this.waitTimer); rooms.delete(this.code); return; }
+    this.checkQuick(); this.broadcastRoom();
   }
   send(i, obj) { const w = this.slots[i]; if (w && w.readyState === 1) w.send(JSON.stringify(obj)); }
   roomInfo(i) {
     const m = this.match;
     return { t: 'room', code: this.code, maze: this.maze ? Object.assign({ name: this.maze.name, rows: this.maze.rows, pac: this.maze.pac, ghosts: this.maze.ghosts, door: this.maze.door, exit: this.maze.exit, house: this.maze.house }, this.maze.arrange ? { arrange: this.maze.arrange } : {}) : null, you: i, host: this.host, phase: m.phase,
-      players: this.names.map((n, k) => ({ name: n, cpu: !this.slots[k], kind: this.slots[k] ? 'human' : this.kinds[k] })), scores: m.scores, round: m.round, target: m.target, pac: m.pac, winner: m.winner, fill: this.fill, kinds: this.kinds.slice() };
+      players: this.names.map((n, k) => ({ name: n, cpu: !this.slots[k], kind: this.slots[k] ? 'human' : this.kinds[k] })), scores: m.scores, round: m.round, target: m.target, pac: m.pac, winner: m.winner, fill: this.fill, kinds: this.kinds.slice(),
+      quick: this.quick, autoFill: this.autoFill, startsIn: this.startAt && m.phase === 'lobby' ? Math.max(0, Math.round((this.startAt - Date.now()) / 1000)) : null };
   }
   broadcastRoom() { for (let i = 0; i < 4; i++) this.send(i, this.roomInfo(i)); }
   start() {
     if (this.match.phase !== 'lobby' && this.match.phase !== 'final') return;
+    if (this.quick && this.humans() < 2) return;      // a quick room never plays one person against computers
+    if (this.waitTimer) { clearTimeout(this.waitTimer); this.waitTimer = null; } this.startAt = 0;
     this.inputs = [null, null, null, null];
     this.match.start();
     this.broadcastRoom();
@@ -126,12 +144,19 @@ wss.on('connection', ws => {
         const room = new Room(code(), m.maze ? sanitizeMaze(m.maze) : null, Sim.CFG.targets.includes(m.target) ? m.target : Sim.CFG.defaultTarget, m.fill, Array.isArray(m.kinds) ? m.kinds : null); rooms.set(room.code, room);
         room.add(ws, clean(m.name)); room.broadcastRoom(); break;
       }
+      case 'find': {
+        if (r) return;
+        const fill = m.fill !== false;
+        let room = [...rooms.values()].find(x => x.quick && x.autoFill === fill && x.match.phase === 'lobby' && x.humans() < 4);
+        if (!room) { room = new Room(code(), null, Sim.CFG.defaultTarget, 'cpu', null); room.quick = true; room.autoFill = fill; rooms.set(room.code, room); }
+        room.add(ws, clean(m.name)); room.checkQuick(); room.broadcastRoom(); break;
+      }
       case 'join': {
         if (r) return;
         const room = rooms.get(String(m.code || '').toUpperCase().slice(0, 4));
         if (!room) return ws.send(JSON.stringify({ t: 'err', msg: 'No room with that code.' }));
         if (room.add(ws, clean(m.name)) < 0) return ws.send(JSON.stringify({ t: 'err', msg: 'Room is full.' }));
-        room.broadcastRoom(); break;
+        room.checkQuick(); room.broadcastRoom(); break;
       }
       case 'start': if (r && r.host === ws.slot) r.start(); break;
       case 'seat': if (r && r.host === ws.slot) r.setKind(m.i, m.kind); break;
