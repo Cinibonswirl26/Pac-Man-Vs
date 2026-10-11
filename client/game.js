@@ -499,7 +499,7 @@
   // Pac-Man's end as the ghosts see it (measured on the original, see FIDELITY.md): on contact the "Excellent" line starts
   // and he spins round twice while shrinking to nothing; the rays and the points come once he is gone; at 1 s he is back
   // lying on his side and the circles pull back; the picture goes amber and the EXCELLENT box and the knock come at 2 s.
-  const DEATH = { spin: 0.22, shrink: 0.14, burstAt: 0.4, flatAt: 1.0, pullBack: 1.6, pullTime: 0.5 };
+  const DEATH = { spin: 0.22, shrink: 0.14, burstAt: 0.4, flatAt: 1.0, pullBack: 1.6, pullTime: 0.5, handEnd: 2.1 };
   let fxPrev = null;
   function fxDetect(cur) {
     const prev = fxPrev; fxPrev = cur;
@@ -589,7 +589,8 @@
   const isCaught = () => snap && snap.phase === 'roundover' && snap.why === 'caught';
   let hudKey = '', phaseT0 = 0, exchangeT0 = 0;
   // Screens drawn from the disc between rounds: the exchange after a catch (through the hand-over) and the final results.
-  const discScreen = () => (snap && (((snap.phase === 'roundover' || snap.phase === 'handoff') && snap.why === 'caught') || snap.phase === 'final') && art.screens) ? sharedScreen() : null;
+  // Pac-Man's player keeps the handheld through its death animation (2.1 s, as on the original's handheld), then sees the TV.
+  const discScreen = () => (snap && (((snap.phase === 'roundover' || snap.phase === 'handoff') && snap.why === 'caught' && !(snap.me < 0 && snap.phase === 'roundover' && caughtAge() < DEATH.handEnd)) || snap.phase === 'final') && art.screens) ? sharedScreen() : null;
   function onSnap(force) {
     if (!snap) return;
     fxDetect(snap);
@@ -644,7 +645,8 @@
       html = `<div class="row" style="justify-content:center;flex:none;margin-top:auto">${canAgain ? '<button class="primary" id="again">Play again</button>' : '<span class="sm">Waiting for the host…</span>'}<button id="quit">Back to menu</button></div>`;
     } else if (snap.phase === 'countdown') {
       html = `<div class="big">${Math.min(3, Math.max(1, Math.ceil(snap.left_t)))}</div><div class="sm">${pacMe ? `You are Pac-Man with ${fmt(snap.scores[snap.pacPlayer])} points. Eat pellets. If a ghost catches you it steals 1,600.` : `${esc(pn)} is Pac-Man. Catch Pac-Man to steal 1,600 points and become Pac-Man yourself.`}</div>`;
-    } else if (snap.phase === 'roundover') {
+    } else if (snap.phase === 'roundover' && snap.why === 'caught' && pacMe && caughtAge() < DEATH.handEnd && pacScreenCanvas()) html = '';   // the handheld plays Pac-Man's end first
+    else if (snap.phase === 'roundover') {
       if (snap.why === 'caught') html = `<div class="big">${esc(names[snap.catcher])} caught Pac-Man</div><div class="sm">${esc(names[snap.catcher])} takes ${fmt(snap.steal)} points from ${esc(pn)} and is Pac-Man next round.</div>`;
       else if (snap.why === 'cleared') html = `<div class="big">Maze cleared</div><div class="sm">${esc(pn)} keeps ${fmt(snap.scores[snap.pacPlayer])} points.</div>`;
       else html = `<div class="big">${esc(names[snap.winner])} reaches ${fmt(snap.target)}</div>`;
