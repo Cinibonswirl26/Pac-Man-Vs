@@ -135,14 +135,17 @@
     fire('title');
   }
   const fire = (id, p) => SM.fire(id, Object.assign({ me: snap ? snap.me : 0 }, p));
-  const GAME_TRACKS = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
   // What the original plays, found by matching its sound output against the disc's streams (see FIDELITY.md):
   // the opening theme on the title and menus; on the Original Pac-Man stage the classic start jingle through the
   // countdown, then no music but a siren while the round runs, and after a catch a short looping tune through the
   // exchange and hand-over screens. The siren and that tune are sequenced by the game's own synthesiser, not streams,
   // so they are synthesised here from their measured pitches. The pacmania streams are used on the other stages.
+  // The sound lab can give each stage its own music (SoundMap.musicFor): the original treatment, a stream, or none.
   const MENU_TRACK = 'Pac_Opening_Comp_LR', START_JINGLE = 'pacmanBGM00_FX_LR', CLEAR_JINGLE = 'Pac_Arr_Clear_LR';
-  const onOriginalStage = () => !curDisc || curDisc.stage === 1;
+  let musicMap = SoundMap.loadMusic();
+  const stageMusic = () => SoundMap.musicFor(musicMap, curDisc ? curDisc.stage : 0, snap ? snap.round : 0);
+  const onOriginalStage = () => stageMusic() === 'original';
+  addEventListener('storage', e => { if (e.key === SoundMap.MUSIC_KEY) musicMap = SoundMap.loadMusic(); else if (e.key === SoundMap.KEY) SM.reload(); });   // the lab saved in another tab
   // The siren: a square-ish tone that holds at 563 Hz, climbs to 844 Hz and falls back, every 0.43 s (measured).
   // Every pellet eaten in the round raises the whole sweep by 0.145% (about 0.8 Hz at the bottom); the period does not
   // change. Measured over a round: 565 Hz at the start, 651 Hz after 106 pellets, steady while nothing is eaten.
@@ -588,7 +591,7 @@
         if (snap.phase === 'countdown') playMusic(START_JINGLE, false);
         else if (snap.phase === 'roundover' && snap.why === 'cleared') playMusic(CLEAR_JINGLE, false);
         else if (snap.phase !== 'play') stopMusic();
-      } else if (snap.phase === 'countdown' || snap.phase === 'play') playMusic(GAME_TRACKS[(snap.round || 0) % 4], true); else stopMusic();
+      } else if (stageMusic() !== 'none' && (snap.phase === 'countdown' || snap.phase === 'play')) playMusic(stageMusic(), true); else stopMusic();
     }
     // the siren runs while the round is on and no ghost is frightened or flying home; the tune after a catch runs from the exchange screen to the next round
     setSiren(onOriginalStage() && snap.phase === 'play' && !(snap.frightLeft > 0) && !snap.ghosts.some(g => g && g.m === 'e'));
@@ -949,5 +952,5 @@
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });
   addEventListener('resize', () => { cell = 0; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (mode) onSnap(true); });
-  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get art() { return art; }, get disc() { return music.disc; }, get offline() { return offline; } };   // for automated tests
+  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get music() { return musicName; }, get art() { return art; }, get disc() { return music.disc; }, get offline() { return offline; } };   // for automated tests
 })();

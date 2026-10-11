@@ -10,4 +10,10 @@ log.length = 0; m.fire('go', { me: 1 }); ok(log.join() === 'v31', 'ghosts do not
 m.fire('eatGhost', { index: 1 }); ok(log.pop() === 'v11', 'second ghost in the chain'); log.length = 0; m.fire('mazeCleared'); ok(log.pop() === 'v17', 'maze cleared line'); log.length = 0; m.fire('caught', { index: 3 }); ok(log.join() === 's4' && SM.EVENTS.find(e => e.id === 'caught').cues[1].delay > 0 && SM.EVENTS.find(e => e.id === 'caught').cues[1].ids[3] === 16, 'the knock at once, excellent for seat 3 after a delay: ' + log);
 ok(m.handled('pellet') && !m.handled('nothing'), 'handled');
 for (const e of SM.EVENTS) ok(m.map[e.id].length, e.id + ' has a default');
+// music by stage
+const md = SM.musicDefaults();
+ok(md[1] === 'original' && md[0] === 'original' && md[7] === 'rotate', 'defaults: the Original stage and the built-in maze as the original, the rest rotate');
+ok(SM.musicFor(md, 1, 3) === 'original' && SM.musicFor(md, 7, 0) === 'pacmaniaBGM02_FX_LR' && SM.musicFor(md, 7, 5) === 'pacmaniaBGM03_FX_LR', 'rotation by round');
+ok(SM.musicFor({ 7: 'Pac_Arr_bgm02_LR_Comp' }, 7, 2) === 'Pac_Arr_bgm02_LR_Comp' && SM.musicFor({ 1: 'none' }, 1, 0) === 'none' && SM.musicFor({}, 2, 1) === 'pacmaniaBGM03_FX_LR', 'a chosen stream, silence, and a missing entry falling back');
+ok(SM.ROTATION.every(n => SM.STREAM_NAMES[n]), 'every rotation track is named');
 if (fails) process.exit(1); console.log('sound map ok');

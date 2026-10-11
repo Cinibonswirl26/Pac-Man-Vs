@@ -60,6 +60,12 @@
     </div>
   </div>
 </div>
+<div class="card" id="musicCard">
+  <h2>4 &middot; Music by stage</h2>
+  <p class="dim">Each stage can play one of the disc's music streams through its rounds, the original stage's treatment (the start jingle through the countdown, then the siren and no music), or nothing. The levels that sit on a stage follow that stage. The menus keep the opening theme. Press <b>Save</b> to keep the choices.</p>
+  <div class="bar" style="margin-bottom:8px"><span class="dim">Streams on the disc:</span><span id="streams" class="dim">load the disc first</span><button id="stopMusic">&#9632; Stop</button><button class="p" id="save2">Save</button><span id="msg2" class="ok"></span></div>
+  <div class="lib" id="stages" style="max-height:none"></div>
+</div>
 <script>
 /* Reads assets out of a disc image the player supplies (.iso or compressed .ciso).
  * Nothing from the disc is stored on the server or in the repository: the browser
@@ -243,6 +249,159 @@
   }
 
   return { open, yaz0, rarc, decodeBTI, decodeAST };
+});
+
+</script>
+<script>
+/* Reads the stage mazes out of a data file on the player's own disc.
+ * The file keeps each maze as a table of 16-bit tile numbers, 32 entries per row, one maze after another.
+ * Walls are individual line pieces, 15 is empty floor, 16-18 the ghost-house gate, 30 a pellet and 31 a
+ * power pellet. Nothing is stored; the layouts are read at run time.
+ * UMD: window.MazeData in the browser, module.exports in Node. */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.MazeData = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+  const EMPTY = 15, PELLET = 30, POWER = 31, GATE = [16, 17, 18];
+  const LANE = 23;                                   // a floor tile used once, in the left lane of the R.I.P. Park maze (its mirror image is plain floor)
+  const COLS = 21;                                   // every maze fits in table columns 0..20, centred on column 10
+
+  // The disc holds 13 mazes. Their order matches the stage models (PacField_1..13). The stage-select
+  // screen shows six of them; the rest have no menu entry. Names for those are this project's own.
+  const STAGES = [
+    { name: 'Original Pac-Man', official: true },
+    { name: 'Four-Hut Pier' },
+    { name: 'Dusk Pier' },
+    { name: 'R.I.P. Park', official: true },
+    { name: 'Panic Pier', official: true },
+    { name: 'Frantic Forest', official: true },
+    { name: 'Night Forest' },
+    { name: 'Manic Manor', official: true },
+    { name: 'Dusk Park' },
+    { name: 'Spotlight Hall' },
+    { name: 'Midnight Pier' },
+    { name: 'Midnight Park' },
+    { name: 'Haunted Hall', official: true }
+  ];
+
+  const u16 = (b, o) => b[o] | (b[o + 1] << 8);
+
+  /** Find the first maze by the signature of its fifth row: wall, 19 pellets, wall. Returns the byte offset of
+   *  that row, or -1. */
+  function locate(rom) {
+    const sig = [2, ...new Array(19).fill(PELLET), 2];
+    outer: for (let o = 4 * 64; o + 24 * 64 < rom.length; o += 2) {
+      for (let i = 0; i < sig.length; i++) if (u16(rom, o + i * 2) !== sig[i]) continue outer;
+      let pel = 0, pow = 0;
+      for (let r = 0; r < 21; r++) for (let c = 0; c < 19; c++) { const t = u16(rom, o + (r - 4) * 64 + (c + 1) * 2); if (t === PELLET) pel++; else if (t === POWER) pow++; }
+      if (pel === 172 && pow === 4) return o;
+    }
+    return -1;
+  }
+
+  /** The table as rows of tile numbers, cut into mazes at the blank rows between them. */
+  function segments(rom) {
+    const o = locate(rom);
+    if (o < 0) throw new Error('This disc image does not contain the expected maze table.');
+    const row0 = o - 4 * 64, out = [];
+    let cur = null;
+    for (let r = -1; row0 + (r + 1) * 64 <= rom.length; r++) {
+      const base = row0 + r * 64, t = [];
+      for (let c = 0; c < 32; c++) t.push(u16(rom, base + c * 2));
+      if (t.some(v => v > 31)) break;                // past the end of the tables
+      if (t.some(v => v !== 0 && v !== EMPTY)) { if (!cur) out.push(cur = []); cur.push(t); } else cur = null;
+    }
+    return out;
+  }
+
+  /** Build the descriptor (see PacSim.makeMaze) for maze number k (1-13), or null if it cannot be read.
+   *  Extra fields: stage (k), official, colOffset and rowOffset (this grid's cell (0,0) is table column / row
+   *  colOffset / rowOffset, counted from the maze's first table row), which place it on the stage model. */
+  function build(seg, k, makeMaze) {
+    const h = seg.length, tile = (c, r) => (c < 0 || c >= 32 || r < 0 || r >= h) ? 0 : seg[r][c];
+    // the ghost-house gate: three gate tiles in a row
+    let gr = -1, gc = -1;
+    for (let r = 0; r < h && gr < 0; r++) for (let c = 0; c + 2 < 32; c++) if (GATE.every((g, i) => tile(c + i, r) === g)) { gr = r; gc = c; break; }
+    if (gr < 0) return null;
+    const cx = gc + 1;
+    const floor = t => t === EMPTY || t === PELLET || t === POWER || t === LANE;
+    // Where each row's walls start and end: floor beyond them is a tunnel that can only be entered sideways.
+    const left = [], right = [];
+    for (let r = 0; r < h; r++) {
+      let l = -1, rr = -1;
+      for (let c = 0; c < COLS; c++) if (!floor(tile(c, r)) && !GATE.includes(tile(c, r)) && tile(c, r) !== 0) { if (l < 0) l = c; rr = c; }
+      left.push(l); right.push(rr);
+    }
+    // A tunnel row has no outer wall of its own, so it takes the walls of the rows next to it.
+    const lo = r => Math.min(...[r - 1, r, r + 1].map(i => left[i] >= 0 ? left[i] : 99));
+    const hi = r => Math.max(...[r - 1, r, r + 1].map(i => right[i] >= 0 ? right[i] : -1));
+    const inside = (c, r) => c >= lo(r) && c <= hi(r);
+    const exit = [cx, gr - 1];
+    if (!floor(tile(exit[0], exit[1]))) return null;
+    const seen = new Set([exit.join()]), q = [exit];
+    while (q.length) {
+      const [c, r] = q.pop();
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nc = c + dc, nr = r + dr;
+        if (nc < 0 || nc >= COLS || nr < 0 || nr >= h || !floor(tile(nc, nr)) || seen.has(nc + ',' + nr)) continue;
+        if (dr !== 0 && !inside(nc, nr)) continue;      // no stepping up or down into the outside area
+        seen.add(nc + ',' + nr); q.push([nc, nr]);
+      }
+    }
+    // crop to what is reachable plus the walls around it
+    let c0 = COLS, c1 = -1, r0 = h, r1 = -1;
+    for (const key of seen) { const [c, r] = key.split(',').map(Number); c0 = Math.min(c0, c); c1 = Math.max(c1, c); r0 = Math.min(r0, r); r1 = Math.max(r1, r); }
+    r0 = Math.max(0, r0 - 1); r1 = Math.min(h - 1, r1 + 1);
+    // keep the gate and house inside the crop and the maze symmetric about the centre column
+    const half = Math.max(cx - c0, c1 - cx); c0 = cx - half; c1 = cx + half;
+    const house = { x0: gc - c0, x1: gc + 2 - c0, y0: gr + 1 - r0, y1: gr + 1 - r0 };
+    const rows = [];
+    for (let r = r0; r <= r1; r++) {
+      let s = '';
+      for (let c = c0; c <= c1; c++) {
+        const t = tile(c, r);
+        // the gate is two wall pieces with the door between them: only the middle cell can be passed
+        if (r === gr && c >= gc && c <= gc + 2) s += c === gc + 1 ? 'D' : '#';
+        else if (r === gr + 1 && c >= gc && c <= gc + 2) s += '_';
+        else if (!seen.has(c + ',' + r)) s += '#';
+        else s += t === PELLET ? '.' : t === POWER ? 'o' : ' ';
+      }
+      rows.push(s);
+    }
+    // grid helpers
+    const g = (c, r) => [c - c0, r - r0];
+    const open = (c, r) => { const x = rows[r - r0] && rows[r - r0][c - c0]; return x && x !== '#' && x !== 'D' && x !== '_'; };
+    const nearest = (tc, tr, not) => {
+      let best = null, bd = 1e9;
+      for (const key of seen) {
+        const [c, r] = key.split(',').map(Number);
+        if (!open(c, r) || not.some(n => n[0] === c && n[1] === r)) continue;
+        const d = (c - tc) ** 2 + (r - tr) ** 2; if (d < bd) { bd = d; best = [c, r]; }
+      }
+      return best;
+    };
+    // Pac-Man starts in the centre column below the house, the ghosts above it and to the sides
+    const pac = nearest(cx, gr + 3, [exit]);
+    const ghA = nearest(cx - 3, gr - 3, [exit, pac]), ghB = nearest(cx + 3, gr - 3, [exit, pac, ghA]);
+    if (!pac || !ghA || !ghB) return null;
+    const m = makeMaze(rows, {
+      name: STAGES[k - 1].name, pac: g(...pac), ghosts: [g(...ghA), g(...ghB), g(...exit)], door: g(gc + 1, gr), exit: g(...exit), house
+    });
+    return Object.assign(m, { stage: k, official: !!STAGES[k - 1].official, colOffset: c0, rowOffset: r0 });
+  }
+
+  /** All the mazes on the disc, in stage-model order. Ones that cannot be read are left out. */
+  function all(rom, makeMaze) {
+    const segs = segments(rom);
+    return segs.slice(0, STAGES.length).map((s, i) => build(s, i + 1, makeMaze)).filter(Boolean);
+  }
+  /** The original stage 1 maze. */
+  function stage1(rom, makeMaze) { return all(rom, makeMaze)[0]; }
+
+  // where the maze data sits on the disc
+  const PATH = 'PROOT/gbademo/packman.bin';
+  return { all, stage1, locate, segments, PATH, STAGES };
 });
 
 </script>
@@ -470,6 +629,34 @@
     { id: 'champion', label: 'Champion', when: 'Shortly after the match ends; index = the winner\'s seat', per: 'seat', cues: [voice([22, 23, 24, 25], { mode: 'index', force: true, delay: 1700 })] }
   ];
 
+  // Music by stage. The disc's streams, with the names the lab shows, and what each stage plays:
+  //   'original' = the Original stage's treatment: the classic start jingle through the countdown, no stream but the
+  //                siren while the round runs, the cleared jingle when the maze is cleared
+  //   'rotate'   = one of the four Pac-Mania game tracks, by round number, looping through the countdown and the round
+  //   'none'     = silence
+  //   a stream name = that stream, looping through the countdown and the round
+  // Stage numbers are the disc's (1 = Original Pac-Man ... 13 = Haunted Hall); 0 is the built-in maze.
+  const MUSIC_KEY = 'pacvs.music.v1';
+  const STREAM_NAMES = {
+    pacmanBGM00_FX_LR: 'Classic start jingle', pacmaniaBGM02_FX_LR: 'Pac-Mania track 2', pacmaniaBGM03_FX_LR: 'Pac-Mania track 3',
+    pacmaniaBGM05_FX_LR: 'Pac-Mania track 5 (short)', pacmaniaBGM06_FX_LR: 'Pac-Mania track 6', pacmaniaBGM07_FX_LR: 'Pac-Mania track 7',
+    Pac_Arr_bgm02_LR_Comp: 'Arrangement track', Pac_Arr_Clear_LR: 'Maze cleared jingle', Pac_Opening_Comp_LR: 'Opening theme (menus)', Pac_Op_loop73_LR: 'Opening loop'
+  };
+  const ROTATION = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
+  const MUSIC_CHOICES = [['original', 'As the original stage: start jingle, then the siren'], ['rotate', 'Pac-Mania tracks, a different one each round'], ['none', 'No music']];
+  function musicDefaults() { const m = { 0: 'original' }; for (let k = 1; k <= 13; k++) m[k] = k === 1 ? 'original' : 'rotate'; return m; }
+  function loadMusic() {
+    const m = musicDefaults();
+    try { const o = JSON.parse(localStorage.getItem(MUSIC_KEY)); if (o && typeof o === 'object') for (const k of Object.keys(m)) if (typeof o[k] === 'string' && o[k]) m[k] = o[k]; } catch { /* none saved */ }
+    return m;
+  }
+  function saveMusic(map) { try { localStorage.setItem(MUSIC_KEY, JSON.stringify(map)); return true; } catch { return false; } }
+  /** What a stage plays in round `round` (0-based): 'original', 'none' or a stream name. */
+  function musicFor(map, stage, round) {
+    const v = (map || musicDefaults())[stage] || musicDefaults()[stage] || 'rotate';
+    return v === 'rotate' ? ROTATION[(round || 0) % ROTATION.length] : v;
+  }
+
   const clone = o => JSON.parse(JSON.stringify(o));
   function defaults() { const m = {}; for (const e of EVENTS) m[e.id] = clone(e.cues); return m; }
   function load() {
@@ -504,7 +691,7 @@
     };
     return api;
   }
-  return { EVENTS, VOICE_NAMES, SFX_NAMES, defaults, load, save, create, KEY };
+  return { EVENTS, VOICE_NAMES, SFX_NAMES, defaults, load, save, create, KEY, STREAM_NAMES, ROTATION, MUSIC_CHOICES, MUSIC_KEY, musicDefaults, loadMusic, saveMusic, musicFor };
 });
 
 </script>
@@ -512,10 +699,10 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  let ac = null, master = null, snd = null, map = SoundMap.load(), focus = null, names = {};
+  let ac = null, master = null, snd = null, map = SoundMap.load(), music = SoundMap.loadMusic(), disc = null, musicNode = null, focus = null, names = {};
   try { names = JSON.parse(localStorage.getItem('pacvs.soundnames') || '{}'); } catch {}
   const audio = () => { if (!ac) { ac = new AudioContext(); master = ac.createGain(); master.gain.value = 0.8; master.connect(ac.destination); } if (ac.state === 'suspended') ac.resume(); return ac; };
-  const flash = t => { $('msg').textContent = t; setTimeout(() => { $('msg').textContent = ''; }, 2500); };
+  const flash = t => { $('msg').textContent = $('msg2').textContent = t; setTimeout(() => { $('msg').textContent = $('msg2').textContent = ''; }, 2500); };
 
   function play(w, vol) { const a = audio(), src = a.createBufferSource(), g = a.createGain(); src.buffer = Sound.buffer(a, w); g.gain.value = vol == null ? 1 : vol; src.connect(g); g.connect(master); src.start(); return src; }
   const engine = {
@@ -575,11 +762,50 @@
     }
   }
 
-  async function ready(disc, label) {
+  // ---- music by stage: the disc's streams, and a choice per stage
+  const streamsOn = () => disc ? [...disc.files.keys()].filter(k => /^PROOT\/AudioRes\/Stream\/.*\.ast$/.test(k)).map(k => k.split('/').pop().replace(/\.z\.32\.c4\.ast$/, '')) : Object.keys(SoundMap.STREAM_NAMES);
+  const streamLabel = n => (SoundMap.STREAM_NAMES[n] ? SoundMap.STREAM_NAMES[n] + ' (' + n + ')' : n);
+  const bufs = new Map();
+  function stopStream() { if (musicNode) { try { musicNode.stop(); } catch {} musicNode = null; } }
+  async function playStream(name) {
+    if (!disc) return flash('Load the disc first');
+    stopStream(); const a = audio();
+    let buf = bufs.get(name);
+    if (!buf) {
+      try {
+        const d = Disc.decodeAST(await disc.read('PROOT/AudioRes/Stream/' + name + '.z.32.c4.ast'));
+        buf = a.createBuffer(d.channels.length, d.samples, d.rate); d.channels.forEach((c, i) => buf.copyToChannel(c.subarray(0, d.samples), i));
+        buf.loopRange = d.loopEnd > d.loopStart && d.loopEnd <= d.samples ? [d.loopStart / d.rate, d.loopEnd / d.rate] : null; bufs.set(name, buf);
+      } catch (e) { return flash('Could not read ' + name + ': ' + e.message); }
+    }
+    const src = a.createBufferSource(); src.buffer = buf; src.loop = true; if (buf.loopRange) { src.loopStart = buf.loopRange[0]; src.loopEnd = buf.loopRange[1]; }
+    const g = a.createGain(); g.gain.value = 0.7; src.connect(g); g.connect(master); src.start(); musicNode = src;
+  }
+  function drawMusic() {
+    const names = streamsOn();
+    $('streams').textContent = ''; $('streams').className = '';
+    for (const n of names) { const b = document.createElement('button'); b.textContent = '\u25B6 ' + streamLabel(n); b.style.minHeight = '28px'; b.onclick = () => playStream(n); $('streams').appendChild(b); $('streams').appendChild(document.createTextNode(' ')); }
+    const box = $('stages'); box.textContent = '';
+    const stages = [[0, 'Built-in maze']].concat(MazeData.STAGES.map((s, i) => [i + 1, s.name + (s.official ? '' : ' (not on the original menu)')]));
+    for (const [k, label] of stages) {
+      const row = document.createElement('div'); row.className = 'snd';
+      const v = music[k] || 'rotate', opts = SoundMap.MUSIC_CHOICES.map(([id, lb]) => [id, lb]).concat(names.map(n => [n, 'Stream: ' + streamLabel(n)]));
+      if (!opts.some(o => o[0] === v)) opts.push([v, 'Stream: ' + v]);
+      row.innerHTML = `<b style="width:28px">${k}</b><span style="width:170px">${label}</span><select style="flex:1;min-height:28px">${opts.map(([id, lb]) => `<option value="${id}"${id === v ? ' selected' : ''}>${lb}</option>`).join('')}</select><button title="play this choice">&#9654;</button>`;
+      const sel = row.querySelector('select');
+      sel.onchange = () => { music[k] = sel.value; };
+      row.querySelector('button').onclick = () => { const m = SoundMap.musicFor(music, k, 0); if (m === 'original') playStream('pacmanBGM00_FX_LR'); else if (m === 'none') { stopStream(); flash('Silence'); } else playStream(m); };
+      box.appendChild(row);
+    }
+  }
+  $('stopMusic').onclick = stopStream;
+
+  async function ready(d, label) {
     $('stat').textContent = 'Reading sounds...';
-    try { snd = await Sound.load(disc); } catch (e) { $('stat').textContent = 'Could not read sounds: ' + e.message; return; }
+    try { snd = await Sound.load(d); } catch (e) { $('stat').textContent = 'Could not read sounds: ' + e.message; return; }
+    disc = d;
     $('stat').innerHTML = `<span class="ok">${label}: ${snd.sfx.length} effects, ${snd.voice.length} announcer lines</span>`;
-    lib('sfx'); lib('voice'); draw();
+    lib('sfx'); lib('voice'); draw(); drawMusic();
   }
   $('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; audio(); try { await ready(await Disc.open(f), f.name); } catch (err) { $('stat').textContent = 'Not a disc image I can read: ' + err.message; } };
   $('saved').onclick = async () => {
@@ -592,18 +818,19 @@
     } catch (err) { $('stat').textContent = 'Could not use the saved disc: ' + err.message; }
   };
   document.querySelectorAll('[data-hand]').forEach(b => b.onclick = () => HandSound.play(audio(), master, b.dataset.hand));
-  $('save').onclick = () => flash(SoundMap.save(map) ? 'Saved. Reload the game to use it.' : 'Could not save in this browser');
-  $('reset').onclick = () => { map = SoundMap.defaults(); focus = null; draw(); flash('Defaults restored (press Save to keep)'); };
+  $('save').onclick = () => flash(SoundMap.save(map) && SoundMap.saveMusic(music) ? 'Saved. Reload the game to use it.' : 'Could not save in this browser');
+  $('save2').onclick = () => $('save').onclick();
+  $('reset').onclick = () => { map = SoundMap.defaults(); music = SoundMap.musicDefaults(); focus = null; draw(); drawMusic(); flash('Defaults restored (press Save to keep)'); };
   $('copy').onclick = async () => {
-    const t = JSON.stringify({ map, names }, null, 1);
+    const t = JSON.stringify({ map, music, names }, null, 1);
     try { await navigator.clipboard.writeText(t); flash('Copied. Paste it into the chat.'); } catch { $('json').hidden = false; $('json').value = t; $('json').select(); flash('Select all and copy'); }
   };
   $('paste').onclick = () => {
     $('json').hidden = false;
     if (!$('json').value.trim()) { $('json').placeholder = 'Paste settings here, then press Paste settings again'; return; }
-    try { const o = JSON.parse($('json').value); map = Object.assign(SoundMap.defaults(), o.map || o); if (o.names) names = o.names; $('json').hidden = true; if (snd) { lib('sfx'); lib('voice'); } draw(); flash('Loaded (press Save to keep)'); } catch { flash('That is not valid settings'); }
+    try { const o = JSON.parse($('json').value); map = Object.assign(SoundMap.defaults(), o.map || o); if (o.music) music = Object.assign(SoundMap.musicDefaults(), o.music); if (o.names) names = o.names; $('json').hidden = true; if (snd) { lib('sfx'); lib('voice'); } draw(); drawMusic(); flash('Loaded (press Save to keep)'); } catch { flash('That is not valid settings'); }
   };
-  draw();
+  draw(); drawMusic();
 })();
 </script>
 </body>

@@ -60,7 +60,14 @@
     </div>
   </div>
 </div>
+<div class="card" id="musicCard">
+  <h2>4 &middot; Music by stage</h2>
+  <p class="dim">Each stage can play one of the disc's music streams through its rounds, the original stage's treatment (the start jingle through the countdown, then the siren and no music), or nothing. The levels that sit on a stage follow that stage. The menus keep the opening theme. Press <b>Save</b> to keep the choices.</p>
+  <div class="bar" style="margin-bottom:8px"><span class="dim">Streams on the disc:</span><span id="streams" class="dim">load the disc first</span><button id="stopMusic">&#9632; Stop</button><button class="p" id="save2">Save</button><span id="msg2" class="ok"></span></div>
+  <div class="lib" id="stages" style="max-height:none"></div>
+</div>
 <script src="/client/disc.js"></script>
+<script src="/client/mazedata.js"></script>
 <script src="/client/sound.js"></script>
 <script src="/client/handsound.js"></script>
 <script src="/client/soundmap.js"></script>
@@ -68,10 +75,10 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  let ac = null, master = null, snd = null, map = SoundMap.load(), focus = null, names = {};
+  let ac = null, master = null, snd = null, map = SoundMap.load(), music = SoundMap.loadMusic(), disc = null, musicNode = null, focus = null, names = {};
   try { names = JSON.parse(localStorage.getItem('pacvs.soundnames') || '{}'); } catch {}
   const audio = () => { if (!ac) { ac = new AudioContext(); master = ac.createGain(); master.gain.value = 0.8; master.connect(ac.destination); } if (ac.state === 'suspended') ac.resume(); return ac; };
-  const flash = t => { $('msg').textContent = t; setTimeout(() => { $('msg').textContent = ''; }, 2500); };
+  const flash = t => { $('msg').textContent = $('msg2').textContent = t; setTimeout(() => { $('msg').textContent = $('msg2').textContent = ''; }, 2500); };
 
   function play(w, vol) { const a = audio(), src = a.createBufferSource(), g = a.createGain(); src.buffer = Sound.buffer(a, w); g.gain.value = vol == null ? 1 : vol; src.connect(g); g.connect(master); src.start(); return src; }
   const engine = {
@@ -131,11 +138,50 @@
     }
   }
 
-  async function ready(disc, label) {
+  // ---- music by stage: the disc's streams, and a choice per stage
+  const streamsOn = () => disc ? [...disc.files.keys()].filter(k => /^PROOT\/AudioRes\/Stream\/.*\.ast$/.test(k)).map(k => k.split('/').pop().replace(/\.z\.32\.c4\.ast$/, '')) : Object.keys(SoundMap.STREAM_NAMES);
+  const streamLabel = n => (SoundMap.STREAM_NAMES[n] ? SoundMap.STREAM_NAMES[n] + ' (' + n + ')' : n);
+  const bufs = new Map();
+  function stopStream() { if (musicNode) { try { musicNode.stop(); } catch {} musicNode = null; } }
+  async function playStream(name) {
+    if (!disc) return flash('Load the disc first');
+    stopStream(); const a = audio();
+    let buf = bufs.get(name);
+    if (!buf) {
+      try {
+        const d = Disc.decodeAST(await disc.read('PROOT/AudioRes/Stream/' + name + '.z.32.c4.ast'));
+        buf = a.createBuffer(d.channels.length, d.samples, d.rate); d.channels.forEach((c, i) => buf.copyToChannel(c.subarray(0, d.samples), i));
+        buf.loopRange = d.loopEnd > d.loopStart && d.loopEnd <= d.samples ? [d.loopStart / d.rate, d.loopEnd / d.rate] : null; bufs.set(name, buf);
+      } catch (e) { return flash('Could not read ' + name + ': ' + e.message); }
+    }
+    const src = a.createBufferSource(); src.buffer = buf; src.loop = true; if (buf.loopRange) { src.loopStart = buf.loopRange[0]; src.loopEnd = buf.loopRange[1]; }
+    const g = a.createGain(); g.gain.value = 0.7; src.connect(g); g.connect(master); src.start(); musicNode = src;
+  }
+  function drawMusic() {
+    const names = streamsOn();
+    $('streams').textContent = ''; $('streams').className = '';
+    for (const n of names) { const b = document.createElement('button'); b.textContent = '\u25B6 ' + streamLabel(n); b.style.minHeight = '28px'; b.onclick = () => playStream(n); $('streams').appendChild(b); $('streams').appendChild(document.createTextNode(' ')); }
+    const box = $('stages'); box.textContent = '';
+    const stages = [[0, 'Built-in maze']].concat(MazeData.STAGES.map((s, i) => [i + 1, s.name + (s.official ? '' : ' (not on the original menu)')]));
+    for (const [k, label] of stages) {
+      const row = document.createElement('div'); row.className = 'snd';
+      const v = music[k] || 'rotate', opts = SoundMap.MUSIC_CHOICES.map(([id, lb]) => [id, lb]).concat(names.map(n => [n, 'Stream: ' + streamLabel(n)]));
+      if (!opts.some(o => o[0] === v)) opts.push([v, 'Stream: ' + v]);
+      row.innerHTML = `<b style="width:28px">${k}</b><span style="width:170px">${label}</span><select style="flex:1;min-height:28px">${opts.map(([id, lb]) => `<option value="${id}"${id === v ? ' selected' : ''}>${lb}</option>`).join('')}</select><button title="play this choice">&#9654;</button>`;
+      const sel = row.querySelector('select');
+      sel.onchange = () => { music[k] = sel.value; };
+      row.querySelector('button').onclick = () => { const m = SoundMap.musicFor(music, k, 0); if (m === 'original') playStream('pacmanBGM00_FX_LR'); else if (m === 'none') { stopStream(); flash('Silence'); } else playStream(m); };
+      box.appendChild(row);
+    }
+  }
+  $('stopMusic').onclick = stopStream;
+
+  async function ready(d, label) {
     $('stat').textContent = 'Reading sounds...';
-    try { snd = await Sound.load(disc); } catch (e) { $('stat').textContent = 'Could not read sounds: ' + e.message; return; }
+    try { snd = await Sound.load(d); } catch (e) { $('stat').textContent = 'Could not read sounds: ' + e.message; return; }
+    disc = d;
     $('stat').innerHTML = `<span class="ok">${label}: ${snd.sfx.length} effects, ${snd.voice.length} announcer lines</span>`;
-    lib('sfx'); lib('voice'); draw();
+    lib('sfx'); lib('voice'); draw(); drawMusic();
   }
   $('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; audio(); try { await ready(await Disc.open(f), f.name); } catch (err) { $('stat').textContent = 'Not a disc image I can read: ' + err.message; } };
   $('saved').onclick = async () => {
@@ -148,18 +194,19 @@
     } catch (err) { $('stat').textContent = 'Could not use the saved disc: ' + err.message; }
   };
   document.querySelectorAll('[data-hand]').forEach(b => b.onclick = () => HandSound.play(audio(), master, b.dataset.hand));
-  $('save').onclick = () => flash(SoundMap.save(map) ? 'Saved. Reload the game to use it.' : 'Could not save in this browser');
-  $('reset').onclick = () => { map = SoundMap.defaults(); focus = null; draw(); flash('Defaults restored (press Save to keep)'); };
+  $('save').onclick = () => flash(SoundMap.save(map) && SoundMap.saveMusic(music) ? 'Saved. Reload the game to use it.' : 'Could not save in this browser');
+  $('save2').onclick = () => $('save').onclick();
+  $('reset').onclick = () => { map = SoundMap.defaults(); music = SoundMap.musicDefaults(); focus = null; draw(); drawMusic(); flash('Defaults restored (press Save to keep)'); };
   $('copy').onclick = async () => {
-    const t = JSON.stringify({ map, names }, null, 1);
+    const t = JSON.stringify({ map, music, names }, null, 1);
     try { await navigator.clipboard.writeText(t); flash('Copied. Paste it into the chat.'); } catch { $('json').hidden = false; $('json').value = t; $('json').select(); flash('Select all and copy'); }
   };
   $('paste').onclick = () => {
     $('json').hidden = false;
     if (!$('json').value.trim()) { $('json').placeholder = 'Paste settings here, then press Paste settings again'; return; }
-    try { const o = JSON.parse($('json').value); map = Object.assign(SoundMap.defaults(), o.map || o); if (o.names) names = o.names; $('json').hidden = true; if (snd) { lib('sfx'); lib('voice'); } draw(); flash('Loaded (press Save to keep)'); } catch { flash('That is not valid settings'); }
+    try { const o = JSON.parse($('json').value); map = Object.assign(SoundMap.defaults(), o.map || o); if (o.music) music = Object.assign(SoundMap.musicDefaults(), o.music); if (o.names) names = o.names; $('json').hidden = true; if (snd) { lib('sfx'); lib('voice'); } draw(); drawMusic(); flash('Loaded (press Save to keep)'); } catch { flash('That is not valid settings'); }
   };
-  draw();
+  draw(); drawMusic();
 })();
 </script>
 </body>

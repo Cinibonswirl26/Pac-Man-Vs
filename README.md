@@ -89,6 +89,10 @@ The browser reads it locally and nothing is uploaded. It uses:
   sees the original exchange screen after a catch and the results screen at the end.
 
 The file is remembered in this browser's IndexedDB so you only pick it once.
+The sound lab (the link on the menu) lets you listen to every effect, announcer line and music stream on the disc,
+choose which sound plays for each moment of the game, and give each stage its own music: one of the disc's streams
+looping through its rounds, the original stage's treatment (start jingle, then the siren), or none. The choices
+are kept in this browser.
 When you host a room with the original maze selected, the host's browser sends the maze layout
 (a 21 x 21 grid of characters, no graphics) to the server so everyone in the room plays the same board.
 Do not commit game files to this repo.

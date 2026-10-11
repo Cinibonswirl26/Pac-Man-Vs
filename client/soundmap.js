@@ -73,6 +73,34 @@
     { id: 'champion', label: 'Champion', when: 'Shortly after the match ends; index = the winner\'s seat', per: 'seat', cues: [voice([22, 23, 24, 25], { mode: 'index', force: true, delay: 1700 })] }
   ];
 
+  // Music by stage. The disc's streams, with the names the lab shows, and what each stage plays:
+  //   'original' = the Original stage's treatment: the classic start jingle through the countdown, no stream but the
+  //                siren while the round runs, the cleared jingle when the maze is cleared
+  //   'rotate'   = one of the four Pac-Mania game tracks, by round number, looping through the countdown and the round
+  //   'none'     = silence
+  //   a stream name = that stream, looping through the countdown and the round
+  // Stage numbers are the disc's (1 = Original Pac-Man ... 13 = Haunted Hall); 0 is the built-in maze.
+  const MUSIC_KEY = 'pacvs.music.v1';
+  const STREAM_NAMES = {
+    pacmanBGM00_FX_LR: 'Classic start jingle', pacmaniaBGM02_FX_LR: 'Pac-Mania track 2', pacmaniaBGM03_FX_LR: 'Pac-Mania track 3',
+    pacmaniaBGM05_FX_LR: 'Pac-Mania track 5 (short)', pacmaniaBGM06_FX_LR: 'Pac-Mania track 6', pacmaniaBGM07_FX_LR: 'Pac-Mania track 7',
+    Pac_Arr_bgm02_LR_Comp: 'Arrangement track', Pac_Arr_Clear_LR: 'Maze cleared jingle', Pac_Opening_Comp_LR: 'Opening theme (menus)', Pac_Op_loop73_LR: 'Opening loop'
+  };
+  const ROTATION = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
+  const MUSIC_CHOICES = [['original', 'As the original stage: start jingle, then the siren'], ['rotate', 'Pac-Mania tracks, a different one each round'], ['none', 'No music']];
+  function musicDefaults() { const m = { 0: 'original' }; for (let k = 1; k <= 13; k++) m[k] = k === 1 ? 'original' : 'rotate'; return m; }
+  function loadMusic() {
+    const m = musicDefaults();
+    try { const o = JSON.parse(localStorage.getItem(MUSIC_KEY)); if (o && typeof o === 'object') for (const k of Object.keys(m)) if (typeof o[k] === 'string' && o[k]) m[k] = o[k]; } catch { /* none saved */ }
+    return m;
+  }
+  function saveMusic(map) { try { localStorage.setItem(MUSIC_KEY, JSON.stringify(map)); return true; } catch { return false; } }
+  /** What a stage plays in round `round` (0-based): 'original', 'none' or a stream name. */
+  function musicFor(map, stage, round) {
+    const v = (map || musicDefaults())[stage] || musicDefaults()[stage] || 'rotate';
+    return v === 'rotate' ? ROTATION[(round || 0) % ROTATION.length] : v;
+  }
+
   const clone = o => JSON.parse(JSON.stringify(o));
   function defaults() { const m = {}; for (const e of EVENTS) m[e.id] = clone(e.cues); return m; }
   function load() {
@@ -107,5 +135,5 @@
     };
     return api;
   }
-  return { EVENTS, VOICE_NAMES, SFX_NAMES, defaults, load, save, create, KEY };
+  return { EVENTS, VOICE_NAMES, SFX_NAMES, defaults, load, save, create, KEY, STREAM_NAMES, ROTATION, MUSIC_CHOICES, MUSIC_KEY, musicDefaults, loadMusic, saveMusic, musicFor };
 });
