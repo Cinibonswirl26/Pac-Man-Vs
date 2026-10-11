@@ -62,9 +62,9 @@
     // Capsules appear where the fruit does; which one (or the fruit) is a weighted draw. Red: double speed for 10 s
     // (a ghost instead holds a dash for 10 s: each press of its button fires one like an arrow, 2 s apart at most);
     // cyan: a mirror clone for 10 s; pink: every ghost into the pot in the house for 4 s (a ghost taking it hops
-    // about instead); orange: pellets digested without pausing for 10 s (a ghost drops big pellets that slow
+    // to a cell 2-4 away from Pac-Man instead); orange: pellets digested without pausing for 10 s (a ghost drops big pellets that slow
     // Pac-Man); gold: 100 points and nothing else. Points are fruit-like here (the arcade gave 1000).
-    speedMult: 2, capsuleTime: 10, dashCool: 2, potTime: 4, capsulePts: 400, goldPts: 100, bigPause: 0.5, bigPts: 50, bigMax: 10,
+    speedMult: 2, capsuleTime: 10, dashCool: 2, hopNear: 2, hopFar: 4, potTime: 4, capsulePts: 400, goldPts: 100, bigPause: 0.5, bigPts: 50, bigMax: 10,
     itemOdds: [['fruit', 3], ['red', 2], ['cyan', 2], ['pink', 2], ['orange', 2], ['gold', 1]]
   };
 
@@ -307,14 +307,18 @@
     }
     s.pot = CFG.potTime; s.events.push('pot');
   }
-  /** A random open cell outside the house (not a pad, not the fruit spot) for a hop. */
+  /** An open cell around Pac-Man for a hop: hopNear..hopFar cells from him (walking distance, as the crow flies),
+   *  never his own cell, not in the house, not a pad, not the fruit spot. If no cell is in that ring, the nearest ones to it. */
   function hopTarget(s) {
-    for (let n = 0; n < 200; n++) {
-      const x = Math.floor(s.rng() * W), y = Math.floor(s.rng() * H);
+    const px = Math.floor(s.pac.x), py = Math.floor(s.pac.y), cells = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       if (blocked(x, y, 'ghost') || padAt[y * W + x] >= 0 || (x === FRUIT[0] && y === FRUIT[1])) continue;
-      return [x, y];
+      const d = Math.abs(x - px) + Math.abs(y - py);
+      if (d > 0) cells.push([x, y, d < CFG.hopNear ? CFG.hopNear - d : d > CFG.hopFar ? d - CFG.hopFar : 0]);
     }
-    return null;
+    if (!cells.length) return null;
+    const best = Math.min(...cells.map(c => c[2])), ring = cells.filter(c => c[2] === best);
+    return ring[Math.floor(s.rng() * ring.length)];
   }
   /** Timers for the capsule effects; clones vanish when their time is up. */
   function tickEffects(s, dt) {
@@ -445,7 +449,7 @@
       if (g.bonk > 0) { g.bonk = Math.max(0, g.bonk - dt); continue; }   // dizzy from its own dash into a wall: the same
       if (g.potted) continue;                                            // held in the pot
       const pressed = !!(inputs.act && inputs.act[i]) && !g.grey;
-      if (g.hopLeft > 0 && pressed) {                                      // the hop, on its player's button: off to a random cell
+      if (g.hopLeft > 0 && pressed) {                                      // the hop, on its player's button: off to a cell near Pac-Man
         const t = hopTarget(s);
         if (t) { g.air = { x0: g.x, y0: g.y, x1: t[0] + 0.5, y1: t[1] + 0.5, t: 0, dur: CFG.jumpTime, to: -1 }; g.dash = 0; s.events.push('hop'); continue; }
       }

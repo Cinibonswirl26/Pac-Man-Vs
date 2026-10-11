@@ -54,7 +54,7 @@ counter shows how many pellets are left. Pac-Man sees the whole maze.
   you across the maze, and capsules that appear where the fruit would and that Pac-Man and ghosts alike can
   take (speed, a mirror clone, the pot, fast digestion, points). A ghost holding the red capsule dashes on its
   button (Space, J, a gamepad's A or the on-screen button) with a short cooldown, and one holding the pink capsule
-  hops to a random spot with it. They sit on mazes your disc holds but the
+  hops to a spot near Pac-Man with it. They sit on mazes your disc holds but the
   original never lists; the six original stages are untouched. See the end of `FIDELITY.md`.
 
 ## Playing with friends
