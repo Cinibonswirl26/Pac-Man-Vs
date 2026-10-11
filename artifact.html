@@ -4143,7 +4143,7 @@ body { background: var(--bg); color: var(--ink); }
       ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st, ds: snap.ghosts[i].ds, bk: snap.ghosts[i].bk, sq: squashOf('g' + i, snap.ghosts[i], now) } : null).filter(Boolean),
       pacSeat: waiting ? snap.next : snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: waiting ? null : snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
       pads: waiting ? null : arrPads(), clones: waiting ? [] : (snap.clones || []).map(c => Object.assign({}, c, { seat: c.of < 0 ? -1 : gcolor(c.of) })), big: waiting ? [] : snap.big,
-      pops: view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })), dust: waiting ? [] : view.dust, sparks: waiting ? [] : view.sparks,
+      pops: isCaught() ? [] : view.pops.map(p => ({ x: p.x, y: p.y, text: p.text })),   // the original's handheld shows no points over Pac-Man's end dust: waiting ? [] : view.dust, sparks: waiting ? [] : view.sparks,
       caught: isCaught() ? (now - phaseT0) / 1000 : null
     });
     if (!ps.img) ps.img = new ImageData(ps.frame.data, Handheld.W, Handheld.H);
