@@ -1,5 +1,7 @@
 node_modules
 test
+host
+.github
 artifact.html
 soundlab_art.html
 *.md

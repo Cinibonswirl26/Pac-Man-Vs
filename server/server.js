@@ -12,20 +12,30 @@ const PORT = +process.env.PORT || 8080;
 const ROOT = path.join(__dirname, '..');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
 const STATIC = { '/': 'client/index.html', '/soundlab': 'client/soundlab.html' };
+let SEA = null; try { const sea = require('node:sea'); if (sea.isSea()) SEA = sea; } catch (e) { /* older Node */ }
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
   let file = STATIC[url];
   if (!file && (url.startsWith('/client/') || url.startsWith('/shared/'))) file = url.slice(1);
   if (!file) { res.writeHead(404); return res.end('not found'); }
-  const full = path.join(ROOT, file);
-  if (!full.startsWith(ROOT)) { res.writeHead(403); return res.end(); }
-  fs.readFile(full, (err, buf) => {
-    if (err) { res.writeHead(404); return res.end('not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(full)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+  readStatic(file, (err, buf) => {
+    if (err) { res.writeHead(err === 'forbidden' ? 403 : 404); return res.end(err === 'forbidden' ? '' : 'not found'); }
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(buf);
   });
 });
+
+/** The page files: from disk next to this script, or from the assets packed into the single-file build (host/build-exe.js). */
+function readStatic(file, cb) {
+  if (SEA) {
+    let buf; try { buf = Buffer.from(SEA.getAsset(file)); } catch (e) { return cb('missing'); }
+    return cb(null, buf);
+  }
+  const full = path.join(ROOT, file);
+  if (!full.startsWith(ROOT)) return cb('forbidden');
+  fs.readFile(full, (err, buf) => cb(err ? 'missing' : null, buf));
+}
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 2048 });
 const rooms = new Map();
@@ -171,5 +181,5 @@ wss.on('connection', ws => {
 });
 setInterval(() => wss.clients.forEach(w => { if (!w.isAlive) return w.terminate(); w.isAlive = false; w.ping(); }), 15000);
 
-if (require.main === module) server.listen(PORT, () => console.log(`Pac-Man Vs. server on http://localhost:${PORT}`));
+if (require.main === module && !SEA) server.listen(PORT, () => console.log(`Pac-Man Vs. server on http://localhost:${PORT}`));
 module.exports = { server, wss, rooms, sanitizeMaze };

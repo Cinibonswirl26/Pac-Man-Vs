@@ -75,7 +75,22 @@ The server has to be reachable by everyone. Either:
 
 Rooms live in memory and disappear when everyone leaves.
 
-### Free: host from your own PC
+### Free: one Windows program, no setup (opens the port through your router)
+
+`PacManVs.exe` is the whole server in one file: double-click it, allow it through the Windows firewall when asked,
+and it starts hosting, asks your router to open the port through UPnP, prints three links (you, same Wi-Fi,
+internet) and opens the page. Send friends the internet link, `http://<your public address>:8080`. Close the window
+to stop; the port is closed again on the way out. If your router has UPnP switched off it says so and tells you
+which port to forward by hand (or use the tunnel script below, which needs no router changes). The links are plain
+http on your own address: use it for games with people you know.
+
+Getting the file: the GitHub Action in `.github/workflows/exe.yml` builds it on every push of this folder (and on
+demand from the Actions tab); open the run and download **PacManVs-exe**. Or build it yourself with
+`npm install` then `npm run build:exe` (writes `host/dist/PacManVs.exe`; on Mac or Linux it downloads the matching
+Windows Node once). The file packs only this folder's page files and the server; nothing from any disc or
+cartridge is in it, players still bring their own copy in the browser. `--port=8081` starts on another port.
+
+### Free: host from your own PC with a tunnel
 
 Double-click `host/Play-Online-Windows.cmd` (Windows) or run `host/play-online-mac-linux.sh` (Mac, Linux). The
 first run downloads a portable Node and Cloudflare's tunnel tool into `host/tools` (about 60 MB); then it starts

@@ -1,0 +1,38 @@
+# Builds the single-file Windows host program (host/build-exe.js) on a Windows runner, checks that it serves the
+# page, and attaches it to the run as a downloadable file: Actions -> this run -> "PacManVs-exe". Nothing from
+# any disc or cartridge goes in; players bring their own copy in the browser as always.
+name: Windows exe
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master, ccr-d5782d39-ohjnw8]
+    paths: ['pacvs/**', '.github/workflows/exe.yml']
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: pacvs
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: node host/build-exe.js
+      - name: Smoke test the exe
+        run: |
+          $p = Start-Process -FilePath host\dist\PacManVs.exe -ArgumentList '--port=8090' -PassThru -RedirectStandardOutput exe.log -RedirectStandardError exe.err
+          Start-Sleep -Seconds 8
+          $r = Invoke-WebRequest -UseBasicParsing http://localhost:8090/
+          $s = Invoke-WebRequest -UseBasicParsing http://localhost:8090/shared/sim.js
+          Get-Content exe.log
+          Stop-Process -Id $p.Id -Force
+          if ($r.StatusCode -ne 200 -or $s.StatusCode -ne 200 -or $r.Content -notmatch 'Pac-Man') { throw 'the exe did not serve the page' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PacManVs-exe
+          path: pacvs/host/dist/PacManVs.exe
+          retention-days: 90
