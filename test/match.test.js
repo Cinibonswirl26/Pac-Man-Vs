@@ -82,10 +82,11 @@ for (const seed of [3, 7, 11]) {
   {
     const m = new Match(i => i < 2, 5, { kinds: ['human', 'human', 'standin', 'standin'] }); m.start();
     const s = m.sim, gi = m.Sim.ghostIndexOf(s, 2), other = [0, 1].find(p => p !== m.pac);
-    s.ghosts[gi].grey = false; s.ghosts[gi].claim = other;                  // woken by the other person's ghost
+    const oslot = m.Sim.ghostIndexOf(s, other);
+    s.ghosts[gi].grey = false; s.ghosts[gi].claim = oslot;                  // woken by the other person's ghost (its slot)
     s.over = true; s.overReason = 'cleared'; m.phase = 'play';               // the round ends without a catch
     while (m.phase !== 'countdown') m.tick([null, null, null, null]);
-    ok(!m.sim.ghosts[gi].grey && m.sim.ghosts[gi].claim === other, 'a woken stand-in keeps its colour into the next round');
+    ok(!m.sim.ghosts[gi].grey && m.sim.ghosts[gi].claim === oslot && m.Sim.colorOf(m.sim, gi) === other, 'a woken stand-in keeps its colour into the next round');
     m.sim.ghosts[gi].mode = 'fright'; m.sim.frightLeft = 5; m.sim.ghosts[gi].x = m.sim.pac.x; m.sim.ghosts[gi].y = m.sim.pac.y;
     m.sim.ghosts.forEach((g, k) => { if (k !== gi) { g.x = 1.5; g.y = 1.5; } });
     m.phase = 'play'; m.tick([null, null, null, null]);
@@ -94,11 +95,13 @@ for (const seed of [3, 7, 11]) {
     ok(m.sim.ghosts[gi].grey, 'and stays grey next round');
     const m2 = new Match(i => i < 2, 5, { kinds: ['human', 'human', 'standin', 'standin'] }); m2.start();
     const s2 = m2.sim, g2 = m2.Sim.ghostIndexOf(s2, 2), o2 = [0, 1].find(p => p !== m2.pac);
-    s2.ghosts[g2].grey = false; s2.ghosts[g2].claim = o2;
+    const oldPac = m2.pac, slot2 = m2.Sim.ghostIndexOf(s2, o2);
+    s2.ghosts[g2].grey = false; s2.ghosts[g2].claim = slot2;
     s2.catcher = o2; s2.over = true; s2.overReason = 'caught'; m2.phase = 'play';   // that player catches Pac-Man and is Pac-Man next
     while (m2.phase !== 'handoff' && m2.phase !== 'countdown') m2.tick([null, null, null, null]);
     if (m2.phase === 'handoff') { m2.ready(o2); }
-    ok(m2.pac === o2 && m2.sim.ghosts[m2.Sim.ghostIndexOf(m2.sim, 2)].grey, 'a stand-in wearing the new Pac-Man\'s colour goes back to grey');
+    const g3 = m2.Sim.ghostIndexOf(m2.sim, 2);
+    ok(m2.pac === o2 && !m2.sim.ghosts[g3].grey && m2.Sim.colorOf(m2.sim, g3) === oldPac, 'when its waker becomes Pac-Man the stand-in stays woken in the colour of the old Pac-Man, who takes over that slot (measured on the original)');
   }
 }
 console.log(fails ? fails + ' FAILED' : 'match flow ok'); process.exit(fails ? 1 : 0);

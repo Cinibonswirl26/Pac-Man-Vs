@@ -277,12 +277,14 @@
       frameStart(width);
       const f = st.time * 60;
       const textures = {}, text = {}, colors = {}, hide = new Set(['TEXT_001', 'TEXT_002', 'P2_COM', 'P3_COM']), show = new Set();
-      // the player panel: each row wears its player's number, icon and colour; a stand-in's row is grey and says COM
+      // the player panel: each row wears its player's number, icon and colour; a stand-in's row is grey and says COM, its
+      // ghost icon grey until a ghost player wakes it, then in that player's colour (the frame stays grey, the COM mark stays)
       const order = rowOrder(st), tevOf = name => scr.materials[scr.byName[name].material].tevColors;   // a pane's colour registers: frame, interior
+      const ownerOf = seat => { const g = st.ghosts.find(x => x.seat === seat); return g && g.c != null && g.c >= 0 ? g.c : -1; };
       order.forEach((seat, r) => {
         const P = 'P' + (r + 1);
         if (isCom(st, seat)) {
-          textures[P + '_mon'] = 'Icon_Grey.bti'; hide.add(P + '_num'); colors[P + '_waku'] = GREY_TEV;
+          const o = ownerOf(seat); textures[P + '_mon'] = o >= 0 ? ICONS[o] : 'Icon_Grey.bti'; hide.add(P + '_num'); colors[P + '_waku'] = GREY_TEV;
           if (scr.byName[P + '_COM']) { show.add(P + '_COM'); hide.delete(P + '_COM'); }
         } else {
           textures[P + '_mon'] = seat === st.pacPlayer ? 'Icon_pac.bti' : ICONS[seat];
@@ -314,7 +316,7 @@
           R.poly([[tvx(gx - 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy - 4)], [tvx(gx + 4), tvy(gy + 4)], [tvx(gx - 4), tvy(gy + 4)]], [c[0], c[1], c[2], 1]);
         }
       }
-      st.ghosts.slice(0, 3).forEach((g, slot) => ghostCircle(slot, g.c != null && g.c >= 0 ? g.c : g.seat, st.views[slot], st.time, g.c < 0));      // a grey stand-in gets a grey circle marked COM
+      st.ghosts.slice(0, 3).forEach((g, slot) => ghostCircle(slot, g.seat, st.views[slot], st.time, isCom(st, g.seat)));      // a stand-in's circle stays grey and marked COM, woken or not
       if (st.sparkle !== undefined) sparkles(st.sparkle);
       if (st.caught) caught(st.caught);
       return canvas;

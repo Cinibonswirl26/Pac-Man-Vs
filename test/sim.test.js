@@ -201,13 +201,13 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   S.update(s, idle); ok(!s.over && s.ghosts[0].grey, 'Pac-Man passes through a grey ghost');
   s.pac.x = 9.5; s.pac.y = 13.5; s.ghosts[0].x = 5.5; s.ghosts[0].y = 1.5; s.ghosts[2].x = 5.5; s.ghosts[2].y = 1.5;
   S.update(s, idle);
-  ok(!s.ghosts[0].grey && S.colorOf(s, 0) === S.playerOfGhost(s, 2) && s.events.includes('claim'), 'a ghost passing through a stand-in gives it its colour');
+  ok(!s.ghosts[0].grey && s.ghosts[0].claim === 2 && S.colorOf(s, 0) === S.playerOfGhost(s, 2) && s.events.includes('claim'), 'a ghost passing through a stand-in gives it its colour (the claim names the slot)');
   ok(s.ghosts[1].grey, 'other stand-ins stay grey');
   s.ghosts[0].x = s.pac.x; s.ghosts[0].y = s.pac.y;
   S.update(s, idle);
   ok(s.over && s.overReason === 'caught' && s.catcher === S.playerOfGhost(s, 2), 'the woken ghost catches Pac-Man for the player whose colour it wears: ' + s.catcher);
   const s2 = S.newRound([1600, 0, 0, 0], 0, { standin: [true, true, false] });
-  s2.ghosts[0].grey = false; s2.ghosts[0].claim = S.playerOfGhost(s2, 2); s2.ghosts[0].mode = 'fright'; s2.frightLeft = 8;
+  s2.ghosts[0].grey = false; s2.ghosts[0].claim = 2; s2.ghosts[0].mode = 'fright'; s2.frightLeft = 8;
   s2.ghosts[0].x = s2.pac.x; s2.ghosts[0].y = s2.pac.y; s2.ghosts[1].x = 1.5; s2.ghosts[2].x = 17.5; s2.ghosts[2].y = 1.5; s2.ghosts[1].y = 1.5;
   S.update(s2, idle);
   ok(s2.ghosts[0].mode === 'eyes' && s2.ghosts[0].grey && S.colorOf(s2, 0) === -1, 'eaten, a woken stand-in goes back to grey');
@@ -232,7 +232,7 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   S.update(s4, { pac: null, ghosts: [RIGHT, RIGHT, null] });
   ok(moved(s4.ghosts[0]) > 0 && moved(s4.ghosts[0]) < moved(s4.ghosts[1]), 'a grey ghost moves, but less than a normal one: ' + moved(s4.ghosts[0]).toFixed(3) + ' vs ' + moved(s4.ghosts[1]).toFixed(3));
   const s5 = S.newRound([1600, 0, 0, 0], 0, { standin: [true, false, false] }), rng5 = S.mulberry(5);
-  s5.ghosts[0].grey = false; s5.ghosts[0].claim = S.playerOfGhost(s5, 1);
+  s5.ghosts[0].grey = false; s5.ghosts[0].claim = 1;
   Object.assign(s5.ghosts[0], { x: 1.5, y: 1.5 }); s5.ghosts[1].x = 17.5; s5.ghosts[1].y = 1.5; s5.ghosts[2].x = 17.5; s5.ghosts[2].y = 1.5;
   const d0 = S.dist(s5.ghosts[0], s5.pac); let n5 = 0;
   while (!s5.over && n5++ < 30 * 40) S.update(s5, { pac: null, ghosts: [S.cpuGhost(s5, 0, rng5, 1), null, null] });

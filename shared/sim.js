@@ -121,8 +121,9 @@
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
       pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it.
-      // opts.claims[i]: the player whose colour a stand-in already wears from the last round (it keeps it until eaten), or -1
-      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]) && !(opts.claims && opts.claims[i] >= 0 && opts.claims[i] !== pacPlayer), standin: !!(opts.standin && opts.standin[i]), claim: opts.standin && opts.standin[i] && opts.claims && opts.claims[i] >= 0 && opts.claims[i] !== pacPlayer ? opts.claims[i] : -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
+      // opts.claims[i]: the ghost slot that woke stand-in i in an earlier round (it stays woken until eaten; it wears the colour
+      // of whoever plays that slot now, since the old Pac-Man takes over the catcher's slot), or -1
+      ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]) && !(opts.claims && opts.claims[i] >= 0), standin: !!(opts.standin && opts.standin[i]), claim: opts.standin && opts.standin[i] && opts.claims && opts.claims[i] >= 0 ? opts.claims[i] : -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
       // opts.players[i]: the seat playing ghost slot i (kept across rounds by the match); without it, seat order
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
@@ -144,7 +145,7 @@
   /** Whose colour ghost gi wears: its own player's, the colour of the ghost that woke it up (a stand-in), or -1 for grey. */
   function colorOf(state, gi) {
     const g = state.ghosts[gi];
-    return g.grey ? -1 : (g.claim >= 0 ? g.claim : playerOfGhost(state, gi));
+    return g.grey ? -1 : playerOfGhost(state, g.claim >= 0 ? g.claim : gi);   // claim: the slot of the ghost that woke it
   }
   function playerOfGhost(state, gi) {
     if (state.gp) return gi >= 0 && gi < state.gp.length ? state.gp[gi] : -1;
@@ -488,7 +489,7 @@
       for (let j = 0; j < s.ghosts.length; j++) {
         const b = s.ghosts[j];
         if (b === a || b.grey || b.mode !== 'normal' || b.air || dist(a, b) >= CFG.catchDist) continue;
-        a.grey = false; a.claim = colorOf(s, j); s.events.push('claim');
+        a.grey = false; a.claim = b.standin && b.claim >= 0 ? b.claim : j; s.events.push('claim');   // woken by slot j (or by whatever woke j)
         break;
       }
     }

@@ -59,7 +59,9 @@
       if (!this.slots) this.slots = [0, 1, 2, 3].filter(i => i !== this.pac);
       // Seats nobody is playing: either computer players, or grey stand-ins that only wake up when a ghost player touches them.
       const standin = this.slots.map(p => this.kindOf(p) === 'standin');
-      // a stand-in that a ghost woke keeps that player's colour from round to round, until it is eaten (or its player is Pac-Man now)
+      // a stand-in that a ghost woke stays woken from round to round until it is eaten, wearing the colour of whoever plays the
+      // waking ghost's slot now (measured on the original: after a catch the old Pac-Man takes over the catcher's slot, and the
+      // stand-ins that slot woke turn to the new occupant's colour)
       const claims = this.sim ? this.sim.ghosts.map(g => g.standin && !g.grey ? g.claim : -1) : null;
       this.sim = this.Sim.newRound(this.scores, this.pac, { target: this.target, standin, claims, players: this.slots, rng: this.rng });
       this.phase = 'countdown'; this.phaseLeft = COUNTDOWN;
