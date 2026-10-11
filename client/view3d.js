@@ -23,6 +23,9 @@
       skins: Object.fromEntries([...SKINS, 'yowari', 'com', 'toumei'].map(s => [s, Disc.decodeBTI(file('ghost/ghost_' + s + '.bti'))])),
       pac: J3D.parseBMD(file('packman/pacman.bmd')),
       pacAnim: J3D.parseBCK(file('packman/anm/pacman.bck')),
+      // the disc's own death animation (death/die.bmd is the Pac-Man model again): two and a half turns easing out over
+      // 70 frames, then shrinking to nothing over the next 48; played once
+      dieAnim: J3D.parseBCK(file('death/anm/die.bck')),
       cherry: J3D.parseBMD(file('cherry.bmd')),
       dot: Disc.decodeBTI(await disc.read('PROOT/Texture/dot.bti'))
     };
@@ -193,16 +196,16 @@
       // the arc of a flight: the sim moves the flyer along the ground line, the picture lifts it
       const lift = e => e && e.a ? 1500 * Math.sin(Math.PI * e.a[4]) : 0;
       const squash = (m, e) => e && e.sq ? m4.mul(m, [e.sq[0], 0, 0, 0, 0, e.sq[1], 0, 0, 0, 0, e.sq[0], 0, 0, 0, 0, 1]) : m;   // wide and tall factors about the body's base
-      const dying = v.pac && v.pac.dying >= 0 ? v.pac.dying : -1, D = (v.pac && v.pac.death) || { spin: 0.22, shrink: 0.14, flatAt: 2 };
-      // caught: two turns while shrinking to nothing, then out of sight until he reappears lying on his side
-      const gone = dying >= D.spin + D.shrink && dying < D.flatAt, flat = dying >= D.flatAt;
+      // caught (see FIDELITY.md): he is gone from contact; from D.animAt the disc's death animation plays once on the spot
+      // (the spin and the shrink are in the animation itself), and when it ends he stays gone
+      const dying = v.pac && v.pac.dying >= 0 ? v.pac.dying : -1, D = (v.pac && v.pac.death) || { animAt: 1 };
+      const dieFrame = dying < 0 ? -1 : Math.floor((dying - D.animAt) * FPS), dieLen = assets.dieAnim.length;
+      const gone = dying >= 0 && (dieFrame < 0 || dieFrame >= dieLen - 1);
       if (v.pac && v.pac.x < v.W && !gone) {     // out of sight in the hidden part of the tunnel otherwise
-        let yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0, scale = 1;
+        let yaw = v.pac.yaw !== undefined ? v.pac.yaw : YAW[v.pac.d] || 0;
         if (v.pac.ds >= 2) yaw += v.time * 24;        // a dasher spins while the dash is strong
-        if (dying >= 0 && !flat) { yaw += Math.min(dying, D.spin + D.shrink) / D.spin * 2 * Math.PI; scale = dying < D.spin ? 1 : Math.max(0.001, 1 - (dying - D.spin) / D.shrink); }
-        let pm = squash(m4.trs(wx(v.pac.x), fl + (flat ? 250 : 380) + lift(v.pac), wz(v.pac.y), yaw, scale), v.pac);
-        if (flat) { const a = 1.25, c = Math.cos(a), n = Math.sin(a); pm = m4.mul(pm, [c, n, 0, 0, -n, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }   // knocked over on his side
-        R.draw(pac, pm);
+        if (dieFrame >= 0) { pac.setPose(J3D.pose(assets.pac, J3D.animate(assets.dieAnim, dieFrame))); lastPacFrame = -1; }
+        R.draw(pac, squash(m4.trs(wx(v.pac.x), fl + 380 + lift(v.pac), wz(v.pac.y), yaw, 1), v.pac));
       }
       // clones (Arrangement levels): the mirror of Pac-Man or of a ghost, drawn see-through
       for (const c of v.clones || []) {
