@@ -52,6 +52,9 @@
       <div class="snd"><b>eatGhost</b><span style="flex:1">Pac-Man eats a ghost (a quick rising tone)</span><button data-hand="eatGhost">&#9654;</button></div>
       <div class="snd"><b>death</b><span style="flex:1">Pac-Man caught (falling swoops, two rising sweeps)</span><button data-hand="death">&#9654;</button></div>
       <p class="dim">These are rebuilt from recordings, not read from the disc. Tell me how they differ from the real ones.</p></div>
+    <div class="card"><h2>TV tones</h2>
+      <div class="snd"><b>count</b><span style="flex:1">the exchange screen's count (two square-wave notes, every 8 frames)</span><button data-tone="count">&#9654;</button></div>
+      <p class="dim">A few of the original's effects use the sound chip's own waves, which are not on the disc. These are rebuilt from a recording.</p></div>
   </div>
   <div>
     <div class="card"><h2>3 &middot; What plays when</h2>
@@ -73,6 +76,7 @@
 <script src="/client/mazedata.js"></script>
 <script src="/client/sound.js"></script>
 <script src="/client/handsound.js"></script>
+<script src="/client/tones.js"></script>
 <script src="/client/soundmap.js"></script>
 <script>
 (() => {
@@ -86,7 +90,7 @@
   function play(w, vol) { const a = audio(), src = a.createBufferSource(), g = a.createGain(); src.buffer = Sound.buffer(a, w); g.gain.value = vol == null ? 1 : vol; src.connect(g); g.connect(master); src.start(); return src; }
   const engine = {
     voice: (i, force, vol) => { if (snd.voice[i]) play(snd.voice[i], vol); }, sfx: (i, vol) => { if (snd.sfx[i]) play(snd.sfx[i], vol); },
-    hand: name => HandSound.play(audio(), master, name), ready: () => !!snd
+    hand: name => HandSound.play(audio(), master, name), tone: (name, vol) => Tones.play(audio(), master, name, vol), ready: () => !!snd
   };
   const sm = () => SoundMap.create(engine, map);
 
@@ -113,8 +117,8 @@
       cues.forEach((c, k) => {
         const r = document.createElement('div'); r.className = 'cue' + (focus && focus.cue === c ? ' sel' : '');
         const opt = (v, list) => list.map(x => `<option${x === v ? ' selected' : ''}>${x}</option>`).join('');
-        r.innerHTML = `<select data-f="kind">${opt(c.kind, ['voice', 'sfx', 'hand'])}</select>
-          <input data-f="ids" value="${(c.ids || []).join(', ')}" title="sound numbers, comma separated (waka or start for Pac-Man's screen)">
+        r.innerHTML = `<select data-f="kind">${opt(c.kind, ['voice', 'sfx', 'hand', 'tone'])}</select>
+          <input data-f="ids" value="${(c.ids || []).join(', ')}" title="sound numbers, comma separated (a name such as waka for Pac-Man's screen, or count for a TV tone)">
           <select data-f="mode" title="one = random one of them, all = all of them, index = by seat">${opt(c.mode, ['one', 'all', 'index'])}</select>
           <select data-f="who">${opt(c.who, ['all', 'pac', 'ghost'])}</select>
           <label>ms<input data-f="delay" type="number" min="0" step="100" value="${c.delay || 0}"></label>
@@ -142,19 +146,21 @@
       box.appendChild(d);
     }
   }
-  // The exchange screen's count: the original's program asks for a sound every 8th frame while the points move, but the
-  // disc has none behind it, so pick one here. Each button sets the cue to that effect and plays a count with it.
+  // The exchange screen's count: the original's program asks for a sound every 8th frame while the points move. It is
+  // made with the sound chip's own waves, not a recording on the disc, so the default is the rebuilt "count" tone; each
+  // button sets the cue to that sound (or a disc effect) and plays a count with it.
   const COUNT_TICKS = 20, TICK_MS = 8000 / 59.94;
-  function previewCount(id) { if (!snd) return flash('Load the disc first'); for (let k = 0; k < COUNT_TICKS; k++) setTimeout(() => sm().fire(id, { me: 0 }), k * TICK_MS); }
+  function previewCount(id) { if (!snd && (map[id] || []).some(c => c.kind === 'voice' || c.kind === 'sfx')) return flash('Load the disc first'); for (let k = 0; k < COUNT_TICKS; k++) setTimeout(() => sm().fire(id, { me: 0 }), k * TICK_MS); }
   function countPicker(ev, cues) {
     const p = document.createElement('div'); p.className = 'bar';
-    p.innerHTML = '<button class="p">&#9654; Preview the count</button><span class="dim">or pick an effect:</span>' +
+    p.innerHTML = '<button class="p">&#9654; Preview the count</button><span class="dim">or pick:</span><button data-i="tone">count tone</button>' +
       (snd ? snd.sfx.map((w, i) => `<button data-i="${i}" title="${(SoundMap.SFX_NAMES[i] || '').replace(/"/g, '&quot;')}">${i}</button>`).join('') : '<span class="dim">load the disc first</span>') +
       '<button data-i="none">none</button>';
     p.querySelector('button.p').onclick = () => previewCount(ev.id);
     p.querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
       cues.length = 0;
-      if (b.dataset.i !== 'none') cues.push({ kind: 'sfx', ids: [+b.dataset.i], mode: 'one', who: 'all', force: false, delay: 0, vol: 0.5 });
+      if (b.dataset.i === 'tone') cues.push({ kind: 'tone', ids: ['count'], mode: 'one', who: 'all', force: false, delay: 0, vol: 1 });
+      else if (b.dataset.i !== 'none') cues.push({ kind: 'sfx', ids: [+b.dataset.i], mode: 'one', who: 'all', force: false, delay: 0, vol: 0.5 });
       draw(); previewCount(ev.id);
     });
     return p;
@@ -216,6 +222,7 @@
     } catch (err) { $('stat').textContent = 'Could not use the saved disc: ' + err.message; }
   };
   document.querySelectorAll('[data-hand]').forEach(b => b.onclick = () => HandSound.play(audio(), master, b.dataset.hand));
+  document.querySelectorAll('[data-tone]').forEach(b => b.onclick = () => Tones.play(audio(), master, b.dataset.tone));
   $('save').onclick = () => flash(SoundMap.save(map) && SoundMap.saveMusic(music) ? 'Saved. Reload the game to use it.' : 'Could not save in this browser');
   $('save2').onclick = () => $('save').onclick();
   $('reset').onclick = () => { map = SoundMap.defaults(); music = SoundMap.musicDefaults(); focus = null; draw(); drawMusic(); flash('Defaults restored (press Save to keep)'); };

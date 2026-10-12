@@ -134,7 +134,7 @@
   let onHandheld = false;
   const hearsTV = () => !onHandheld;
   const SM = SoundMap.create({
-    voice: (i, force, vol) => { if (hearsTV()) say(i, force, vol); }, sfx: (i, vol) => { if (hearsTV()) sfx(i, vol); },
+    voice: (i, force, vol) => { if (hearsTV()) say(i, force, vol); }, sfx: (i, vol) => { if (hearsTV()) sfx(i, vol); }, tone: (name, vol) => { const a = hearsTV() && audio(); if (a) Tones.play(a, master, name, vol); },
     hand: name => { if (!art.handheld || !audio()) return; if (name === 'waka' && handWaka) handWaka.stop(); const h = HandSound.play(ac, master, name); if (name === 'waka') handWaka = h; },
     ready: () => !!(snd.sfx && snd.voice)
   });

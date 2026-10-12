@@ -141,7 +141,7 @@ wave of the effect bank, numbered as the sound lab lists them:
 | 0x1809 | fruit appears | 6 |
 | 0x180E / 0x180F / 0x1810 / 0x1818 | menus: confirm, back, cursor, switch | 2 / 3 / 5 / 4 |
 | 0x1815 | power pellet | 8 |
-| 0x180A, 0x180B, 0x1811-0x1814, 0x1816 (fruit gone), 0x1817 (a stand-in woken), 0x1819 (the exchange count) | | none: these entries play drum-kit programs 0xF0-0xF7, and neither bank on the disc has a drum kit, so they are silent |
+| 0x180A, 0x180B, 0x1811-0x1814, 0x1816 (fruit gone), 0x1817 (a stand-in woken), 0x1819 (the exchange count) | | none on the disc: these entries set programs 0xF0-0xF7, which are not bank instruments but the sound chip's own built-in waves (the console's sound microcode generates them). They do sound on the real console. Dolphin's high-level DSP emulation does not implement wave source 2, the one the count uses: it plays nothing and warns "Using an unknown/unimplemented sample source: 0002". Its low-level emulation (LLE) plays it |
 
 The sound engine runs on the console's own processor, so an emulator plays these exactly as the console does; the
 recordings agree (silence through the exchange count).
@@ -218,7 +218,8 @@ streams in order (0 `pacmanBGM00`, 1 `Pac_Arr_Clear`, 2 `Pac_Opening_Comp`, 3 `p
 | --- | --- |
 | Contact | the catcher's "Excellent" (0x280A-D); the playing loop is faded over 60 frames |
 | Standstill's end (60 frames) | the death sound (0x1801, wave 14, 1.46 s) on the TV; the handheld plays its own death sound with its death animation (see below) |
-| The rest of the amber picture and the count | silence. The count asks for effect 0x1819 every 8th frame while a score still moves, but that effect plays a drum kit the disc does not have (see the effect table), and the recording is silent. This game leaves it silent by default; the sound lab can give it a sound |
+| The rest of the amber picture | silence |
+| The count | effect 0x1819 every 8th frame while a score still moves, from the sound chip's own waves (see the effect table). Recorded with the low-level DSP emulation: a square-wave G5 (786 Hz) at full level, then five frames later a square-wave B5 (985 Hz) as the G fades over about 4 frames. Left alone, the B dies away over 14 frames (19 frames from the G); the next count cuts it off within a frame. Its loudness (RMS) is 0.46 of the death sound's over its length. Rebuilt as the `count` tone in `client/tones.js`. The earlier silent recording was made with the high-level emulation, which skips this wave |
 | Ready | stream 9, `pacmaniaBGM05` (4.05 s, looped), until Start |
 | Start | starting stream 0, the start jingle (4.6 s), stops the tune at once; the jingle runs under the hand-over |
 | Jingle's end | "Ready" (0x2827), the zoom-in, then "Go" (0x2828) and the siren |

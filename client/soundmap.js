@@ -1,7 +1,8 @@
 /* Which sound plays for which game event. The defaults are this project's reading of the original; the sound lab
  * (/client/soundlab.html) lets a player change them, and the choices are kept in the browser and used by the game.
  * A cue is one sound played for an event:
- *   kind  'voice' (announcer line), 'sfx' (effect) or 'hand' (Pac-Man's own screen: 'waka', 'fruit', 'eatGhost' or 'death')
+ *   kind  'voice' (announcer line), 'sfx' (effect), 'hand' (Pac-Man's own screen: 'waka', 'fruit', 'eatGhost' or 'death')
+ *         or 'tone' (a TV sound the original makes with the sound chip's own waves, not on the disc: 'count')
  *   ids   the numbers of the sounds (or the hand sound's name)
  *   mode  'one' = play one of ids at random, 'all' = play all of them, 'index' = ids[n] for the player or seat n
  *   who   'all', 'pac' (only the player who is Pac-Man hears it) or 'ghost' (only the ghost players)
@@ -13,9 +14,10 @@
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v10';
+  const KEY = 'pacvs.soundmap.v11';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
+  const tone = (name, o) => Object.assign({ kind: 'tone', ids: [name], mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
 
   // Names the lab shows next to each sound. Lines found by speech recognition are named; the rest are for you to name.
@@ -64,7 +66,7 @@
     // The exchange screen's count: the original's program asks for effect 0x1819 every 8th frame while the points move, but
     // its effect bank has no instrument for that number, so nothing sounds (the recording is silent there). Empty by
     // default; give it a cue in the lab to hear the count.
-    { id: 'exchangeTick', label: 'Exchange screen count', when: 'Every 8 frames while the stolen points count across after a catch', cues: [] },
+    { id: 'exchangeTick', label: 'Exchange screen count', when: 'Every 8 frames while the stolen points count across after a catch', cues: [tone('count')] },
     // Timers: counted from the start of each round, so they begin again after Pac-Man clears the maze or is caught.
     { id: 'mazeCleared', label: 'Maze cleared', when: 'Pac-Man eats the last pellet', cues: [voice([17], { force: true })] },
     { id: 'final', label: 'Target score reached', when: 'A player reaches the target score ("End of the game")', cues: [voice([30], { force: true })] },
@@ -121,7 +123,7 @@
   }
   function save(map) { try { localStorage.setItem(KEY, JSON.stringify(map)); return true; } catch { return false; } }
 
-  /** `out` is what actually makes noise: { voice(i, force, vol), sfx(i, vol), hand(name), ready() }. */
+  /** `out` is what actually makes noise: { voice(i, force, vol), sfx(i, vol), hand(name), tone(name, vol), ready() }. */
   function create(out, map) {
     map = map || load();
     const api = {
@@ -139,7 +141,7 @@
           if (c.mode === 'one') ids = ids.length ? [ids[Math.floor(Math.random() * ids.length)]] : [];
           else if (c.mode === 'index') ids = ids[p.index] != null ? [ids[p.index]] : [];
           if (c.chance != null && c.chance < 1 && Math.random() >= c.chance) continue;
-          const go = () => { for (const i of ids) { if (c.kind === 'voice') out.voice(+i, !!c.force, c.vol); else if (c.kind === 'sfx') out.sfx(+i, c.vol); else if (c.kind === 'hand') out.hand(String(i)); } };
+          const go = () => { for (const i of ids) { if (c.kind === 'voice') out.voice(+i, !!c.force, c.vol); else if (c.kind === 'sfx') out.sfx(+i, c.vol); else if (c.kind === 'hand') out.hand(String(i)); else if (c.kind === 'tone' && out.tone) out.tone(String(i), c.vol); } };
           if (c.delay > 0) setTimeout(go, c.delay); else go();
         }
       }
