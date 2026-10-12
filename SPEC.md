@@ -1,7 +1,8 @@
 # Rules of the original, read from its program
 
 This is the rule book this game is built to. The numbers were read from the original's own program on the
-player's disc (its executable, disassembled and decompiled with decomp-toolkit and angr), then checked live in an
+player's disc (its executable, disassembled with decomp-toolkit and decompiled with angr and then again with Ghidra 11.3,
+which read the same values), then checked live in an
 emulator with a memory watch on the game's tables. Nothing from the disc is copied here: these are the rules and
 values, with the address of the routine each one was read from so the reading can be repeated. The code in
 `shared/sim.js` is written from this description, not from the original's code.
