@@ -88,6 +88,19 @@ both drawn as eyes.
 The view radius a ghost sees in its circle: 100 px normally, 125 px when the seat's flag is clear (see below),
 200 px while the fruit effect lasts.
 
+## Hand-over, slots and the handheld (0x80026114; 0x8001D5A4)
+
+After a catch the catcher's seat takes slot 3, the slot that always belongs to whoever is Pac-Man, and the old
+Pac-Man's seat takes the catcher's old slot: the slot table swaps those two entries, so every other circle stays
+where it was. The scores the panel shows are a second copy that is kept in step for pellets, fruit and eaten
+ghosts but not for the catch, which only the exchange screen's count carries across; the handheld gets each
+seat's score capped at 99,990 and a 400/200/1600 popup value in hundreds.
+
+The packet to the handheld (one record per mover) holds the rounded x and y, a flags byte and the slot: the
+direction in the low bits, 0x10 frightened, 0x20 eyes (an eaten ghost or a grey stand-in), 0x40 the hidden
+ghost of the Pac-Man seat or the frightened flash (every 8 frames through the last 120), the colour x 4; on
+Pac-Man's own record 0x20 says the fruit is showing.
+
 ## Announcer and sounds
 
 The announcer's sound IDs resolve through the disc's audio init table (its instrument bank 2, one instrument per
