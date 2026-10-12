@@ -264,7 +264,7 @@
     const FULL = [[0, 0], [TVW, 0], [TVW, TVH], [0, TVH]];
     function caught(c) {
       const clamp = x => Math.max(0, Math.min(1, x));
-      const dim = clamp((c.t - 1.3) / 0.7), out = clamp((c.t - (c.total - 0.9)) / 0.9);
+      const dim = clamp((c.t - 1.0) / (40 / 59.94)), out = clamp((c.t - (c.total - 0.9)) / 0.9);   // the amber climbs 5/255 a frame from 60 frames after contact (SPEC.md)
       if (dim > 0) R.poly(FULL, [0.5, 0.28, 0, 0.62 * dim]);
       if (c.t > 2.0) {
         const hide = new Set(['CT_null', 'UR_null', 'UL_null', 'PUS_NL', 'GMS_NULL', 'Cng_NULL']);

@@ -12,17 +12,21 @@
   let snap = null, offline = null, lastPhase = null, lastCount = -1;
   let names = ['You', 'CPU', 'CPU', 'CPU'];
   const sm = { pac: null, pacAng: null, ghosts: [null, null, null], yaw: [0, 0, 0], sight: [null, null, null] };
-  // The circle's reach changes with an animation: in the original, picking up the fruit pulls the camera back by
-  // about 1.6x over a little more than a second, easing out. The sim changes the radius in one step; this tweens it.
-  const ZOOM_TIME = 1.1;
-  function tweenSight(i, target, now) {
+  // The circle's reach moves towards its target at the original's rate: 1.3 units a frame on a 100-unit reach
+  // (SPEC.md), so the fruit's pull-back takes about 1.3 s and the round-start zoom-in from 2.56x takes the 2 s
+  // of "Ready". The sim changes the radius in one step; this slides it.
+  const ZOOM_RATE = 1.3 * 59.94 / 100;                 // reaches per second
+  function tweenSight(i, target, now, jump) {
     const t = sm.sight[i];
-    if (!t) return (sm.sight[i] = { from: target, to: target, t0: now, v: target }).v;
-    if (t.to !== target) { t.from = t.v; t.to = target; t.t0 = now; }
-    const k = Math.min(1, (now - t.t0) / (ZOOM_TIME * 1000));
-    t.v = t.from + (t.to - t.from) * Math.sin(k * Math.PI / 2);
+    if (!t) return (sm.sight[i] = { t0: now, v: target }).v;
+    if (jump != null) { t.v = jump; t.t0 = now; return t.v; }
+    const step = ZOOM_RATE * target * Math.min(0.1, (now - t.t0) / 1000); t.t0 = now;
+    t.v = t.v < target ? Math.min(target, t.v + step) : Math.max(target, t.v - step);
     return t.v;
   }
+  const START_ZOOM = 2.56;                              // the circles start the round pulled back to 256 units
+  // Through the jingle the reach is held at the pulled-back value; from "Ready" it slides in, arriving at "Go".
+  const sightNow = (i, target, now) => tweenSight(i, target, now, snap && snap.phase === 'countdown' && snap.left_t > PacMatch.READY ? START_ZOOM * target : null);
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -639,7 +643,7 @@
     setSiren(onOriginalStage() && snap.phase === 'play' && !snap.ghosts.some(g => g && (g.m === 'e' || g.m === 'f')));
     setTune(snap.why === 'caught' && (snap.phase === 'handoff' || (snap.phase === 'roundover' && performance.now() - phaseT0 >= PacMatch.CAUGHT * 1000)));
     scheduleSiren(); scheduleTune();
-    if (snap.phase === 'countdown') { const c = Math.ceil(snap.left_t); if (c !== lastCount) { lastCount = c; tone(c > 0 ? 520 : 880, 0.12, 'square', 0.1); } }
+    // no beeps on the countdown: the original has the start jingle, then Ready and Go
     renderHud(); renderBanner();
   }
   const fmt = n => n.toLocaleString('en-US');
@@ -875,10 +879,10 @@
       f.globalCompositeOperation = 'source-over'; f.clearRect(0, 0, fogCv.width, fogCv.height);
       f.fillStyle = 'rgba(1,2,8,0.965)'; f.fillRect(0, 0, fogCv.width, fogCv.height);
       f.globalCompositeOperation = 'destination-out';
-      const R = tweenSight(snap.me, snap.sight || CFG.ghostSight, now) * u;
+      const R = sightNow(snap.me, snap.sight || CFG.ghostSight, now) * u;
       // the ghost players share one screen, so every ghost's circle is open
       f.fillStyle = '#000';
-      sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { f.beginPath(); f.arc(gh.x * u, gh.y * u, tweenSight(i, sg.s || CFG.ghostSight, now) * u, 0, 7); f.fill(); } });
+      sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { f.beginPath(); f.arc(gh.x * u, gh.y * u, sightNow(i, sg.s || CFG.ghostSight, now) * u, 0, 7); f.fill(); } });
       g.drawImage(fogCv, 0, 0);
       const v3 = ghostView3D();
       if (v3) draw3D(v3, me, R, now, dt);
@@ -962,7 +966,7 @@
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, ds: s.ds, bk: s.bk, sq: squashOf('g' + i, s, now) });
+      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: sightNow(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, ds: s.ds, bk: s.bk, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);

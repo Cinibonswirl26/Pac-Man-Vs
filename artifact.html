@@ -446,7 +446,7 @@ body { background: var(--bg); color: var(--ink); }
   /** Pac-Man (gi -1) or ghost gi takes what is at the fruit spot. Returns true if the round ended. */
   function takeItem(s, gi) {
     const kind = s.fruit.kind || 'fruit', g = gi >= 0 ? s.ghosts[gi] : null, who = gi >= 0 ? colorOf(s, gi) : s.pacPlayer;
-    s.fruit = null;
+    s.fruit = null; s.fruitTimer = fruitGap(s.rng || Math.random);     // the clock restarts on a take as on a burst
     if (kind === 'fruit') {
       if (g) g.sightLeft = CFG.fruitSightTime;
       s.events.push(g ? 'fruitghost' : 'fruit'); award(s, who, CFG.fruitPts); return s.over;
@@ -1102,7 +1102,9 @@ body { background: var(--bg); color: var(--ink); }
   else root.PacMatch = factory(root.PacSim);
 })(typeof self !== 'undefined' ? self : this, function (Sim) {
   'use strict';
-  const COUNTDOWN = 3.5, ROUND_END = 5, HANDOFF = 15;
+  // The original's round start (SPEC.md): the start jingle (4.6 s), then "Ready" while the circles zoom in over
+  // 120 frames (2 s), then "Go" and the movers set off.
+  const READY = 2, COUNTDOWN = 4.6 + READY, ROUND_END = 240 / 59.94, HANDOFF = 15;
   // after a catch: CAUGHT seconds of the catch and the EXCELLENT box, then the exchange screen counts the stolen points across at
   // 120 a second from 1.2 s in and shows the arrow 1.5 s after (measured); the hand-over wait for the new Pac-Man starts then
   const EXCHANGE = steal => 1.2 + Math.max(1, steal || 0) / 120 + 1.5;
@@ -1216,7 +1218,7 @@ body { background: var(--bg); color: var(--ink); }
       return v;
     }
   }
-  return { Match, COUNTDOWN, ROUND_END, HANDOFF, CAUGHT, EXCHANGE };
+  return { Match, COUNTDOWN, READY, ROUND_END, HANDOFF, CAUGHT, EXCHANGE };
 });
 
 </script>
@@ -1799,7 +1801,7 @@ body { background: var(--bg); color: var(--ink); }
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v8';
+  const KEY = 'pacvs.soundmap.v9';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
@@ -1827,22 +1829,26 @@ body { background: var(--bg); color: var(--ink); }
     { id: 'frightLoop', loop: true, label: 'Frightened ghosts loop', when: 'Plays over and over while the ghosts are frightened', cues: [sfx([10], { vol: 0.35 })] },
     { id: 'eyesLoop', loop: true, label: 'Ghost "wee-woo" siren', when: 'Plays over and over while an eaten ghost is flying home', cues: [sfx([12], { vol: 0.35 })] },
     { id: 'ghostEatenSfx', label: 'Ghost eaten sound', when: 'Pac-Man eats a frightened ghost (the rising sweep and the thump)', cues: [sfx([11, 13], { mode: 'all', vol: 0.8 })] },
-    { id: 'powerPac', label: 'Power pellet - Pac-Man side', when: 'Pac-Man eats a power pellet (said to Pac-Man); the original spoke after about 3 in 5', cues: [voice([0, 2], { force: true, who: 'pac', chance: 0.6 })] },
-    { id: 'powerGhost', label: 'Power pellet - ghost side', when: 'Pac-Man eats a power pellet (said to the ghosts)', cues: [voice([1, 3], { force: true, chance: 0.6 })] },
+    // The original's program plays one sound ID on every power pellet; the disc's instrument for it holds lines 0 and 1
+    // as alternates (the two Japanese-sounding takes, 2 and 3, sit on an ID the program never calls).
+    { id: 'powerPac', label: 'Power pellet - Pac-Man side', when: 'Pac-Man eats a power pellet (said to Pac-Man)', cues: [voice([0, 1], { force: true, who: 'pac' })] },
+    { id: 'powerGhost', label: 'Power pellet - ghost side', when: 'Pac-Man eats a power pellet (said to the ghosts)', cues: [voice([0, 1], { force: true })] },
     { id: 'eatGhost', label: 'Ghost eaten', when: 'index = how many ghosts this power pellet has eaten so far (0 = first)', per: 'chain', cues: [voice([10, 11, 12], { mode: 'index' })] },
     { id: 'fruitAppears', label: 'Fruit appears', when: 'The fruit shows up in the maze', cues: [sfx([6]), voice([8, 9])] },
     { id: 'fruitGhost', label: 'Fruit taken by a ghost', when: 'index = the ghost player\'s seat', per: 'seat', cues: [sfx([13]), voice([4, 5, 6, 7], { mode: 'index', force: true })] },
     { id: 'fruitPac', label: 'Fruit taken by Pac-Man', when: 'Pac-Man reaches the fruit', cues: [sfx([13]), voice([26, 27], { force: true })] },
-    { id: 'twentyLeft', label: 'Twenty pellets left', when: 'Twenty pellets remain', cues: [voice([20])] },
-    { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18, 19])] },
+    // Pellet counts, as the original's program calls them: 100 and 50 left play one of the two shouts, 25 left the
+    // worried line, 10 left the ten-pellets line (its alternate take, 19, is on an ID the program never calls).
+    { id: 'hundredLeft', label: 'A hundred pellets left', when: 'A hundred pellets remain', cues: [voice([33, 34])] },
+    { id: 'fiftyLeft', label: 'Fifty pellets left', when: 'Fifty pellets remain', cues: [voice([33, 34])] },
+    { id: 'twentyLeft', label: 'Twenty-five pellets left', when: 'Twenty-five pellets remain', cues: [voice([20])] },
+    { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18])] },
     { id: 'pts1000', label: '1000 points to the target', when: 'Anybody is within 1000 of winning', cues: [voice([28])] },
     { id: 'pts500', label: '500 points to the target', when: 'Anybody is within 500 of winning', cues: [voice([29])] },
     // measured on the original: the "Excellent" line starts the instant Pac-Man is caught (the siren stops with it); the knock
     // comes 2.1 s later, as the EXCELLENT box appears
     { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [voice([13, 14, 15, 16], { mode: 'index', force: true }), sfx([4], { vol: 0.9, delay: 2100 })] },
     // Timers: counted from the start of each round, so they begin again after Pac-Man clears the maze or is caught.
-    { id: 'goGoGo', after: 60, label: '"Go go go!" timer', when: 'One minute into a round, in the game only', cues: [voice([33])] },
-    { id: 'youCanDoIt', after: 150, label: '"You can do it!" timer', when: 'Two and a half minutes into a round, in the game only', cues: [voice([34])] },
     { id: 'mazeCleared', label: 'Maze cleared', when: 'Pac-Man eats the last pellet', cues: [voice([17], { force: true })] },
     { id: 'final', label: 'Target score reached', when: 'A player reaches the target score ("End of the game")', cues: [voice([30], { force: true })] },
     { id: 'title', label: 'Game boots', when: 'The disc has just been loaded (title line)', cues: [voice([35], { force: true })] },
@@ -3797,7 +3803,7 @@ body { background: var(--bg); color: var(--ink); }
     const FULL = [[0, 0], [TVW, 0], [TVW, TVH], [0, TVH]];
     function caught(c) {
       const clamp = x => Math.max(0, Math.min(1, x));
-      const dim = clamp((c.t - 1.3) / 0.7), out = clamp((c.t - (c.total - 0.9)) / 0.9);
+      const dim = clamp((c.t - 1.0) / (40 / 59.94)), out = clamp((c.t - (c.total - 0.9)) / 0.9);   // the amber climbs 5/255 a frame from 60 frames after contact (SPEC.md)
       if (dim > 0) R.poly(FULL, [0.5, 0.28, 0, 0.62 * dim]);
       if (c.t > 2.0) {
         const hide = new Set(['CT_null', 'UR_null', 'UL_null', 'PUS_NL', 'GMS_NULL', 'Cng_NULL']);
@@ -3937,17 +3943,21 @@ body { background: var(--bg); color: var(--ink); }
   let snap = null, offline = null, lastPhase = null, lastCount = -1;
   let names = ['You', 'CPU', 'CPU', 'CPU'];
   const sm = { pac: null, pacAng: null, ghosts: [null, null, null], yaw: [0, 0, 0], sight: [null, null, null] };
-  // The circle's reach changes with an animation: in the original, picking up the fruit pulls the camera back by
-  // about 1.6x over a little more than a second, easing out. The sim changes the radius in one step; this tweens it.
-  const ZOOM_TIME = 1.1;
-  function tweenSight(i, target, now) {
+  // The circle's reach moves towards its target at the original's rate: 1.3 units a frame on a 100-unit reach
+  // (SPEC.md), so the fruit's pull-back takes about 1.3 s and the round-start zoom-in from 2.56x takes the 2 s
+  // of "Ready". The sim changes the radius in one step; this slides it.
+  const ZOOM_RATE = 1.3 * 59.94 / 100;                 // reaches per second
+  function tweenSight(i, target, now, jump) {
     const t = sm.sight[i];
-    if (!t) return (sm.sight[i] = { from: target, to: target, t0: now, v: target }).v;
-    if (t.to !== target) { t.from = t.v; t.to = target; t.t0 = now; }
-    const k = Math.min(1, (now - t.t0) / (ZOOM_TIME * 1000));
-    t.v = t.from + (t.to - t.from) * Math.sin(k * Math.PI / 2);
+    if (!t) return (sm.sight[i] = { t0: now, v: target }).v;
+    if (jump != null) { t.v = jump; t.t0 = now; return t.v; }
+    const step = ZOOM_RATE * target * Math.min(0.1, (now - t.t0) / 1000); t.t0 = now;
+    t.v = t.v < target ? Math.min(target, t.v + step) : Math.max(target, t.v - step);
     return t.v;
   }
+  const START_ZOOM = 2.56;                              // the circles start the round pulled back to 256 units
+  // Through the jingle the reach is held at the pulled-back value; from "Ready" it slides in, arriving at "Go".
+  const sightNow = (i, target, now) => tweenSight(i, target, now, snap && snap.phase === 'countdown' && snap.left_t > PacMatch.READY ? START_ZOOM * target : null);
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -4449,7 +4459,7 @@ body { background: var(--bg); color: var(--ink); }
     const now = performance.now();
     if (!prev || (cur.phase === 'countdown' && prev.phase !== 'countdown')) {
       fx.pops.length = 0; fx.sparkle = -1; fx.burst = null; fx.dust.length = 0; fx.sparks.length = 0; fx.lastPuff.clear();
-      if (cur.phase === 'countdown') { snd.said.clear(); fire('ready'); }     // "Ready?" as the countdown begins
+      if (cur.phase === 'countdown') snd.said.clear();
       return;
     }
     const near = (a, b, d) => a && b && Math.hypot(a.x - b.x, a.y - b.y) < d;
@@ -4485,13 +4495,18 @@ body { background: var(--bg); color: var(--ink); }
   function announce(prev, cur) {
     if (cur.phase !== prev.phase) {
       if (cur.phase === 'play' && prev.phase === 'countdown') fire('go');
+      // "Ready" comes when the start jingle has ended and the circles zoom in, two seconds before "Go" (SPEC.md)
+      if (cur.phase === 'countdown' && prev.phase === 'countdown' && cur.left_t <= PacMatch.READY && prev.left_t > PacMatch.READY) fire('ready');
       else if (cur.phase === 'roundover' && cur.why === 'caught') fire('caught', { index: cur.catcher });
       else if (cur.phase === 'roundover' && cur.why === 'cleared') fire('mazeCleared');
       else if (cur.phase === 'final') { fire('final'); fire('champion', { index: cur.winner >= 0 ? cur.winner : 0 }); }
     }
     if (cur.phase !== 'play') { snd.round = null; stopLoops(); return; }
-    setLoop('frightLoop', cur.frightLeft > 0 && cur.ghosts.some(g => g.m === 'f'));
-    setLoop('eyesLoop', cur.ghosts.some(g => g.m === 'e'));
+    // The original plays exactly one of these: the eyes siren while any ghost flies home, else the frightened loop
+    // while any ghost is frightened, else the siren (read from its round loop, SPEC.md).
+    const eyes = cur.ghosts.some(g => g.m === 'e');
+    setLoop('eyesLoop', eyes);
+    setLoop('frightLoop', !eyes && cur.ghosts.some(g => g.m === 'f'));
     // timed encouragement, counted from the start of each round (so it begins again after a clear or a catch)
     if (!snd.round || cur.tick < snd.round.tick0) snd.round = { tick0: cur.tick, done: new Set() };
     const played = (cur.tick - snd.round.tick0) / 30;
@@ -4500,7 +4515,9 @@ body { background: var(--bg); color: var(--ink); }
     if (cur.frightLeft > prev.frightLeft + 5) fire(snap && snap.me >= 0 ? 'powerGhost' : 'powerPac');
     if (cur.frightLeft > prev.frightLeft + 5) snd.chain = 0;
     cur.ghosts.forEach((g, i) => { if (prev.ghosts[i] && prev.ghosts[i].m === 'f' && g.m === 'e') fire('eatGhost', { index: snd.chain++ || 0 }); });
-    if (cur.left <= 20 && prev.left > 20) fire('twentyLeft');
+    if (cur.left <= 100 && prev.left > 100) fire('hundredLeft');
+    if (cur.left <= 50 && prev.left > 50) fire('fiftyLeft');
+    if (cur.left <= 25 && prev.left > 25) fire('twentyLeft');
     if (cur.left <= 10 && prev.left > 10) fire('tenLeft');
     const top = Math.max(...cur.scores), toGo = cur.target - top;
     if (toGo <= 500 && !snd.said.has(500)) { snd.said.add(500); snd.said.add(1000); fire('pts500'); }
@@ -4554,10 +4571,10 @@ body { background: var(--bg); color: var(--ink); }
       } else if (stageMusic() !== 'none' && (snap.phase === 'countdown' || snap.phase === 'play')) playMusic(stageMusic(), true); else stopMusic();
     }
     // the siren runs while the round is on and no ghost is frightened or flying home; the tune after a catch runs from the exchange screen to the next round
-    setSiren(onOriginalStage() && snap.phase === 'play' && !(snap.frightLeft > 0) && !snap.ghosts.some(g => g && g.m === 'e'));
+    setSiren(onOriginalStage() && snap.phase === 'play' && !snap.ghosts.some(g => g && (g.m === 'e' || g.m === 'f')));
     setTune(snap.why === 'caught' && (snap.phase === 'handoff' || (snap.phase === 'roundover' && performance.now() - phaseT0 >= PacMatch.CAUGHT * 1000)));
     scheduleSiren(); scheduleTune();
-    if (snap.phase === 'countdown') { const c = Math.ceil(snap.left_t); if (c !== lastCount) { lastCount = c; tone(c > 0 ? 520 : 880, 0.12, 'square', 0.1); } }
+    // no beeps on the countdown: the original has the start jingle, then Ready and Go
     renderHud(); renderBanner();
   }
   const fmt = n => n.toLocaleString('en-US');
@@ -4793,10 +4810,10 @@ body { background: var(--bg); color: var(--ink); }
       f.globalCompositeOperation = 'source-over'; f.clearRect(0, 0, fogCv.width, fogCv.height);
       f.fillStyle = 'rgba(1,2,8,0.965)'; f.fillRect(0, 0, fogCv.width, fogCv.height);
       f.globalCompositeOperation = 'destination-out';
-      const R = tweenSight(snap.me, snap.sight || CFG.ghostSight, now) * u;
+      const R = sightNow(snap.me, snap.sight || CFG.ghostSight, now) * u;
       // the ghost players share one screen, so every ghost's circle is open
       f.fillStyle = '#000';
-      sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { f.beginPath(); f.arc(gh.x * u, gh.y * u, tweenSight(i, sg.s || CFG.ghostSight, now) * u, 0, 7); f.fill(); } });
+      sm.ghosts.forEach((gh, i) => { const sg = snap.ghosts[i]; if (gh && sg && sg.m !== 'r') { f.beginPath(); f.arc(gh.x * u, gh.y * u, sightNow(i, sg.s || CFG.ghostSight, now) * u, 0, 7); f.fill(); } });
       g.drawImage(fogCv, 0, 0);
       const v3 = ghostView3D();
       if (v3) draw3D(v3, me, R, now, dt);
@@ -4880,7 +4897,7 @@ body { background: var(--bg); color: var(--ink); }
       const s = snap.ghosts[i]; if (!gh || !s) return;
       let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
-      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: tweenSight(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, ds: s.ds, bk: s.bk, sq: squashOf('g' + i, s, now) });
+      ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: sightNow(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, ds: s.ds, bk: s.bk, sq: squashOf('g' + i, s, now) });
     });
     const flash = snap.frightLeft < CFG.frightFlash && Math.floor(now / 134) % 2 === 1;
     const shown = ghosts.filter(g => !g.hidden);
