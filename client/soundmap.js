@@ -1,7 +1,7 @@
 /* Which sound plays for which game event. The defaults are this project's reading of the original; the sound lab
  * (/client/soundlab.html) lets a player change them, and the choices are kept in the browser and used by the game.
  * A cue is one sound played for an event:
- *   kind  'voice' (announcer line), 'sfx' (effect) or 'hand' (Pac-Man's own screen: 'waka' or 'start')
+ *   kind  'voice' (announcer line), 'sfx' (effect) or 'hand' (Pac-Man's own screen: 'waka', 'fruit', 'eatGhost' or 'death')
  *   ids   the numbers of the sounds (or the hand sound's name)
  *   mode  'one' = play one of ids at random, 'all' = play all of them, 'index' = ids[n] for the player or seat n
  *   who   'all', 'pac' (only the player who is Pac-Man hears it) or 'ghost' (only the ghost players)
@@ -13,7 +13,7 @@
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v9';
+  const KEY = 'pacvs.soundmap.v10';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
@@ -30,17 +30,18 @@
     26: 'Pac-Man ate the fruit', 27: 'Pac-Man ate the fruit (other)', 28: 'One thousand points left', 29: 'Five hundred points left',
     30: 'End of the game', 31: 'Go', 32: 'Ready', 33: 'Go go go!', 34: 'You can do it!', 35: 'Title'
   };
-  const SFX_NAMES = { 4: 'Pac-Man caught (the knock)', 6: 'fruit appears chime', 8: 'power pellet eaten', 9: 'pellet eaten', 10: 'frightened ghosts (loops)', 11: 'ghost eaten (rising sweep)', 12: 'ghost "wee-woo" siren (loops)', 13: 'fruit taken / ghost eaten thump', 1: 'beep' };
+  // Named from the program: each effect ID it plays goes through the disc's effect sequence to one of these waves (SPEC.md)
+  const SFX_NAMES = { 14: 'Pac-Man caught (death sound)', 6: 'fruit appears chime', 8: 'power pellet eaten', 9: 'pellet eaten', 10: 'frightened ghosts (loops)', 11: 'ghost eaten (rising sweep)', 12: 'ghost "wee-woo" siren (loops)', 13: 'fruit taken', 1: 'beep', 2: 'menu: confirm', 3: 'menu: back', 4: 'menu: switch', 5: 'menu: cursor' };
 
   // Every moment the game can make a sound for. `per` says what the index means for 'index' cues.
   const EVENTS = [
     { id: 'ready', label: 'Round is about to start', when: 'Countdown begins', cues: [voice([32], { force: true })] },
-    { id: 'go', label: 'Round starts', when: 'Countdown ends', cues: [voice([31], { force: true }), hand('start')] },
+    { id: 'go', label: 'Round starts', when: 'Countdown ends', cues: [voice([31], { force: true })] },
     { id: 'pellet', label: 'Pellet eaten', when: 'Each pellet and each power pellet: the "wa-ka" on Pac-Man\'s screen, and the pellet sound for everybody', cues: [hand('waka'), sfx([9], { vol: 0.7 })], note: 'When this has a cue and the disc is loaded, the old beeps are not used' },
     { id: 'powerPellet', label: 'Power pellet sound', when: 'Pac-Man eats a power pellet', cues: [sfx([8], { vol: 0.9 })] },
     { id: 'frightLoop', loop: true, label: 'Frightened ghosts loop', when: 'Plays over and over while the ghosts are frightened', cues: [sfx([10], { vol: 0.35 })] },
     { id: 'eyesLoop', loop: true, label: 'Ghost "wee-woo" siren', when: 'Plays over and over while an eaten ghost is flying home', cues: [sfx([12], { vol: 0.35 })] },
-    { id: 'ghostEatenSfx', label: 'Ghost eaten sound', when: 'Pac-Man eats a frightened ghost (the rising sweep and the thump)', cues: [sfx([11, 13], { mode: 'all', vol: 0.8 })] },
+    { id: 'ghostEatenSfx', label: 'Ghost eaten sound', when: 'Pac-Man eats a frightened ghost (the rising sweep)', cues: [sfx([11], { vol: 0.8 }), hand('eatGhost')] },
     // The original's program plays one sound ID on every power pellet; the disc's instrument for it holds lines 0 and 1
     // as alternates (the two Japanese-sounding takes, 2 and 3, sit on an ID the program never calls).
     { id: 'powerPac', label: 'Power pellet - Pac-Man side', when: 'Pac-Man eats a power pellet (said to Pac-Man)', cues: [voice([0, 1], { force: true, who: 'pac' })] },
@@ -48,7 +49,7 @@
     { id: 'eatGhost', label: 'Ghost eaten', when: 'index = how many ghosts this power pellet has eaten so far (0 = first)', per: 'chain', cues: [voice([10, 11, 12], { mode: 'index' })] },
     { id: 'fruitAppears', label: 'Fruit appears', when: 'The fruit shows up in the maze', cues: [sfx([6]), voice([8, 9])] },
     { id: 'fruitGhost', label: 'Fruit taken by a ghost', when: 'index = the ghost player\'s seat', per: 'seat', cues: [sfx([13]), voice([4, 5, 6, 7], { mode: 'index', force: true })] },
-    { id: 'fruitPac', label: 'Fruit taken by Pac-Man', when: 'Pac-Man reaches the fruit', cues: [sfx([13]), voice([26, 27], { force: true })] },
+    { id: 'fruitPac', label: 'Fruit taken by Pac-Man', when: 'Pac-Man reaches the fruit', cues: [sfx([13]), voice([26, 27], { force: true }), hand('fruit')] },
     // Pellet counts, as the original's program calls them: 100 and 50 left play one of the two shouts, 25 left the
     // worried line, 10 left the ten-pellets line (its alternate take, 19, is on an ID the program never calls).
     { id: 'hundredLeft', label: 'A hundred pellets left', when: 'A hundred pellets remain', cues: [voice([33, 34])] },
@@ -57,9 +58,9 @@
     { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18])] },
     { id: 'pts1000', label: '1000 points to the target', when: 'Anybody is within 1000 of winning', cues: [voice([28])] },
     { id: 'pts500', label: '500 points to the target', when: 'Anybody is within 500 of winning', cues: [voice([29])] },
-    // measured on the original: the "Excellent" line starts the instant Pac-Man is caught (the siren stops with it); the knock
-    // comes 2.1 s later, as the EXCELLENT box appears
-    { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [voice([13, 14, 15, 16], { mode: 'index', force: true }), sfx([4], { vol: 0.9, delay: 2100 })] },
+    // the original: the catcher's "Excellent" the instant Pac-Man is caught; when the 60-frame standstill ends the program
+    // plays the death sound (effect 0x1801, wave 14) on the TV, and the handheld plays its own (only Pac-Man hears that)
+    { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [voice([13, 14, 15, 16], { mode: 'index', force: true }), sfx([14], { vol: 0.9, delay: 1001 }), hand('death', { delay: 1001 })] },
     // The exchange screen's count: the original's program asks for effect 0x1819 every 8th frame while the points move, but
     // its effect bank has no instrument for that number, so nothing sounds (the recording is silent there). Empty by
     // default; give it a cue in the lab to hear the count.
@@ -75,7 +76,7 @@
     { id: 'stun', label: 'Ghost knocked dizzy', when: 'A dashing Pac-Man knocks a ghost aside', cues: [sfx([5], { vol: 0.7 })] },
     { id: 'bonk', label: 'Dash into a wall', when: 'A dasher slams into a wall and stands dizzy for a moment', cues: [sfx([1], { vol: 0.7 })] },
     { id: 'capsule', label: 'Capsule taken by Pac-Man', when: 'Pac-Man takes a capsule', cues: [sfx([7], { vol: 0.7 })] },
-    { id: 'capsuleGhost', label: 'Capsule taken by a ghost', when: 'A ghost takes a capsule', cues: [sfx([14], { vol: 0.7 })] },
+    { id: 'capsuleGhost', label: 'Capsule taken by a ghost', when: 'A ghost takes a capsule', cues: [sfx([12], { vol: 0.7 })] },
     { id: 'pot', label: 'Ghosts potted', when: 'The pink capsule pulls every ghost into the house', cues: [sfx([15], { vol: 0.7 })] },
     { id: 'hop', label: 'Ghost hop', when: 'A ghost with the hop takes off', cues: [sfx([2], { vol: 0.5 })] },
     { id: 'bigPellet', label: 'Big pellet eaten', when: 'Pac-Man chews a big pellet a ghost dropped', cues: [sfx([9], { vol: 0.9 })] },

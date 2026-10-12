@@ -48,7 +48,9 @@
     <div class="card"><h2>Announcer lines</h2><div class="lib" id="voice"></div></div>
     <div class="card"><h2>Pac-Man's screen</h2>
       <div class="snd"><b>waka</b><span style="flex:1">the "wa-ka" for each pellet</span><button data-hand="waka">&#9654;</button></div>
-      <div class="snd"><b>start</b><span style="flex:1">the sweep that starts a round</span><button data-hand="start">&#9654;</button></div>
+      <div class="snd"><b>fruit</b><span style="flex:1">Pac-Man takes the fruit (a sweep down and up)</span><button data-hand="fruit">&#9654;</button></div>
+      <div class="snd"><b>eatGhost</b><span style="flex:1">Pac-Man eats a ghost (a quick rising tone)</span><button data-hand="eatGhost">&#9654;</button></div>
+      <div class="snd"><b>death</b><span style="flex:1">Pac-Man caught (falling swoops, two rising sweeps)</span><button data-hand="death">&#9654;</button></div>
       <p class="dim">These are rebuilt from recordings, not read from the disc. Tell me how they differ from the real ones.</p></div>
   </div>
   <div>
@@ -135,8 +137,27 @@
       const sel = bar.querySelectorAll('select');
       add.onclick = () => { cues.push({ kind: 'voice', ids: [], mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }); draw(); };
       test.onclick = () => { if (!snd) return flash('Load the disc first'); sm().fire(ev.id, { index: +sel[0].value, me: +sel[1].value }); };
-      d.appendChild(bar); box.appendChild(d);
+      d.appendChild(bar);
+      if (ev.id === 'exchangeTick') d.appendChild(countPicker(ev, cues));
+      box.appendChild(d);
     }
+  }
+  // The exchange screen's count: the original's program asks for a sound every 8th frame while the points move, but the
+  // disc has none behind it, so pick one here. Each button sets the cue to that effect and plays a count with it.
+  const COUNT_TICKS = 20, TICK_MS = 8000 / 59.94;
+  function previewCount(id) { if (!snd) return flash('Load the disc first'); for (let k = 0; k < COUNT_TICKS; k++) setTimeout(() => sm().fire(id, { me: 0 }), k * TICK_MS); }
+  function countPicker(ev, cues) {
+    const p = document.createElement('div'); p.className = 'bar';
+    p.innerHTML = '<button class="p">&#9654; Preview the count</button><span class="dim">or pick an effect:</span>' +
+      (snd ? snd.sfx.map((w, i) => `<button data-i="${i}" title="${(SoundMap.SFX_NAMES[i] || '').replace(/"/g, '&quot;')}">${i}</button>`).join('') : '<span class="dim">load the disc first</span>') +
+      '<button data-i="none">none</button>';
+    p.querySelector('button.p').onclick = () => previewCount(ev.id);
+    p.querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+      cues.length = 0;
+      if (b.dataset.i !== 'none') cues.push({ kind: 'sfx', ids: [+b.dataset.i], mode: 'one', who: 'all', force: false, delay: 0, vol: 0.5 });
+      draw(); previewCount(ev.id);
+    });
+    return p;
   }
 
   // ---- music by stage: the disc's streams, and a choice per stage

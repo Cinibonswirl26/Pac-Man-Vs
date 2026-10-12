@@ -122,7 +122,10 @@
   const PANEL_MAP = 0x225d4;                       // the side panel's 32 x 32 map of tile entries
   const TARGET_ROW = 2, TARGET_TILES = 272;       // the target score strip: 7,000 / 10,000 / 15,000 are five tiles each
   const PAC_FRAMES = [[68, 70, 72], [8, 10, 12], [14, 64, 66], [2, 4, 6]];   // mouth phases facing up, right, down, left
-  const PAC_DEATH = [72, 74, 76, 78];
+  // the death on the handheld: from contact (handheld frames), the pictures' four tiles (top left, top right, bottom left,
+  // bottom right) in the sprite sheet; the last is the spark burst, then nothing
+  const DEATH_AT = [60, 64, 80, 96, 112, 128, 144];
+  const DEATH_TILES = [[72, 73, 44, 39], [74, 75, 106, 107], [76, 77, 108, 109], [78, 79, 110, 111], [78, 79, 160, 161], [130, 131, 162, 163], null];
   const GHOST_BASE = [200, 196, 204, 192];         // body frames facing up, right, down, left (two feet frames each, 2 tiles apart)
   const FRIGHT = [132, 134], EYES = [140, 138, 142, 136];   // eyes looking up, right, down, left (pupils drawn at that side of the whites)
   const CHERRY = 384, DIGIT0 = 388, BADGE = 420;      // BADGE: the player-number badge (two tiles per player) shown over frightened ghosts
@@ -194,19 +197,24 @@
     }
     if (st.pac) {
       let base;
-      // caught (measured on the original's handheld): the classic end over 2.1 s: the mouth opens wider and wider for about
-      // 1.8 s, then a burst of sparks for 0.3 s, then nothing until the next round
-      if (st.caught !== undefined && st.caught !== null) {
-        if (st.caught >= 2.1) return;
-        if (st.caught >= 1.8) { for (let k = 0; k < 4; k++) { const a = fr / 5 + k * 1.57, r = 4 + 6 * (st.caught - 1.8) / 0.3; badges.push({ pix: STAR, palette: PAL.star, x: sx(st.pac.x) + 4 + Math.round(Math.cos(a) * r), y: sy(st.pac.y) + 4 + Math.round(Math.sin(a) * r), hf: 0, vf: 0 }); } return; }
-        base = PAC_DEATH[Math.min(PAC_DEATH.length - 1, Math.floor(st.caught / 1.8 * PAC_DEATH.length))];
+      // caught (read off the original's handheld frame by frame, in its own frames from contact): he stands for 60 frames,
+      // then the death runs through five pictures (at 60, 64, 80, 96 and 112), the spark burst shows from 128 to 144,
+      // and he is gone; the maze and ghosts stay up until the exchange screen
+      if (st.caught !== undefined && st.caught !== null && st.caught * FPS >= DEATH_AT[0]) {
+        const cf = st.caught * FPS;
+        let k = DEATH_AT.length - 1; while (k > 0 && cf < DEATH_AT[k]) k--;
+        const tiles = DEATH_TILES[k];
+        if (tiles) [[0, 0], [8, 0], [0, 8], [8, 8]].forEach(([dx, dy2], i) => sprites.push({ tile: tiles[i], pal: 0, x: sx(st.pac.x) + dx, y: sy(st.pac.y) + dy2, hf: 0, vf: 0 }));
+        base = null;
+      } else if (st.caught !== undefined && st.caught !== null) {
+        base = PAC_FRAMES[st.pac.d][1];                                                    // the standstill: as he was, mouth open
       } else {
         const phase = st.pac.moving ? Math.floor(fr / 2) % 4 : (fr % 16 < 12 ? 0 : 1);
         base = phase === 0 ? 0 : PAC_FRAMES[st.pac.d][phase - 1];
         if (st.pac.ds >= 2) base = PAC_FRAMES[[0, 1, 2, 3][Math.floor(fr / 2) % 4]][2];     // a dasher spins while the dash is strong: wide open, facing round in turn
         else if (st.pac.bk > 0) base = 0;                                                  // bonked a wall: a round ball
       }
-      sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y) - lift(st.pac), 0, st.pac.sq);
+      if (base !== null) sprite16(sprites, base, 0, sx(st.pac.x), sy(st.pac.y) - lift(st.pac), 0, st.pac.sq);
       if (st.pac.bk > 0) for (let k = 0; k < 3; k++) { const a = fr / 6 + k * 2.1; badges.push({ pix: STAR, palette: PAL.star, x: sx(st.pac.x) + 4 + Math.round(Math.cos(a) * 7), y: sy(st.pac.y) - 6 + Math.round(Math.sin(a) * 2), hf: 0, vf: 0 }); }
     }
     st.ghosts.forEach(g => {

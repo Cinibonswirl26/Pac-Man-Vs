@@ -22,11 +22,16 @@
   // (SPEC.md), so the fruit's pull-back takes about 1.3 s and the round-start zoom-in from 2.56x takes the 2 s
   // of "Ready". The sim changes the radius in one step; this slides it.
   const ZOOM_RATE = 1.3 * 59.94 / 100;                 // reaches per second
+  // The fruit's pull-back: the program's reach goes from 100 to 200 at 1.3 a frame, 77 frames each way; here the
+  // picture pulls back to CFG.fruitSightMult (the measured 1.6x) over the same 77 frames, out and back alike.
+  const FRUIT_ZOOM_FRAMES = 100 / 1.3;
   function tweenSight(i, target, now, jump) {
     const t = sm.sight[i];
     if (!t) return (sm.sight[i] = { t0: now, v: target }).v;
     if (jump != null) { t.v = jump; t.t0 = now; return t.v; }
-    const step = ZOOM_RATE * target * Math.min(0.1, (now - t.t0) / 1000); t.t0 = now;
+    const base = CFG.ghostSight, fruitTop = base * CFG.fruitSightMult;
+    const rate = Math.max(t.v, target) > fruitTop + 1e-6 ? ZOOM_RATE * base : (fruitTop - base) * 59.94 / FRUIT_ZOOM_FRAMES;
+    const step = rate * Math.min(0.1, (now - t.t0) / 1000); t.t0 = now;
     t.v = t.v < target ? Math.min(target, t.v + step) : Math.max(target, t.v - step);
     return t.v;
   }
@@ -95,6 +100,7 @@
     return buf;
   }
   async function playMusic(name, loop) {
+    if (!hearsTV()) { stopMusic(); return; }
     if (!music.enabled || !music.disc || !audio()) return;
     if (musicName === name) return;
     stopMusic(); musicName = name;
@@ -123,8 +129,12 @@
     if (!force && a.currentTime < snd.busyUntil) return;
     playWave(w, vol == null ? 1 : vol); snd.busyUntil = a.currentTime + w.samples / w.rate + 0.25;
   }
+  // Sound follows the screen: while Pac-Man's player is looking at the handheld they hear only the handheld's own sounds,
+  // as on the original (its sounds are its own, not the TV's); everyone else, and every TV screen, hears the TV.
+  let onHandheld = false;
+  const hearsTV = () => !onHandheld;
   const SM = SoundMap.create({
-    voice: (i, force, vol) => say(i, force, vol), sfx: (i, vol) => sfx(i, vol),
+    voice: (i, force, vol) => { if (hearsTV()) say(i, force, vol); }, sfx: (i, vol) => { if (hearsTV()) sfx(i, vol); },
     hand: name => { if (!art.handheld || !audio()) return; if (name === 'waka' && handWaka) handWaka.stop(); const h = HandSound.play(ac, master, name); if (name === 'waka') handWaka = h; },
     ready: () => !!(snd.sfx && snd.voice)
   });
@@ -138,6 +148,7 @@
     try { src.stop(t + fade); } catch { /* ended */ }
   }
   function setLoop(id, on, fade) {
+    on = on && hearsTV();
     if (!on) { if (loops[id]) { loops[id].forEach(n => fadeStop(n, n.gainNode, fade)); delete loops[id]; } return; }
     if (loops[id] || !SM.handled(id)) return;
     const a = audio(); if (!a) return;
@@ -177,6 +188,7 @@
   const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13, perPercent: 0.00255 };
   let siren = null;
   function setSiren(on, fade) {
+    on = on && hearsTV();
     if (!on) { if (siren) { fadeStop(siren.o, siren.g, fade); siren = null; } return; }
     if (siren || !audio()) return;
     const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; g.gain.value = 0.07;
@@ -203,6 +215,7 @@
     [2.59, 0.13, 'A6'], [2.73, 0.15, 'G6'], [2.88, 0.15, 'C7'], [3.09, 0.7, 'A6'], [3.78, 0.08, 'G#6'], [3.86, 0.12, 'G6']], TUNE_LEN = 4.0;
   let tune = null;
   function setTune(on) {
+    on = on && hearsTV();
     if (!on) { if (tune) { tune.nodes.forEach(n => { try { n.stop(); } catch { /* ended */ } }); tune = null; } return; }
     if (tune || !audio() || !music.enabled) return;
     tune = { next: ac.currentTime + 0.05, nodes: [], stream: !!music.disc };
@@ -552,8 +565,9 @@
   // Pac-Man's end as the ghosts see it (see FIDELITY.md): on contact the "Excellent" line starts and he is gone, the rays
   // and the points burst from the spot; at 1 s the circles pull back and he is back on the spot playing the disc's own
   // death animation (two and a half turns, then shrinking to nothing, 118 frames); the picture goes amber and the
-  // EXCELLENT box and the knock come at 2 s. The handheld plays its own end for 2.1 s.
-  const DEATH = { burstAt: 0.4, flatAt: 1.0, animAt: 1.0, pullBack: 1.6, pullTime: 0.5, handEnd: 2.1 };
+  // EXCELLENT box comes at 2 s. The handheld shows its own end until the exchange screen (SPEC.md): Pac-Man stands for
+  // 60 frames, then dies and is gone by 144, and the maze stays up.
+  const DEATH = { burstAt: 0.4, flatAt: 1.0, animAt: 1.0, pullBack: 1.6, pullTime: 0.5, handEnd: PacMatch.CAUGHT };
   let fxPrev = null;
   function fxDetect(cur) {
     const prev = fxPrev; fxPrev = cur;
@@ -659,7 +673,7 @@
   const leaving = now => !!(exch && exch.leaveT0 && snap && snap.phase === 'countdown' && now - exch.leaveT0 < TRANSITION * 1000);
   // Screens drawn from the disc between rounds: the exchange after a catch (through the hand-over, and after Start the
   // circles flying to their places, which only the TV shows) and the final results.
-  // Pac-Man's player keeps the handheld through its death animation (2.1 s, as on the original's handheld), then sees the TV.
+  // Pac-Man's player keeps the handheld through the whole catch (its death, then the still maze), then sees the TV's exchange screen.
   const discScreen = () => (snap && art.screens && ((((snap.phase === 'roundover' && byCatch(snap)) || (snap.phase === 'handoff' && exch)) && !(snap.me < 0 && snap.phase === 'roundover' && caughtAge() < DEATH.handEnd)) ||
     snap.phase === 'final' || (snap.me >= 0 && leaving(performance.now())))) ? sharedScreen() : null;
   function onSnap(force) {
@@ -906,6 +920,7 @@
     const waiting = myHandoff() && now >= handheldAt() && art.handheld && curDisc && pacScreenCanvas();
     const between = waiting ? null : discScreen(), scr = between || (!waiting && snap.me >= 0 ? sharedScreen() : null);
     const hh = waiting || (!scr && snap.me < 0 ? pacScreenCanvas() : null);
+    if (onHandheld !== !!hh) { onHandheld = !!hh; if (onHandheld) { stopMusic(); setSiren(false); setTune(false); stopLoops(); } }
     cv.style.display = scr || hh ? 'none' : '';
     if (pacScreen) pacScreen.canvas.style.display = hh ? '' : 'none';
     if (screenView) screenView.canvas.style.display = scr ? '' : 'none';
@@ -1074,5 +1089,5 @@
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });
   addEventListener('resize', () => { cell = 0; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (mode) onSnap(true); });
-  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get music() { return musicName; }, get art() { return art; }, get disc() { return music.disc; }, get offline() { return offline; }, get exch() { return exch; } };   // for automated tests
+  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get music() { return musicName; }, get art() { return art; }, get disc() { return music.disc; }, get offline() { return offline; }, get exch() { return exch; }, get sight() { return sm.sight.map(t => t && t.v); } };   // for automated tests
 })();

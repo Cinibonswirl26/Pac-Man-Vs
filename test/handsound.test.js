@@ -12,4 +12,9 @@ ok(Math.min(...s.freq) === 130 && Math.max(...s.freq) === 499, 'the start sweep 
 const pw = H.WAVES.pulse;   // a 12.5% pulse has strong low harmonics that fall away smoothly
 const amp = k => Math.hypot(pw.real[k], pw.imag[k]);
 ok(amp(1) > amp(2) && amp(2) > amp(4) && amp(8) < 0.05, 'pulse harmonics fall away');
+// the death: 92 frames, six falling swoops, then two sweeps up to 1760 Hz
+const d = H.SOUNDS.death;
+ok(d.parts.length === 2 && d.parts.every(p => p.freq.length === p.amp.length), 'the death sound is two parts with a loudness per frame');
+ok(Math.round(H.duration('death') * 59.7275) === 92, 'the death sound lasts 92 handheld frames');
+ok(Math.max(...d.parts[1].freq) >= 1760 && d.parts[1].freq[0] < 200, 'its sweeps rise to 1760 Hz');
 console.log(fails ? fails + ' FAILED' : 'handheld sounds ok'); process.exit(fails ? 1 : 0);

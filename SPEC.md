@@ -121,9 +121,30 @@ sound lab lists them. Which moments call which ID was read from the round loop a
 
 So there are no timed shouts: "Go go go!" and "You can do it!" are the two takes behind the 100- and 50-pellet
 calls. The "ten pellets left" and "fruit appeared" alternate takes (19, 9) sit behind the same IDs as their
-twins. The effects (bank 1) are matched by ear in the sound map; the loops are exclusive: the eyes siren while
-any ghost flies home, else the frightened loop while any is frightened, else the siren, a sequenced sound per
-stage whose parameter 8 is set to the percentage of pellets left (0x80021D24), which raises its pitch.
+twins. The loops are exclusive: the eyes siren while any ghost flies home, else the frightened loop while any is
+frightened, else the siren, a sequenced sound per stage whose parameter 8 is set to the percentage of pellets left
+(0x80021D24), which raises its pitch.
+
+The effects. An effect ID (0x18nn) is category 1, index nn of the sound table at the start of the audio init file
+(its header gives each category's count and first entry, 16 bytes each: priority, pitch, volume; the lookup is
+0x80045258). The effect sequence (`Seqs/JaiSeqs.arc`, `jasample.bms`) has a table of 33 three-byte addresses at
+0x284, one per index, and each entry picks a bank and program and plays a note. In bank 1 each program holds one
+wave of the effect bank, numbered as the sound lab lists them:
+
+| ID | Moment (call site) | Wave |
+| --- | --- | --- |
+| 0x1800 | pellet eaten (0x80014A54) | 9 |
+| 0x1801 | the catch's standstill ends: the death sound (round loop, phase 6) | 14 |
+| 0x1802 / 0x1804 | the loops | 12 / 10 |
+| 0x1803 | fruit taken (400 points) | 13 |
+| 0x1805 | ghost eaten | 11 |
+| 0x1809 | fruit appears | 6 |
+| 0x180E / 0x180F / 0x1810 / 0x1818 | menus: confirm, back, cursor, switch | 2 / 3 / 5 / 4 |
+| 0x1815 | power pellet | 8 |
+| 0x180A, 0x180B, 0x1811-0x1814, 0x1816 (fruit gone), 0x1817 (a stand-in woken), 0x1819 (the exchange count) | | none: these entries play drum-kit programs 0xF0-0xF7, and neither bank on the disc has a drum kit, so they are silent |
+
+The sound engine runs on the console's own processor, so an emulator plays these exactly as the console does; the
+recordings agree (silence through the exchange count).
 
 ### The round's clock (0x800231C4 and the round loop)
 
@@ -171,6 +192,20 @@ runs from white (the texture's bright end, at the centre) to yellow. 11 is a ste
 oval band round the loser's circle (spawn rate key-framed 0.1 to 0.7 a frame, looping every 30 frames), falling 1
 unit a frame for 45-90 frames, light blue to cyan.
 
+The handheld through the catch (its frames counted from contact, at its own 59.73 a second): Pac-Man stands as he
+was for 60 frames; then the death runs through five pictures (sprite tiles 72/73/44/39 at 60, 74/75/106/107 at 64,
+76/77/108/109 at 80, 78/79/110/111 at 96, 78/79/160/161 at 112), the spark burst (130/131/162/163) shows from 128
+to 144, and he is gone; the maze and the ghosts stay up until the exchange screen at 240. Its death sound starts
+with the animation (59 frames after contact) and lasts about 92 frames: a falling warble of six swoops, then two
+rising "wah"s.
+
+The handheld makes its own sounds with its own sound chip, apart from the TV's: in the recordings it plays the
+"wa-ka" for every pellet (a power pellet too: no sound of its own, no loop while ghosts are frightened), a sweep
+down from 430 Hz and back up to 485 when Pac-Man takes the fruit (23 frames), a near-pure tone climbing from about
+280 Hz to 1600 when he eats a ghost (29 frames), and its death sound; nothing at the round's start, and nothing else
+in the rounds recorded. Here the player looking at the
+handheld hears only those, and the TV's sounds while looking at a TV picture.
+
 The handheld meanwhile: from the start of the exchange a blue screen (palette 3, colour 6) saying "LOOK AT THE TV
 SCREEN !", with a TV picture that blinks 32 frames on, 32 off over a still arrow; at the icon's arrival the next
 round's maze, panel and blinking "Press START!"; after Start the movers on their start cells until Go.
@@ -181,8 +216,9 @@ streams in order (0 `pacmanBGM00`, 1 `Pac_Arr_Clear`, 2 `Pac_Opening_Comp`, 3 `p
 
 | When | Sound |
 | --- | --- |
-| Contact | the knock and the catcher's "Excellent" (0x280A-D); the playing loop is faded over 60 frames |
-| The amber picture and the count | silence. The count asks for effect 0x1819 every 8th frame while a score still moves, but the effect bank (instruments 0x00-0x12) has none by that number, and the recording is silent |
+| Contact | the catcher's "Excellent" (0x280A-D); the playing loop is faded over 60 frames |
+| Standstill's end (60 frames) | the death sound (0x1801, wave 14, 1.46 s) on the TV; the handheld plays its own death sound with its death animation (see below) |
+| The rest of the amber picture and the count | silence. The count asks for effect 0x1819 every 8th frame while a score still moves, but that effect plays a drum kit the disc does not have (see the effect table), and the recording is silent. This game leaves it silent by default; the sound lab can give it a sound |
 | Ready | stream 9, `pacmaniaBGM05` (4.05 s, looped), until Start |
 | Start | starting stream 0, the start jingle (4.6 s), stops the tune at once; the jingle runs under the hand-over |
 | Jingle's end | "Ready" (0x2827), the zoom-in, then "Go" (0x2828) and the siren |
