@@ -60,6 +60,10 @@
     // measured on the original: the "Excellent" line starts the instant Pac-Man is caught (the siren stops with it); the knock
     // comes 2.1 s later, as the EXCELLENT box appears
     { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [voice([13, 14, 15, 16], { mode: 'index', force: true }), sfx([4], { vol: 0.9, delay: 2100 })] },
+    // The exchange screen's count: the original's program asks for effect 0x1819 every 8th frame while the points move, but
+    // its effect bank has no instrument for that number, so nothing sounds (the recording is silent there). Empty by
+    // default; give it a cue in the lab to hear the count.
+    { id: 'exchangeTick', label: 'Exchange screen count', when: 'Every 8 frames while the stolen points count across after a catch', cues: [] },
     // Timers: counted from the start of each round, so they begin again after Pac-Man clears the maze or is caught.
     { id: 'mazeCleared', label: 'Maze cleared', when: 'Pac-Man eats the last pellet', cues: [voice([17], { force: true })] },
     { id: 'final', label: 'Target score reached', when: 'A player reaches the target score ("End of the game")', cues: [voice([30], { force: true })] },
@@ -89,7 +93,7 @@
   const MUSIC_KEY = 'pacvs.music.v1';
   const STREAM_NAMES = {
     pacmanBGM00_FX_LR: 'Classic start jingle', pacmaniaBGM02_FX_LR: 'Pac-Mania track 2', pacmaniaBGM03_FX_LR: 'Pac-Mania track 3',
-    pacmaniaBGM05_FX_LR: 'Pac-Mania track 5 (short)', pacmaniaBGM06_FX_LR: 'Pac-Mania track 6', pacmaniaBGM07_FX_LR: 'Pac-Mania track 7',
+    pacmaniaBGM05_FX_LR: 'Exchange screen tune (Pac-Mania track 5)', pacmaniaBGM06_FX_LR: 'Pac-Mania track 6', pacmaniaBGM07_FX_LR: 'Pac-Mania track 7',
     Pac_Arr_bgm02_LR_Comp: 'Arrangement track', Pac_Arr_Clear_LR: 'Maze cleared jingle', Pac_Opening_Comp_LR: 'Opening theme (menus)', Pac_Op_loop73_LR: 'Opening loop'
   };
   const ROTATION = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];

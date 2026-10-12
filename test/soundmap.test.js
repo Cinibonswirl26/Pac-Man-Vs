@@ -9,7 +9,8 @@ ok(SM.EVENTS.find(e => e.id === 'hundredLeft') && SM.EVENTS.find(e => e.id === '
 log.length = 0; m.fire('go', { me: 1 }); ok(log.join() === 'v31', 'ghosts do not: ' + log);
 m.fire('eatGhost', { index: 1 }); ok(log.pop() === 'v11', 'second ghost in the chain'); log.length = 0; m.fire('mazeCleared'); ok(log.pop() === 'v17', 'maze cleared line'); log.length = 0; m.fire('caught', { index: 3 }); ok(log.join() === 'v16' && SM.EVENTS.find(e => e.id === 'caught').cues[1].delay === 2100 && SM.EVENTS.find(e => e.id === 'caught').cues[0].ids[3] === 16, 'excellent for seat 3 at once, the knock after 2.1 s: ' + log);
 ok(m.handled('pellet') && !m.handled('nothing'), 'handled');
-for (const e of SM.EVENTS) ok(m.map[e.id].length, e.id + ' has a default');
+for (const e of SM.EVENTS) ok(m.map[e.id].length || e.id === 'exchangeTick', e.id + ' has a default');   // the exchange count is silent in the original
+ok(!m.handled('exchangeTick'), 'the exchange count is silent unless given a cue');
 // music by stage
 const md = SM.musicDefaults();
 ok(md[1] === 'original' && md[0] === 'original' && md[7] === 'rotate', 'defaults: the Original stage and the built-in maze as the original, the rest rotate');

@@ -129,6 +129,28 @@
   const FPS = 59.7275;
   const START_BANNER = 448;                        // "Press START!" is 11 tiles across and 2 down at (40, 88); it blinks, 32 frames on and 32 off
 
+  // While the TV shows the exchange screen the handheld says "LOOK AT THE TV SCREEN !" on its blue backdrop (palette 3,
+  // colour 6), with a TV that blinks (32 frames on, 32 off) over a still arrow. Cells read off the original's picture:
+  // [column, row, tile, palette, flip (1 across, 2 down)] in the picture sheet the maze and panel come from.
+  const LOOK_TV = {
+    back: [3, 6],
+    tv: [[13, 5, 148, 2, 0], [14, 5, 149, 2, 0], [15, 5, 149, 2, 0], [16, 5, 148, 2, 1], [13, 6, 164, 2, 0], [14, 6, 165, 2, 0], [15, 6, 152, 2, 0], [16, 6, 164, 2, 1],
+      [13, 7, 150, 2, 0], [14, 7, 151, 2, 0], [15, 7, 151, 2, 0], [16, 7, 150, 2, 1], [13, 8, 166, 3, 0], [14, 8, 167, 3, 0], [15, 8, 167, 3, 1], [16, 8, 166, 3, 1]],
+    still: [[14, 10, 153, 3, 2], [15, 10, 153, 3, 3]],
+    // the two rows of lettering, column -> [top tile, bottom tile]
+    text: { 4: [177, 193], 5: [178, 203], 6: [178, 203], 7: [188, 204], 9: [178, 194], 10: [189, 205], 12: [189, 205], 13: [208, 224], 14: [180, 196], 16: [189, 205],
+      17: [179, 206], 19: [209, 225], 20: [210, 226], 21: [176, 197], 22: [180, 196], 23: [180, 196], 24: [211, 227], 26: [191, 207] }, textRow: 12
+  };
+  /** The handheld's "look at the TV" picture, `time` seconds after it came up. */
+  function lookAtTV(hw, f, time) {
+    clear(f, hw.bgPal[LOOK_TV.back[0]][LOOK_TV.back[1]]);
+    const cell = ([c, r, t, b, fl]) => blit(f, hw.bgTile(t), hw.bgPal[b], 8 * c, 8 * r, fl);
+    if (Math.floor(time * FPS / 32) % 2 === 0) LOOK_TV.tv.forEach(cell);
+    LOOK_TV.still.forEach(cell);
+    for (const c in LOOK_TV.text) LOOK_TV.text[c].forEach((t, k) => cell([+c, LOOK_TV.textRow + k, t, 3, 0]));
+    return f;
+  }
+
   /** The panel map with the current scores, target and roles written in. */
   function panelMap(hw, st) {
     const m = new Uint16Array(32 * 32).fill(15);
@@ -248,5 +270,5 @@
     hw.segments = MazeData ? MazeData.segments(rom) : null;
     return hw;
   }
-  return { PATH, W, H, parse, load, frame, clear, blit, drawMap, drawSprites, render, panelMap, BG_PAL, BG_TILES, OBJ_PAL, OBJ_TILES };
+  return { PATH, W, H, parse, load, frame, clear, blit, drawMap, drawSprites, render, lookAtTV, panelMap, BG_PAL, BG_TILES, OBJ_PAL, OBJ_TILES };
 });

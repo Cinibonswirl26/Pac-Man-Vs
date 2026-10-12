@@ -77,19 +77,24 @@
     }
   }
   function stopMusic() { if (musicNode) { try { musicNode.stop(); } catch { /* already stopped */ } musicNode = null; musicName = null; } }
+  /** A stream from the disc, decoded once. */
+  async function streamBuf(name) {
+    let buf = music.bufs.get(name);
+    if (buf) return buf;
+    const a = Disc.decodeAST(await music.disc.read('PROOT/AudioRes/Stream/' + name + '.z.32.c4.ast'));
+    buf = ac.createBuffer(a.channels.length, a.samples, a.rate);
+    a.channels.forEach((c, i) => buf.copyToChannel(c.subarray(0, a.samples), i));
+    buf.loopRange = a.loopEnd > a.loopStart && a.loopEnd <= a.samples ? [a.loopStart / a.rate, a.loopEnd / a.rate] : null;
+    music.bufs.set(name, buf);
+    return buf;
+  }
   async function playMusic(name, loop) {
     if (!music.enabled || !music.disc || !audio()) return;
     if (musicName === name) return;
     stopMusic(); musicName = name;
     let buf = music.bufs.get(name);
     if (!buf) {
-      try {
-        const a = Disc.decodeAST(await music.disc.read('PROOT/AudioRes/Stream/' + name + '.z.32.c4.ast'));
-        buf = ac.createBuffer(a.channels.length, a.samples, a.rate);
-        a.channels.forEach((c, i) => buf.copyToChannel(c.subarray(0, a.samples), i));
-        buf.loopRange = a.loopEnd > a.loopStart && a.loopEnd <= a.samples ? [a.loopStart / a.rate, a.loopEnd / a.rate] : null;
-        music.bufs.set(name, buf);
-      } catch (e) { console.warn('music', name, e); return; }
+      try { buf = await streamBuf(name); } catch (e) { console.warn('music', name, e); return; }
       if (musicName !== name) return;      // changed our mind while decoding
     }
     const src = ac.createBufferSource(); src.buffer = buf; src.loop = !!loop;
@@ -119,8 +124,15 @@
   });
   // Loops that run while a state lasts (frightened ghosts, eaten ghosts flying home).
   const loops = {};
-  function setLoop(id, on) {
-    if (!on) { if (loops[id]) { loops[id].forEach(n => { try { n.stop(); } catch { /* ended */ } }); delete loops[id]; } return; }
+  // After a catch the original fades whatever loop is playing over 60 frames (SPEC.md, "Exchange screen").
+  const FADE_OUT = 60 / 59.94;
+  function fadeStop(src, g, fade) {
+    if (!fade || !g || !ac) { try { src.stop(); } catch { /* ended */ } return; }
+    const t = ac.currentTime; g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + fade);
+    try { src.stop(t + fade); } catch { /* ended */ }
+  }
+  function setLoop(id, on, fade) {
+    if (!on) { if (loops[id]) { loops[id].forEach(n => fadeStop(n, n.gainNode, fade)); delete loops[id]; } return; }
     if (loops[id] || !SM.handled(id)) return;
     const a = audio(); if (!a) return;
     loops[id] = [];
@@ -128,10 +140,10 @@
       const w = snd.sfx[+i]; if (!w) continue;
       const src = a.createBufferSource(), g = a.createGain();
       src.buffer = Sound.buffer(a, w); src.loop = true; if (src.buffer.loopRange) { src.loopStart = src.buffer.loopRange[0]; src.loopEnd = src.buffer.loopRange[1]; }
-      g.gain.value = c.vol == null ? 0.4 : c.vol; src.connect(g); g.connect(master); src.start(); loops[id].push(src);
+      g.gain.value = c.vol == null ? 0.4 : c.vol; src.connect(g); g.connect(master); src.start(); src.gainNode = g; loops[id].push(src);
     }
   }
-  const stopLoops = () => Object.keys(loops).forEach(id => setLoop(id, false));
+  const stopLoops = fade => Object.keys(loops).forEach(id => setLoop(id, false, fade));
   /** The title line plays once per launch: not in a hidden page (a preview), and not again if another copy of the page just played it. */
   function titleOnce() {
     if (document.hidden) return;
@@ -141,11 +153,13 @@
   const fire = (id, p) => SM.fire(id, Object.assign({ me: snap ? snap.me : 0 }, p));
   // What the original plays, found by matching its sound output against the disc's streams (see FIDELITY.md):
   // the opening theme on the title and menus; on the Original Pac-Man stage the classic start jingle through the
-  // countdown, then no music but a siren while the round runs, and after a catch a short looping tune through the
-  // exchange and hand-over screens. The siren and that tune are sequenced by the game's own synthesiser, not streams,
-  // so they are synthesised here from their measured pitches. The pacmania streams are used on the other stages.
+  // countdown, then no music but a siren while the round runs, and on the exchange screen a short looping tune from
+  // when the new Pac-Man may press Start until they do (the disc's audio table lists the streams in order, and the
+  // program starts number 9 there and number 0, the start jingle, at Start; SPEC.md). The siren is sequenced by the
+  // game's own synthesiser, so it is synthesised here from its measured pitches. The pacmania streams are used on the
+  // other stages.
   // The sound lab can give each stage its own music (SoundMap.musicFor): the original treatment, a stream, or none.
-  const MENU_TRACK = 'Pac_Opening_Comp_LR', START_JINGLE = 'pacmanBGM00_FX_LR', CLEAR_JINGLE = 'Pac_Arr_Clear_LR';
+  const MENU_TRACK = 'Pac_Opening_Comp_LR', START_JINGLE = 'pacmanBGM00_FX_LR', CLEAR_JINGLE = 'Pac_Arr_Clear_LR', EXCHANGE_TUNE = 'pacmaniaBGM05_FX_LR';
   let musicMap = SoundMap.loadMusic();
   const stageMusic = () => SoundMap.musicFor(musicMap, curDisc ? curDisc.stage : 0, snap ? snap.round : 0);
   const onOriginalStage = () => stageMusic() === 'original';
@@ -156,8 +170,8 @@
   // steady while nothing is eaten, the period unchanged. So the sweep rises by 0.255% for every whole percent eaten.
   const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13, perPercent: 0.00255 };
   let siren = null;
-  function setSiren(on) {
-    if (!on) { if (siren) { try { siren.o.stop(); } catch { /* ended */ } siren = null; } return; }
+  function setSiren(on, fade) {
+    if (!on) { if (siren) { fadeStop(siren.o, siren.g, fade); siren = null; } return; }
     if (siren || !audio()) return;
     const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; g.gain.value = 0.07;
     o.connect(g); g.connect(master); o.start();
@@ -174,7 +188,8 @@
       siren.next = t + hold + rise + fall;
     }
   }
-  // The tune after a catch: one voice, a 4-second loop (notes read off the original's output: start s, length s, note).
+  // The exchange screen's tune is a stream on the disc (EXCHANGE_TUNE); without the disc's music this transcription of it
+  // stands in: one voice, a 4-second loop (notes read off the original's output: start s, length s, note).
   const N = n => 440 * Math.pow(2, (n - 69) / 12), NOTE = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
   const pitch = s => N(NOTE[s.slice(0, -1)] + 12 * (+s.slice(-1) + 1));
   const TUNE = [[0, 0.19, 'C7'], [0.21, 0.11, 'C7'], [0.33, 0.12, 'C7'], [0.54, 0.13, 'A6'], [0.67, 0.14, 'G6'], [0.82, 0.22, 'C7'], [1.04, 0.1, 'D#7'],
@@ -183,11 +198,20 @@
   let tune = null;
   function setTune(on) {
     if (!on) { if (tune) { tune.nodes.forEach(n => { try { n.stop(); } catch { /* ended */ } }); tune = null; } return; }
-    if (tune || !audio()) return;
-    tune = { next: ac.currentTime + 0.05, nodes: [] };
+    if (tune || !audio() || !music.enabled) return;
+    tune = { next: ac.currentTime + 0.05, nodes: [], stream: !!music.disc };
+    if (tune.stream) {          // the disc's own stream, looped
+      const me = tune;
+      streamBuf(EXCHANGE_TUNE).then(buf => {
+        if (tune !== me) return;
+        const src = ac.createBufferSource(), g = ac.createGain(); src.buffer = buf; src.loop = true;
+        if (buf.loopRange) { src.loopStart = buf.loopRange[0]; src.loopEnd = buf.loopRange[1]; }
+        g.gain.value = 0.7; src.connect(g); g.connect(master); src.start(); me.nodes.push(src);
+      }, e => { console.warn('music', EXCHANGE_TUNE, e); me.stream = false; });
+    }
   }
   function scheduleTune() {
-    if (!tune) return;
+    if (!tune || tune.stream) return;
     while (tune.next < ac.currentTime + 1.5) {
       const t0 = tune.next;
       for (const [at, len, note] of TUNE) {
@@ -467,8 +491,10 @@
   }
   // Hand-over: after a catch the new Pac-Man says when they are ready (the original's exchange screen asks them to press Start).
   const myHandoff = () => !!(snap && snap.phase === 'handoff' && snap.next === you);
-  // the exchange screen first counts the stolen points across (about 120 a second), then asks the new Pac-Man to press Start
-  const exchangeDone = () => !snap || !art.screens || performance.now() - exchangeT0 >= PacMatch.EXCHANGE(snap.steal) * 1000;
+  // the exchange screen first counts the stolen points across, then asks the new Pac-Man to press Start
+  const exchangeDone = () => !snap || !art.screens || !exch || performance.now() >= exchReadyAt();
+  const byCatch = s => !!s && s.catcher >= 0 && (s.why === 'caught' || s.why === 'won');
+  const exchTune = () => !!(exch && !exch.final && !exch.leaveT0 && (snap.phase === 'roundover' || snap.phase === 'handoff') && performance.now() >= exchReadyAt());
   function ready() {
     if (!myHandoff() || !exchangeDone()) return false;
     if (mode === 'online') send({ t: 'ready' }); else if (offline) offline.match.ready(0);
@@ -555,22 +581,22 @@
       const p = prev.ghosts[i];
       if (p && p.m === 'f' && g.m === 'e') fx.pops.push({ x: g.x, y: g.y, text: String(Math.max(0, cur.scores[cur.pacPlayer] - prev.scores[cur.pacPlayer])), t0: now });
     });
-    if (prev.phase === 'play' && cur.phase === 'roundover' && cur.why === 'caught') {
+    if (prev.phase === 'play' && cur.phase === 'roundover' && byCatch(cur)) {
       const p = cur.pac || prev.pac;
       if (p) { fx.burst = { x: p.x, y: p.y, t0: now + DEATH.burstAt * 1000 }; fx.pops.push({ x: p.x, y: p.y, text: String(cur.steal), t0: now + DEATH.burstAt * 1000 }); }
     }
   }
   // The announcer's lines, picked from changes between two snapshots (the same on every client).
   function announce(prev, cur) {
+    // "Ready" comes when the start jingle has ended and the circles zoom in, two seconds before "Go" (SPEC.md)
+    if (cur.phase === 'countdown' && prev.phase === 'countdown' && cur.left_t <= PacMatch.READY && prev.left_t > PacMatch.READY) fire('ready');
     if (cur.phase !== prev.phase) {
       if (cur.phase === 'play' && prev.phase === 'countdown') fire('go');
-      // "Ready" comes when the start jingle has ended and the circles zoom in, two seconds before "Go" (SPEC.md)
-      if (cur.phase === 'countdown' && prev.phase === 'countdown' && cur.left_t <= PacMatch.READY && prev.left_t > PacMatch.READY) fire('ready');
-      else if (cur.phase === 'roundover' && cur.why === 'caught') fire('caught', { index: cur.catcher });
+      else if (cur.phase === 'roundover' && byCatch(cur)) fire('caught', { index: cur.catcher });
       else if (cur.phase === 'roundover' && cur.why === 'cleared') fire('mazeCleared');
       else if (cur.phase === 'final') { fire('final'); fire('champion', { index: cur.winner >= 0 ? cur.winner : 0 }); }
     }
-    if (cur.phase !== 'play') { snd.round = null; stopLoops(); return; }
+    if (cur.phase !== 'play') { snd.round = null; stopLoops(byCatch(cur) ? FADE_OUT : 0); return; }
     // The original plays exactly one of these: the eyes siren while any ghost flies home, else the frightened loop
     // while any ghost is frightened, else the siren (read from its round loop, SPEC.md).
     const eyes = cur.ghosts.some(g => g.m === 'e');
@@ -615,21 +641,38 @@
       burst: fx.burst && now >= fx.burst.t0 && now - fx.burst.t0 < FX_BURST * 1000 ? { x: fx.burst.x, y: fx.burst.y, age: (now - fx.burst.t0) / 1000 } : null
     };
   }
-  const isCaught = () => snap && snap.phase === 'roundover' && snap.why === 'caught';
-  let hudKey = '', phaseT0 = 0, exchangeT0 = 0;
-  // Screens drawn from the disc between rounds: the exchange after a catch (through the hand-over) and the final results.
+  const isCaught = () => snap && snap.phase === 'roundover' && byCatch(snap);
+  let hudKey = '', phaseT0 = 0;
+  // The exchange screen after a catch (SPEC.md, "Exchange screen"): who gave and took how many points, when it came up
+  // (t0, after the catch and the amber picture), and once the new Pac-Man has pressed Start, when (leaveT0) and where each
+  // remaining circle goes on the game screen. A catch that wins the game counts the points across and goes to the results.
+  let exch = null;
+  const FPS = PacMatch.FPS, TRANSITION = PacMatch.COUNTDOWN - PacMatch.READY;   // the start jingle's part of the countdown
+  const exchF = now => exch ? (now - exch.t0) / 1000 * FPS : -1;
+  const exchReadyAt = () => exch ? exch.t0 + PacMatch.EXCHANGE(exch.steal) * 1000 : Infinity;
+  const leaving = now => !!(exch && exch.leaveT0 && snap && snap.phase === 'countdown' && now - exch.leaveT0 < TRANSITION * 1000);
+  // Screens drawn from the disc between rounds: the exchange after a catch (through the hand-over, and after Start the
+  // circles flying to their places, which only the TV shows) and the final results.
   // Pac-Man's player keeps the handheld through its death animation (2.1 s, as on the original's handheld), then sees the TV.
-  const discScreen = () => (snap && (((snap.phase === 'roundover' || snap.phase === 'handoff') && snap.why === 'caught' && !(snap.me < 0 && snap.phase === 'roundover' && caughtAge() < DEATH.handEnd)) || snap.phase === 'final') && art.screens) ? sharedScreen() : null;
+  const discScreen = () => (snap && art.screens && ((((snap.phase === 'roundover' && byCatch(snap)) || (snap.phase === 'handoff' && exch)) && !(snap.me < 0 && snap.phase === 'roundover' && caughtAge() < DEATH.handEnd)) ||
+    snap.phase === 'final' || (snap.me >= 0 && leaving(performance.now())))) ? sharedScreen() : null;
   function onSnap(force) {
     if (!snap) return;
     fxDetect(snap);
-    if (snap.phase === 'roundover' && snap.why === 'caught' && !tune) setTune(performance.now() - phaseT0 >= PacMatch.CAUGHT * 1000);
     scheduleSiren(); scheduleTune();
     if (snap.phase !== lastPhase || force) {
       if (snap.phase !== lastPhase) {
         phaseT0 = performance.now();
-        if (snap.phase === 'roundover') exchangeT0 = phaseT0 + (snap.why === 'caught' ? PacMatch.CAUGHT * 1000 : 0);
-        if (snap.phase === 'handoff' && snap.next === you) { tone(660, 0.1, 'square', 0.12); setTimeout(() => tone(990, 0.18, 'square', 0.12), 110); }
+        if (snap.phase === 'roundover' && byCatch(snap)) {
+          const after = snap.scores.slice(), before = after.slice();
+          before[snap.pacPlayer] += snap.steal; before[snap.catcher] -= snap.steal;
+          exch = { t0: phaseT0 + PacMatch.CAUGHT * 1000, before, after, loser: snap.pacPlayer, winner: snap.catcher, steal: snap.steal, target: snap.target, standin: standins(), final: snap.why === 'won', ticks: -1 };
+        } else if (snap.phase === 'countdown' && lastPhase === 'handoff' && exch) {
+          // Start was pressed: the remaining circles go to their ghost slots in the coming round
+          exch.leaveT0 = phaseT0; exch.slots = {};
+          snap.ghosts.forEach((g, i) => { exch.slots[S.playerOfGhost(snap, i)] = i; });
+        } else if (snap.phase !== 'handoff' && snap.phase !== 'countdown') exch = null;
+        if (snap.phase === 'handoff' && snap.next === you && !art.screens) { tone(660, 0.1, 'square', 0.12); setTimeout(() => tone(990, 0.18, 'square', 0.12), 110); }   // without the disc's screens, a cue that it is your turn
       }
       if (snap.phase === 'countdown' && snap.phase !== lastPhase) lastDir = -1;
       lastPhase = snap.phase;
@@ -639,9 +682,10 @@
         else if (snap.phase !== 'play') stopMusic();
       } else if (stageMusic() !== 'none' && (snap.phase === 'countdown' || snap.phase === 'play')) playMusic(stageMusic(), true); else stopMusic();
     }
-    // the siren runs while the round is on and no ghost is frightened or flying home; the tune after a catch runs from the exchange screen to the next round
-    setSiren(onOriginalStage() && snap.phase === 'play' && !snap.ghosts.some(g => g && (g.m === 'e' || g.m === 'f')));
-    setTune(snap.why === 'caught' && (snap.phase === 'handoff' || (snap.phase === 'roundover' && performance.now() - phaseT0 >= PacMatch.CAUGHT * 1000)));
+    // the siren runs while the round is on and no ghost is frightened or flying home (a catch fades it out); the exchange
+    // screen's tune runs from when the new Pac-Man may press Start until they do
+    setSiren(onOriginalStage() && snap.phase === 'play' && !snap.ghosts.some(g => g && (g.m === 'e' || g.m === 'f')), byCatch(snap) ? FADE_OUT : 0);
+    setTune(exchTune());
     scheduleSiren(); scheduleTune();
     // no beeps on the countdown: the original has the start jingle, then Ready and Go
     renderHud(); renderBanner();
@@ -663,7 +707,8 @@
     const b = $('banner'); let html = '';
     const pacMe = snap.me < 0, pn = names[snap.pacPlayer];
     const onDisc = !!discScreen();
-    if (snap.phase === 'handoff') {
+    if (snap.phase === 'handoff' && onDisc) html = '';   // the TV's own message asks the new Pac-Man to press Start
+    else if (snap.phase === 'handoff') {
       const secs = Math.ceil(snap.left_t), nx = names[snap.next];
       html = myHandoff()
         ? (exchangeDone() ? `<div class="handoff"><div class="big">You are Pac-Man next</div><div class="sm">Press any key or tap when ready · starts in ${secs} s</div><button class="primary" id="readyBtn">Ready</button></div>` : '')
@@ -672,9 +717,10 @@
     else if (onDisc && snap.phase === 'final') {
       const canAgain = mode === 'offline' || (room && room.host === you);
       html = `<div class="row" style="justify-content:center;flex:none;margin-top:auto">${canAgain ? '<button class="primary" id="again">Play again</button>' : '<span class="sm">Waiting for the host…</span>'}<button id="quit">Back to menu</button></div>`;
-    } else if (snap.phase === 'countdown') {
+    } else if (snap.phase === 'countdown' && (onDisc || (art.screens && onDiscMaze))) html = '';   // the disc's screens: the start jingle, Ready and Go say it all
+    else if (snap.phase === 'countdown') {
       html = `<div class="big">${Math.min(3, Math.max(1, Math.ceil(snap.left_t)))}</div><div class="sm">${pacMe ? `You are Pac-Man with ${fmt(snap.scores[snap.pacPlayer])} points. Eat pellets. If a ghost catches you it steals 1,600.` : `${esc(pn)} is Pac-Man. Catch Pac-Man to steal 1,600 points and become Pac-Man yourself.`}</div>`;
-    } else if (snap.phase === 'roundover' && snap.why === 'caught' && pacMe && caughtAge() < DEATH.handEnd && pacScreenCanvas()) html = '';   // the handheld plays Pac-Man's end first
+    } else if (snap.phase === 'roundover' && byCatch(snap) && pacMe && caughtAge() < DEATH.handEnd && pacScreenCanvas()) html = '';   // the handheld plays Pac-Man's end first
     else if (snap.phase === 'roundover') {
       if (snap.why === 'caught') html = `<div class="big">${esc(names[snap.catcher])} caught Pac-Man</div><div class="sm">${esc(names[snap.catcher])} takes ${fmt(snap.steal)} points from ${esc(pn)} and is Pac-Man next round.</div>`;
       else if (snap.why === 'cleared') html = `<div class="big">Maze cleared</div><div class="sm">${esc(pn)} keeps ${fmt(snap.scores[snap.pacPlayer])} points.</div>`;
@@ -848,12 +894,14 @@
     // Ghost players with the disc get the original shared screen; Pac-Man keeps the full maze.
     // Everyone sees the exchange and results screens.
     // the next Pac-Man, while the game waits for them, gets Pac-Man's own screen with its "Press START!" sign
-    const waiting = myHandoff() && art.handheld && curDisc && pacScreenCanvas();
+    const waiting = myHandoff() && now >= handheldAt() && art.handheld && curDisc && pacScreenCanvas();
     const between = waiting ? null : discScreen(), scr = between || (!waiting && snap.me >= 0 ? sharedScreen() : null);
     const hh = waiting || (!scr && snap.me < 0 ? pacScreenCanvas() : null);
     cv.style.display = scr || hh ? 'none' : '';
     if (pacScreen) pacScreen.canvas.style.display = hh ? '' : 'none';
     if (screenView) screenView.canvas.style.display = scr ? '' : 'none';
+    exchangeTicks(now);
+    drawLookInset(now, !!between);
     if (between) { drawBetween(between, now, dt); return; }
     if (scr) { drawShared(scr, now, dt); return; }
     if (hh) { try { drawPacScreen(hh, now); } catch (e) { console.warn('Pac-Man screen', e); pacScreen.canvas.remove(); pacScreen = false; } return; }
@@ -944,6 +992,31 @@
     scr.canvas.style.width = cw + 'px'; scr.canvas.style.height = cw * 3 / 4 + 'px';
     return cw * Math.min(2, window.devicePixelRatio || 1);
   }
+  // The handheld during the exchange: it tells its holder to look at the TV until the TV's handheld icon reaches the winner,
+  // then shows the next round's maze with "Press START!" to the new Pac-Man. Here the old Pac-Man, who holds it until then,
+  // sees it in a corner of the TV picture.
+  const exchSt = () => ({ before: exch.before, after: exch.after, loser: exch.loser, winner: exch.winner, pacPlayer: exch.loser, standin: exch.standin });
+  const handheldAt = () => exch && screenView && !exch.final ? exch.t0 + screenView.exchangeMoments(exchSt()).icon / FPS * 1000 : exchReadyAt();
+  let lookInset = null;
+  function drawLookInset(now, between) {
+    const show = between && exch && !exch.final && !exch.leaveT0 && exch.loser === you && now >= exch.t0 && now < handheldAt() && art.handheld;
+    if (!show) { if (lookInset) lookInset.canvas.style.display = 'none'; return; }
+    if (!lookInset) {
+      const c = document.createElement('canvas'); c.width = Handheld.W; c.height = Handheld.H; c.className = 'pixel inset'; $('stage').appendChild(c);
+      lookInset = { canvas: c, ctx: c.getContext('2d'), frame: Handheld.frame() };
+    }
+    lookInset.canvas.style.display = '';
+    Handheld.lookAtTV(art.handheld, lookInset.frame, (now - exch.t0) / 1000);
+    lookInset.ctx.putImageData(new ImageData(lookInset.frame.data, Handheld.W, Handheld.H), 0, 0);
+  }
+  // the count on the exchange screen: a tick every 8th frame while the points move (silent in the original; see the sound map)
+  function exchangeTicks(now) {
+    if (!exch || exch.leaveT0) return;
+    const f = exchF(now) - 60;
+    if (f < 0 || f >= Math.ceil(exch.steal / 10)) return;
+    const k = Math.floor(f / 8);
+    if (k !== exch.ticks) { exch.ticks = k; fire('exchangeTick'); }
+  }
   function drawBetween(scr, now, dt) {
     const w = fitScreen(scr), t = (now - phaseT0) / 1000;
     if (isCaught() && t < PacMatch.CAUGHT) { drawShared(scr, now, dt, { t, total: PacMatch.CAUGHT, seat: snap.catcher }); return; }
@@ -951,10 +1024,10 @@
       if (snap.phase === 'final') {
         const order = [0, 1, 2, 3].sort((a, b) => snap.scores[b] - snap.scores[a]);
         scr.results({ time: t, scores: snap.scores, winner: snap.winner >= 0 ? snap.winner : order[0], pacPlayer: snap.pacPlayer, standin: standins() }, w);
-      } else {
-        const after = snap.scores.slice(), before = after.slice();
-        before[snap.pacPlayer] += snap.steal; before[snap.catcher] -= snap.steal;
-        scr.exchange({ time: (now - exchangeT0) / 1000, target: snap.target, before, after, loser: snap.pacPlayer, winner: snap.catcher, pacPlayer: snap.pacPlayer, standin: standins() }, w);
+      } else if (exch) {
+        const leave = exch.leaveT0 ? (now - exch.leaveT0) / 1000 * FPS : undefined;
+        scr.exchange({ f: exchF(now), leave, target: exch.target, before: exch.before, after: exch.after, loser: exch.loser, winner: exch.winner, pacPlayer: exch.loser,
+          standin: exch.standin, final: exch.final, slots: exch.slots, effects: scr.effects || null }, w);
       }
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; }
   }
@@ -1006,5 +1079,5 @@
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });
   addEventListener('resize', () => { cell = 0; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (mode) onSnap(true); });
-  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get music() { return musicName; }, get art() { return art; }, get disc() { return music.disc; }, get offline() { return offline; } };   // for automated tests
+  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get music() { return musicName; }, get art() { return art; }, get disc() { return music.disc; }, get offline() { return offline; }, get exch() { return exch; } };   // for automated tests
 })();

@@ -62,7 +62,7 @@ the other:
 | Fruit | A timer starts each round at 1080 + 60 x (random 0-19) frames, i.e. 18-37 s. When it reaches 480 the fruit appears in the middle of the maze (chime + line); at 0 it bursts (stars) and the timer restarts with a new random value, so a fruit shows **600-1740 frames (10-29 s) after the previous one went, for 480 frames (8 s)**, over and over |
 | Fruit taken | 400 points to whoever reaches it; a ghost's view radius goes to 200 px for 720 frames (12 s), easing at 1.3 px per frame (so about 77 frames to grow); a popup "400"; the stars burst (30-frame freeze) |
 | Maze cleared | popup 1600; Pac-Man gets **1600 if his score is still below the target**; if that puts him at or past the target the game ends, else a 240-frame (4 s) pause and a new round |
-| Catch | the catcher gets 1600 and Pac-Man loses 1600, not below 0; a 60-frame freeze, then phase 6 for 180 frames (the amber picture and message), then the exchange |
+| Catch | the catcher gets 1600 and Pac-Man loses 1600, not below 0; a 60-frame freeze, then phase 6 for 180 frames (the amber picture and message), then the exchange screen (below) |
 | First Pac-Man | starts with 1600 |
 | Game end | when a score reaches the target the end line plays and the results follow |
 
@@ -132,6 +132,58 @@ sounds and the circles zoom in from 256 to 100 units at 1.3 a frame (120 frames)
 and the movers set off. A catch: 60 frames of standstill, then 180 frames of the amber picture (phase 6), then
 the next scene. A cleared maze: 240 frames, then the next round. A score at or past the target ends play at
 once (the movers stop, the end line plays).
+
+## Exchange screen (0x80022EC8 the count and ready state, 0x8002386C after Start, 0x80026114 its entry)
+
+Watched live with a memory watch on its state, every frame logged, and compared still by still. Frames are counted
+from the moment the screen comes up (`f`), and after Start from the press (`L`). Positions are TV pixels.
+
+| When | What happens |
+| --- | --- |
+| Contact | 60 frames of standstill, then the amber picture (phase 6) for 180 frames, going to black over its last 15: 240 frames in all |
+| f 0-26 | the screen fades in from black; the target box stays up throughout, and through the hand-over that follows |
+| f 0-60 | nothing moves |
+| f 60 on | the shown scores step 10 points a frame towards the new ones (the loser's down, the winner's up) |
+| count done | the -steal / +steal texts fade out at 4/255 a frame (64 frames) |
+| ready (f = 60 + steal/10 + 64) | the state byte goes 4 then 2: the effects start (particle emitters 14 and 15 at the winner's circle, 11 at the loser's), the tune starts, the handheld icon, arrow and message fade in at 4/255 a frame, and Start (A or START, 0x900) on the handheld counts from here |
+| ready + 64 | the icon slides 4 px a frame from the loser's ring x + 28 to the winner's ring x + 12; when it gets there the handheld leaves "look at the TV" for the next round's maze and "Press START!" |
+| Start, L 0 | the state byte goes 3; the start jingle starts; the effects stop; the two circles that swap go dark and fade back in at 4/255 a frame with their pictures swapped |
+| L 90 | the new Pac-Man's circle shrinks into the icon (to its x + 72, y 368, size 0) over 60 frames; the labels, bars and message fade at 4/255 a frame |
+| L 150 | the arrow and icon slide down 8 px a frame |
+| L 180 | the other circles fly to the game screen's circles (top-left corners 20,20 / 368,20 / 194,208, 252 across) over 60 frames, each to its ghost slot in the coming round |
+| L 240 | the circles fade 6/255 a frame; their P1 / COM tags stay |
+| jingle's end (or 360 frames) | the game screen, zoomed out; "Ready" and the zoom-in |
+
+Layout: circles 144 across at x 20 + 152 n, top 140, in the panel's row order; portrait inset 18; tag 38 x 25 at
+(+53, +56) from the centre; LOSER / WINNER 144 x 52 at y 96; score bars 144 x 40 at y 288; points moved centred at
+y 350; handheld icon 120 x 69 at y 343; arrow 115 x 35 at y 360 centred under the loser, its picture pointing left
+and mirrored when the winner is to the right; message 588 x 37 at (26, 428), alpha 159 - 96 cos(2 pi (f - 90) / 120).
+Each circle wears its seat's colour, the loser's too; the loser's Pac-Man portrait is darkened to 0xA0. A catch
+that reaches the target counts the points across and goes to the results, with no icon, arrow or tune.
+
+The effects (particle file `pacman_particle00.jpc`, emitters started at the circles' centres in the program's
+608 x 448 layout space): 14 and 15 are the same ray burst, 15 starting 45 frames later. Each burst puts 12 rays on a
+circle of radius 40, one per division, every 91 frames; each ray points out from the centre and lives 91 frames
+while a spin field turns them 0.006 rad a frame, so the second emitter's rays fall between the first's. Their colour
+runs from white (the texture's bright end, at the centre) to yellow. 11 is a steady drizzle of thin billboards on an
+oval band round the loser's circle (spawn rate key-framed 0.1 to 0.7 a frame, looping every 30 frames), falling 1
+unit a frame for 45-90 frames, light blue to cyan.
+
+The handheld meanwhile: from the start of the exchange a blue screen (palette 3, colour 6) saying "LOOK AT THE TV
+SCREEN !", with a TV picture that blinks 32 frames on, 32 off over a still arrow; at the icon's arrival the next
+round's maze, panel and blinking "Press START!"; after Start the movers on their start cells until Go.
+
+Sound and music. The exchange state byte (0x801A3184) drives the music; the disc's audio table lists the
+streams in order (0 `pacmanBGM00`, 1 `Pac_Arr_Clear`, 2 `Pac_Opening_Comp`, 3 `pacmaniaBGM02`, 4 `BGM03`, 5 `BGM06`,
+6 `BGM07`, 7 `Pac_Arr_bgm02`, 8 `Pac_Op_loop73`, 9 `pacmaniaBGM05`) and the program asks for 0xC0000000 + n.
+
+| When | Sound |
+| --- | --- |
+| Contact | the knock and the catcher's "Excellent" (0x280A-D); the playing loop is faded over 60 frames |
+| The amber picture and the count | silence. The count asks for effect 0x1819 every 8th frame while a score still moves, but the effect bank (instruments 0x00-0x12) has none by that number, and the recording is silent |
+| Ready | stream 9, `pacmaniaBGM05` (4.05 s, looped), until Start |
+| Start | starting stream 0, the start jingle (4.6 s), stops the tune at once; the jingle runs under the hand-over |
+| Jingle's end | "Ready" (0x2827), the zoom-in, then "Go" (0x2828) and the siren |
 
 ## Open questions (being checked live)
 

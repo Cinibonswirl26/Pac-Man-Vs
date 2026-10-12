@@ -14,10 +14,13 @@
   // The original's round start (SPEC.md): the start jingle (4.6 s), then "Ready" while the circles zoom in over
   // 120 frames (2 s), then "Go" and the movers set off.
   const READY = 2, COUNTDOWN = 4.6 + READY, ROUND_END = 240 / 59.94, HANDOFF = 15;
-  // after a catch: CAUGHT seconds of the catch and the EXCELLENT box, then the exchange screen counts the stolen points across at
-  // 120 a second from 1.2 s in and shows the arrow 1.5 s after (measured); the hand-over wait for the new Pac-Man starts then
-  const EXCHANGE = steal => 1.2 + Math.max(1, steal || 0) / 120 + 1.5;
-  const CAUGHT = 7;       // after a catch: the impact, the amber message, then the exchange screen (measured, see FIDELITY.md)
+  // After a catch (SPEC.md, "Exchange screen"): 60 frames of standstill and 180 of the amber picture, then the exchange
+  // screen. There the shown scores wait 60 frames, step 10 points a frame, and the points' texts fade out over 64 frames;
+  // then the new Pac-Man may press Start. EXCHANGE is that wait, in seconds from the exchange screen's start.
+  const FPS = 59.94, CAUGHT = 240 / FPS;
+  const EXCHANGE = steal => (60 + Math.ceil(Math.max(0, steal || 0) / 10) + 64) / FPS;
+  // the original waits for the new Pac-Man's Start for as long as it takes; a computer player takes this long once it may
+  const CPU_START = 120 / FPS;
 
   class Match {
     /** isHuman(i) -> true when seat i is controlled by a person; otherwise a CPU plays it.
@@ -88,7 +91,7 @@
           inp.act.push(this.isHuman(p) ? !!(acts && acts[p]) : this.Sim.cpuAct(s, gi, this.rng, dt || this.Sim.CFG.tick));
         }
         this.Sim.update(s, inp, dt);
-        if (s.over) { this.phase = 'roundover'; this.phaseLeft = s.overReason === 'caught' ? CAUGHT + EXCHANGE(s.steal) : ROUND_END; }
+        if (s.over) { this.phase = 'roundover'; this.phaseLeft = s.catcher >= 0 && (s.overReason === 'caught' || s.overReason === 'won') ? CAUGHT + EXCHANGE(s.steal) : ROUND_END; }
       } else if (this.phase === 'roundover') {
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) {
@@ -97,15 +100,15 @@
             // the catcher becomes Pac-Man and the old Pac-Man takes over the catcher's ghost (its circle and start)
             this.slots = this.slots.map(p => p === s.catcher ? s.pacPlayer : p);
             this.pac = s.catcher;
-            if (this.isHuman(this.pac)) { this.phase = 'handoff'; this.phaseLeft = HANDOFF; }
-            else this.nextRound();
+            this.phase = 'handoff'; this.phaseLeft = this.isHuman(this.pac) ? HANDOFF : CPU_START;
           } else this.nextRound();
         }
       } else if (this.phase === 'handoff') {
-        // waits for the new Pac-Man to say they are ready; starts anyway after HANDOFF seconds,
-        // or at once if a CPU took the seat over
+        // waits for the new Pac-Man to press Start; starts anyway after HANDOFF seconds (online play cannot wait for ever),
+        // and a computer player presses it after CPU_START
+        if (!this.isHuman(this.pac)) this.phaseLeft = Math.min(this.phaseLeft, CPU_START);   // the catcher left: a computer player has the seat
         this.phaseLeft -= dt;
-        if (this.phaseLeft <= 0 || !this.isHuman(this.pac)) this.nextRound();
+        if (this.phaseLeft <= 0) this.nextRound();
       }
       return this.phase !== before || (this.phase === 'countdown' && before === 'roundover');
     }
@@ -127,5 +130,5 @@
       return v;
     }
   }
-  return { Match, COUNTDOWN, READY, ROUND_END, HANDOFF, CAUGHT, EXCHANGE };
+  return { Match, COUNTDOWN, READY, ROUND_END, HANDOFF, CAUGHT, EXCHANGE, CPU_START, FPS };
 });

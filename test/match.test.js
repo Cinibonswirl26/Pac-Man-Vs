@@ -7,7 +7,7 @@ for (const seed of [3, 7, 11]) {
   let ticks = 0, handovers = 0, prevPac = m.pac;
   while (m.phase !== 'final' && ticks < 30 * 60 * 40) {
     const before = m.phase; m.tick([null, null, null, null]); ticks++;
-    if (before === 'roundover' && m.phase === 'countdown') {
+    if ((before === 'roundover' || before === 'handoff') && m.phase === 'countdown') {
       const why = m.sim.overReason; ok(why !== 'won', 'a won match must not start another round');
       if (m.pac !== prevPac) handovers++;
       prevPac = m.pac;
@@ -20,12 +20,12 @@ for (const seed of [3, 7, 11]) {
 }
 // Hand-over: when a person catches Pac-Man the match waits for them to be ready before the next round.
 {
-  const { HANDOFF } = require('../shared/match.js');
-  // An idle human Pac-Man and three CPU ghosts: the catcher is a CPU, so there is no hand-over.
+  const { HANDOFF, CPU_START } = require('../shared/match.js');
+  // An idle human Pac-Man and three CPU ghosts: the catcher is a CPU, which presses Start by itself.
   const m1 = new Match(i => i === 0, 9, { start: 'pac' }); m1.start();
-  let hand = false, t = 0;
-  while (t++ < 30 * 120 && m1.round === 0) { m1.tick([null, null, null, null]); if (m1.phase === 'handoff') hand = true; }
-  ok(m1.round === 1 && !hand && m1.pac !== 0, 'a CPU catcher becomes Pac-Man without a hand-over');
+  let hand = 0, t = 0;
+  while (t++ < 30 * 120 && m1.round === 0) { m1.tick([null, null, null, null]); if (m1.phase === 'handoff') hand++; }
+  ok(m1.round === 1 && m1.pac !== 0 && Math.abs(hand - 30 * CPU_START) <= 1, 'a CPU catcher becomes Pac-Man after a short wait for its Start');
   // A human ghost catcher: drive the catch by hand.
   const m2 = new Match(i => i === 1, 9, { start: 'pac' }); m2.start();
   while (m2.phase !== 'play') m2.tick([null, null, null, null]);
@@ -52,8 +52,8 @@ for (const seed of [3, 7, 11]) {
   const g4 = m4.sim.ghosts.findIndex((g, k) => m4.Sim.playerOfGhost(m4.sim, k) === 1);
   Object.assign(m4.sim.ghosts[g4], { x: m4.sim.pac.x, y: m4.sim.pac.y });
   while (m4.phase !== 'handoff') m4.tick([null, null, null, null]);
-  humans.delete(1); m4.tick([null, null, null, null]);
-  ok(m4.phase === 'countdown', 'a CPU replacing the catcher skips the hand-over');
+  humans.delete(1); for (let k = 0; k <= 30 * CPU_START; k++) m4.tick([null, null, null, null]);
+  ok(m4.phase === 'countdown', 'a CPU replacing the catcher presses Start by itself');
 }
 // Stand-ins: with people in several seats, Pac-Man starts as one of them; a seat nobody plays is a grey stand-in.
 {

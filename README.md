@@ -42,9 +42,10 @@ counter shows how many pellets are left. Pac-Man sees the whole maze.
   link and press Join. The host presses Start.
 - **Changing roles**: each player's screen follows their role. Pac-Man gets the whole maze; ghosts get the
   ghost screen (with your disc: the original shared screen with every ghost's circle). When a person catches
-  Pac-Man, everyone sees the exchange screen, then the catcher is asked to get ready (any key, a tap, the
-  Ready button or a gamepad's A/Start), as on the original's exchange screen. The next round starts when
-  they do, or by itself after 15 seconds. If the catcher has left, a CPU takes over and play goes on at once.
+  Pac-Man, everyone sees the exchange screen count the points across, then the catcher presses Start (any key,
+  a tap, or a gamepad's A/Start) on the handheld's "Press START!" screen, as on the original. The circles then fly
+  to their places and the next round starts; by itself after 15 seconds if nobody presses. A computer player
+  presses Start by itself.
 - Controls: arrow keys or WASD, swipe on touch screens, on-screen arrows on phones, or a gamepad.
   `M` toggles music, `Esc` leaves the match.
 - **Arrangement levels**: the maze menu's last group holds levels that are not part of the original. They
@@ -149,7 +150,8 @@ The browser reads it locally and nothing is uploaded. It uses:
 - the shared screens from `Screen/PAC_game.szs`, `PAC_exchange.szs` and `PAC_results.szs`: ghost players get
   the original game screen (one 3D circle per ghost, the player panels, target score, pellet counter, radar,
   fruit window and scrolling background, drawn from the disc's layout, textures and font), and everyone
-  sees the original exchange screen after a catch and the results screen at the end.
+  sees the original exchange screen after a catch (with its sunburst and streaks run from the disc's particle
+  file, `Effect/pacman_particle00.jpc`) and the results screen at the end.
 
 The file is remembered in this browser's IndexedDB so you only pick it once.
 The sound lab (the link on the menu) lets you listen to every effect, announcer line and music stream on the disc,
@@ -167,7 +169,7 @@ Do not commit game files to this repo.
 | `shared/sim.js` | Maze, movement, rules, fog-of-war views, CPU players. Used by server and browser. |
 | `shared/match.js` | Roulette, rounds, point stealing, the target score. Used by server and browser. |
 | `server/server.js` | HTTP static host plus WebSocket rooms. The server is authoritative (30 Hz) and sends each player only what they may see, so ghosts cannot read Pac-Man's position. |
-| `client/` | UI, canvas renderer, input, sound, `disc.js` (disc image, archives, textures, streamed audio), `mazedata.js` (the maze data), `j3d.js` (J3D models and animations: BMD, BCK, BTK), `gx.js` (WebGL renderer that turns each of the game's materials into a shader), `view3d.js` (the ghosts' 3D view), `j2d.js` (BLO2 screen layouts and BFN fonts) and `screens.js` (the shared game screen, exchange and results screens). |
+| `client/` | UI, canvas renderer, input, sound, `disc.js` (disc image, archives, textures, streamed audio), `mazedata.js` (the maze data), `j3d.js` (J3D models and animations: BMD, BCK, BTK), `gx.js` (WebGL renderer that turns each of the game's materials into a shader), `view3d.js` (the ghosts' 3D view), `j2d.js` (BLO2 screen layouts and BFN fonts), `jpa.js` (the particle file and a small particle simulator) and `screens.js` (the shared game screen, exchange and results screens). |
 | `test/` | Simulation, match flow, WebSocket end-to-end, maze validation, disc reader and 3D model checks, AI benchmark. |
 
 Not implemented: the original's Pac-Man screen, the title and rule-select screens, and the original's computer players.

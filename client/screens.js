@@ -18,6 +18,9 @@
       for (const [k, v] of arc) if (/\.bti$/i.test(k)) tex.set(k.split('/').pop().toLowerCase(), Disc.decodeBTI(v));
     }
     const btk = [...arcs.PAC_game].find(([k]) => /\.btk$/i.test(k));
+    // the exchange screen's sunburst and streaks: the disc's particle file (no effects if it cannot be read)
+    let particles = null;
+    try { if (typeof JPA !== 'undefined') particles = JPA.parse(new Uint8Array(await disc.read('PROOT/Effect/pacman_particle00.jpc'))); } catch (e) { console.warn('particles', e); }
     return {
       game: J2D.parseBLO(arcs.PAC_game.get('scrn/pac_game.blo')),
       mes: J2D.parseBLO(arcs.PAC_game.get('scrn/pac_game_mes.blo')),
@@ -25,6 +28,7 @@
       results: J2D.parseBLO(arcs.PAC_results.get('scrn/pac_results.blo')),
       font: J2D.parseBFN(arcs.PAC_game.get('font/lowdy.bfn')),
       bgAnim: btk ? J3D.parseBTK(btk[1]) : null,
+      particles,
       tex
     };
   }
@@ -264,7 +268,7 @@
     const FULL = [[0, 0], [TVW, 0], [TVW, TVH], [0, TVH]];
     function caught(c) {
       const clamp = x => Math.max(0, Math.min(1, x));
-      const dim = clamp((c.t - 1.0) / (40 / 59.94)), out = clamp((c.t - (c.total - 0.9)) / 0.9);   // the amber climbs 5/255 a frame from 60 frames after contact (SPEC.md)
+      const dim = clamp((c.t - 1.0) / (40 / 59.94)), out = clamp((c.t - (c.total - 15 / 59.94)) / (15 / 59.94));   // the amber climbs 5/255 a frame from 60 frames after contact and goes to black over the last 15 (SPEC.md)
       if (dim > 0) R.poly(FULL, [0.5, 0.28, 0, 0.62 * dim]);
       if (c.t > 2.0) {
         const hide = new Set(['CT_null', 'UR_null', 'UL_null', 'PUS_NL', 'GMS_NULL', 'Cng_NULL']);
@@ -321,39 +325,127 @@
       if (st.caught) caught(st.caught);
       return canvas;
     }
-    // The exchange screen after a catch (composed by the game from PAC_exchange's pictures).
-    // Measured on the original's picture: four circles 140 px across, 152 px apart, LOSER / WINNER above them,
-    // the score bars below and the points taken or won under those.
+    // The exchange screen after a catch, composed as the original's program does it from PAC_exchange's pictures
+    // (routines 0x80022EC8 and 0x8002386C; SPEC.md, "Exchange screen"). Everything runs on a frame clock: f, frames since
+    // the screen came up, and leave, frames since the new Pac-Man pressed Start. Positions are the TV picture's pixels.
     const MON = ['mon_red.bti', 'mon_blue.bti', 'mon_pink.bti', 'mon_green.bti'];
     const EXCH = [[1, 0.12, 0, 1], [0, 0.69, 0.85, 1], [1, 0.33, 1, 1], [0, 0.9, 0, 1]];
-    /** st: {time (s since the catch), target, before: [4], after: [4], loser, winner, pacPlayer, standin: [4]} */
+    const EX = {
+      ringX: col => 20 + 152 * col, ringY: 140, ring: 144, inset: 18,            // the four circles, in the panel's row order
+      labelY: 96, labelW: 144, labelH: 52, barY: 288, barH: 40, deltaY: 350,       // LOSER / WINNER, score bars, the points moved
+      tagW: 38, tagH: 25, tagDX: 53, tagDY: 56,                                     // the P1 / COM tag, from the circle's centre
+      wait: 60, step: 10, fadeStep: 4,                                              // the count: a 60-frame wait, 10 points a frame
+      iconY: 343, iconW: 120, iconH: 69, iconFrom: 28, iconTo: 12, iconSpeed: 4,    // the handheld: under the loser, slides to the winner
+      arrowY: 360, arrowW: 115, arrowH: 35, mesX: 26, mesY: 428, mesW: 588, mesH: 37, mesPeriod: 120,
+      loserTint: 0xA0 / 255, fadeIn: 26,
+      // after Start: the swap, the new Pac-Man's circle into the handheld, the rest of the screen away, the circles to the game's
+      shrinkAt: 90, shrinkTime: 60, slideAt: 150, slideSpeed: 8, flyAt: 180, flyTime: 60, ringFadeAt: 240, ringFade: 6,
+      game: [{ x: 20, y: 20 }, { x: 368, y: 20 }, { x: 194, y: 208 }], gameSize: 252
+    };
+    /** Frames at which the exchange screen's count ends and the new Pac-Man may press Start. */
+    const exchangeTimes = steal => { const countEnd = EX.wait + Math.ceil(Math.max(0, steal) / EX.step); return { countEnd, ready: countEnd + Math.ceil(255 / EX.fadeStep) }; };
+    /** The exchange screen's moments in frames: the count's end, the ready state (Start accepted), and when the handheld
+     *  icon reaches the winner (the handheld then leaves its "look at the TV" picture for the next round's maze). */
+    function exchangeMoments(st) {
+      const steal = st.loser >= 0 ? Math.max(0, st.before[st.loser] - st.after[st.loser]) : 0, T = exchangeTimes(steal), order = rowOrder(st);
+      const from = EX.ringX(order.indexOf(st.loser)) + EX.iconFrom, to = EX.ringX(order.indexOf(st.winner)) + EX.iconTo;
+      return { countEnd: T.countEnd, ready: T.ready, icon: T.ready + Math.ceil(255 / EX.fadeStep) + Math.ceil(Math.abs(to - from) / EX.iconSpeed) };
+    }
+    // The sunburst on the winner's circle and the streaks on the loser's: the particle file's emitters 14 and 15, and 11
+    // (the program starts them at the circles' centres when the screen reaches its ready state), run on the screen's clock.
+    // The program's particles live in its 608 x 448 layout space; the rays' length is matched to the original's picture
+    // (they reach from about 30 to 125 px from the centre), as this reader does not model the particle camera.
+    const FX_EMITTERS = { winner: { ids: [14, 15], size: 1.5 }, loser: { ids: [11], size: 1 } }, FX_SCALE = TVW / 608, fxRuns = new Map(), fxTex = new Map();
+    function effects(kind, x, y, f) {
+      const P = assets.particles; if (!P || typeof JPA === 'undefined') return;
+      const fxk = FX_EMITTERS[kind]; if (!fxk) return;
+      for (const id of fxk.ids) {
+        const res = P.resources.get(id); if (!res || !res.bem || !res.bsp) continue;
+        let run = fxRuns.get(kind + id);
+        if (!run || run.em.frame > f + 1 || run.x !== x || run.y !== y) { run = { em: JPA.emitter(res, 7919 * (id + 1)), x, y }; fxRuns.set(kind + id, run); }
+        run.em.runTo(Math.floor(f) + 1);
+        let tex = fxTex.get(id);
+        if (tex === undefined) {
+          const t = P.textures[res.tdb[res.bsp.texIdx] != null ? res.tdb[res.bsp.texIdx] : res.bsp.texIdx];
+          tex = t ? R.texture(Object.assign(JPA.tinted(Disc.decodeBTI(t.bti), res.bsp), { wrapS: 0, wrapT: 0 })) : null; fxTex.set(id, tex);
+        }
+        for (const q of run.em.quads(x, y, FX_SCALE, fxk.size)) {
+          const c = [1, 1, 1, q.alpha];
+          R.quad(ringMat, i => (i === 0 ? tex : null), [{ x: q.pts[0][0], y: q.pts[0][1], u: 0, v: 0, c }, { x: q.pts[1][0], y: q.pts[1][1], u: 1, v: 0, c },
+            { x: q.pts[2][0], y: q.pts[2][1], u: 1, v: 1, c }, { x: q.pts[3][0], y: q.pts[3][1], u: 0, v: 1, c }]);
+        }
+      }
+    }
+    function pic(mat, name, x, y, w, h, col, flipX) { sprite(mat, name, x + w / 2, y + h / 2, w, h, col, flipX); }
+    /** st: {f, leave (or undefined), target, before: [4], after: [4], loser, winner, pacPlayer, standin: [4], final (a catch that
+     *  ended the game: no hand-over), slots (seat -> ghost slot in the coming round), effects (fn(kind, x, y, f) or null)} */
     function exchange(st, width) {
       frameStart(width);
+      const f = st.f, L = st.leave, leaving = L != null, clamp = x => Math.max(0, Math.min(1, x));
+      const steal = st.loser >= 0 ? Math.max(0, st.before[st.loser] - st.after[st.loser]) : 0, T = exchangeTimes(steal);
+      const fade4 = from => clamp((f - from) * EX.fadeStep / 255);
+      const r = f - T.ready, ready = !st.final && (leaving || r >= 0), readyA = leaving ? 1 : fade4(T.ready);
+      // after Start the two circles that swap go dark and come back with their pictures swapped; the labels, bars and
+      // message fade from 90 frames; rings fade from 240 while their tags stay bright
+      const swapA = leaving ? clamp(L * EX.fadeStep / 255) : 1, restA = leaving ? 1 - clamp((L - EX.shrinkAt) * EX.fadeStep / 255) : 1;
+      const ringA = leaving ? 1 - clamp((L - EX.ringFadeAt) * EX.ringFade / 255) : 1;
       drawLayout(assets.exchange, { text: { TIME: String(st.target) } });
-      // the points count across at about 120 a second (measured: 1,600 took about 13 s), from 1.2 s in
-      const moved = st.loser >= 0 ? Math.max(1, st.before[st.loser] - st.after[st.loser]) : 1, countT = moved / 120;
-      const k = Math.min(1, Math.max(0, (st.time - 1.2) / countT));
       const order = rowOrder(st);
-      order.forEach((i, col) => {
-        const cx = 90 + 152 * col, cy = 211;
-        if (isCom(st, i)) {   // a stand-in: grey circle, grey ghost, COM, and no score
-          sprite(ringMat, 'ex_maruwaku.bti', cx, cy, 142, 142, [0.55, 0.55, 0.58, 1]);
-          sprite(ringMat, 'fs_mongrey_00.bti', cx, cy, 116, 116);
-          sprite(labelMat, 'wcom.bti', cx + 50, cy + 57, 32, 16, [1, 1, 1, 1]);
-          return;
+      const moved = clamp((Math.floor(f) - EX.wait) * EX.step / Math.max(1, steal));   // whole frames: 10 points at a time
+      const deltaA = 1 - clamp((f - T.countEnd) * EX.fadeStep / 255);
+      const winCol = order.indexOf(st.winner), loseCol = order.indexOf(st.loser);
+      // the handheld icon's x: under the loser, then sliding to the winner once faded in
+      const iconX0 = EX.ringX(loseCol) + EX.iconFrom, iconX1 = EX.ringX(winCol) + EX.iconTo;
+      const slid = leaving ? Infinity : Math.max(0, r - Math.ceil(255 / EX.fadeStep)) * EX.iconSpeed;
+      const iconX = iconX1 >= iconX0 ? Math.min(iconX1, iconX0 + slid) : Math.max(iconX1, iconX0 - slid);
+      const dropY = leaving ? Math.max(0, L - EX.slideAt) * EX.slideSpeed : 0;
+      // right to left, so that while the circles fly to the game screen the left ones pass over the right ones (as on the original)
+      order.map((i, col) => [i, col]).reverse().forEach(([i, col]) => {
+        let x = EX.ringX(col), y = EX.ringY, size = EX.ring;
+        const swapping = leaving && (i === st.loser || i === st.winner);
+        // after Start: the new Pac-Man's circle shrinks into the handheld; the others fly to their places on the game screen
+        if (leaving && i === st.winner) {
+          const k = clamp((L - EX.shrinkAt) / EX.shrinkTime), tx = iconX1 + 72, ty = 368;
+          if (k >= 1) return;
+          const cx = x + 72 + (tx - x - 72) * k, cy = y + 72 + (ty - y - 72) * k; size = EX.ring * (1 - k); x = cx - size / 2; y = cy - size / 2;
+        } else if (leaving && st.slots && st.slots[i] != null) {
+          const k = clamp((L - EX.flyAt) / EX.flyTime), g = EX.game[st.slots[i]];
+          x += (g.x - x) * k; y += (g.y - y) * k; size += (EX.gameSize - size) * k;
         }
-        sprite(ringMat, 'ex_maruwaku.bti', cx, cy, 142, 142, EXCH[i]);
-        sprite(ringMat, i === st.loser ? 'pcmn.bti' : MON[i], cx, cy, 116, 116, i === st.loser ? [0.6, 0.6, 0.6, 1] : null);
-        sprite(labelMat, 'wp' + (i + 1) + '.bti', cx + 50, cy + 57, 32, 16, [1, 1, 1, 1]);
-        sprite(labelMat, 'score_bar.bti', cx, 305, 144, 36, EXCH[i]);
-        say(String(Math.round(st.before[i] + (st.after[i] - st.before[i]) * k)), cx, 305, 20);
-        if (i === st.loser) { sprite(ringMat, 'lost.bti', cx, 128, 144, 52); say('-' + (st.before[i] - st.after[i]), cx, 350, 20); }
-        if (i === st.winner) { sprite(ringMat, 'win.bti', cx, 128, 144, 52); say('+' + (st.after[i] - st.before[i]), cx, 350, 20); }
+        const sc = size / EX.ring, cx = x + size / 2, cy = y + size / 2, a = (swapping ? swapA : 1) * ringA;
+        const fade = c => [c[0] * a, c[1] * a, c[2] * a, 1];   // the circles darken to black rather than turn see-through
+        const com = isCom(st, i);
+        if (a > 0) {
+          sprite(ringMat, 'ex_maruwaku.bti', cx, cy, size, size, fade(com ? [0.55, 0.55, 0.58, 1] : EXCH[i]));
+          // who is shown: Pac-Man in the loser's circle until Start, then in the winner's
+          const pacHere = leaving ? i === st.winner : i === st.loser, ps = size - 2 * EX.inset * sc;
+          const tint = !leaving && i === st.loser ? EX.loserTint : 1;
+          if (st.effects && ready && !leaving && i === st.winner) st.effects('winner', cx, cy, r);   // the rays go under the portrait
+          sprite(ringMat, com ? 'fs_mongrey_00.bti' : pacHere ? 'pcmn.bti' : MON[i], cx, cy, ps, ps, fade([tint, tint, tint, 1]));
+        }
+        sprite(labelMat, com ? 'wcom.bti' : 'wp' + (i + 1) + '.bti', cx + EX.tagDX * sc, cy + EX.tagDY * sc, EX.tagW * sc, EX.tagH * sc, [1, 1, 1, 1]);
+        if (com) return;
+        if (!leaving || restA > 0) {
+          const bx = EX.ringX(col), shown = Math.round(st.before[i] + (st.after[i] - st.before[i]) * moved);
+          pic(labelMat, 'score_bar.bti', bx, EX.barY, EX.ring, EX.barH, [EXCH[i][0], EXCH[i][1], EXCH[i][2], restA]);
+          say(String(shown), bx + 72, EX.barY + EX.barH / 2, 20, [1, 1, 1, restA]);
+          const lab = i === st.loser ? 'lost.bti' : i === st.winner ? 'win.bti' : null;
+          if (lab) pic(ringMat, lab, bx, EX.labelY, EX.labelW, EX.labelH, [1, 1, 1, restA * (swapping ? swapA : 1)]);
+          if (lab && deltaA > 0 && !leaving) say((i === st.loser ? '-' : '+') + steal, bx + 72, EX.deltaY, 20, [1, 1, 1, deltaA]);
+        }
+        // the winner's sunburst and the loser's streaks, from the ready state until Start
+        if (st.effects && ready && !leaving && i === st.loser) st.effects('loser', cx, cy, r);              // the streaks over it
       });
-      if (st.time > 1.2 + countT + 1.5) {   // once the count is done, the arrow points at the next Pac-Man
-        const col = order.indexOf(st.winner), cx = 90 + 152 * col;
-        sprite(ringMat, 'yajirushi.bti', cx + (col < 3 ? 120 : -120), 405, 128, 40, null, col >= 3);
+      if (ready && loseCol >= 0 && winCol >= 0) {
+        const ia = readyA, toLeft = winCol < loseCol;
+        if (!leaving || dropY < 200) {
+          pic(ringMat, 'agb_02.bti', iconX, EX.iconY + dropY, EX.iconW, EX.iconH, [1, 1, 1, ia]);
+          pic(ringMat, 'yajirushi.bti', EX.ringX(loseCol) + (EX.ring - EX.arrowW) / 2, EX.arrowY + dropY, EX.arrowW, EX.arrowH, [1, 1, 1, ia], !toLeft);   // the picture points left
+        }
+        const pulse = (159 - 96 * Math.cos(2 * Math.PI * (f - 90) / EX.mesPeriod)) / 255;
+        pic(ringMat, 'exchange_mes.bti', EX.mesX, EX.mesY, EX.mesW, EX.mesH, [1, 1, 1, ia * pulse * restA]);
       }
+      if (f < EX.fadeIn) R.poly(FULL, [0, 0, 0, 1 - f / EX.fadeIn]);
       return canvas;
     }
     // Final results (layout PAC_results): its four-, three- and two-player arrangements, one column per person
@@ -382,7 +474,7 @@
       if (!overlay) lay.cols.forEach(([, , , , win], k) => { const p = L.byName[win]; if (p) { const b = box(p, 0, 0); say(String(st.scores[seats[k]]), tvx(b.x + b.w / 2), tvy(b.y + b.h * 0.68), 22); } });
       return canvas;
     }
-    return { render, exchange, results, canvas, seatColor };
+    return { render, exchange, exchangeMoments, results, effects, canvas, seatColor };
   }
 
   root.Screens = { load, create, TVW, TVH, MAP };
