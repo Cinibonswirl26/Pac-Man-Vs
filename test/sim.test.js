@@ -26,8 +26,8 @@ for (let seed = 1; seed <= 20; seed++) {
 }
 
 // 2. Measured speeds: 0.5 px/frame normal, 0.375 px/frame frightened, ghosts a hair faster than Pac-Man
-ok(near(S.CFG.pacSpeed, 3.733, 0.002) && near(S.CFG.ghostSpeed / S.CFG.pacSpeed, 1.0078, 0.0005), 'ghosts gain slowly on Pac-Man');
-ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/4 of normal');
+ok(near(S.CFG.pacSpeed, 3.746, 0.002) && S.CFG.ghostSpeed === S.CFG.pacSpeed, 'Pac-Man and the ghosts both run 16 frames per cell');
+ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 16 / 21, 1e-9) && near(S.CFG.eyeSpeed / S.CFG.pacSpeed, 1.6, 1e-9) && near(S.CFG.greySpeed / S.CFG.pacSpeed, 16 / 24, 1e-9), 'frightened 21, eyes 10 and grey 24 frames per cell');
 { // a free-running Pac-Man covers one cell in 16 frames
   const s = S.newRound([1600, 0, 0, 0], 0);
   const px = Math.floor(s.pac.x), py = Math.floor(s.pac.y);
@@ -81,7 +81,7 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   ok(s.scores[0] === b2 + 110, 'power pellet = 110 points, got ' + (s.scores[0] - b2));
   ok(s.ghosts.every(g => g.mode === 'fright') && near(s.frightLeft, 10, 0.1), 'power pellet frightens every ghost for 10 s');
   const got = [];
-  for (let k = 0; k < 3; k++) { s.ghosts[k].mode = 'fright'; s.ghosts[k].x = s.pac.x; s.ghosts[k].y = s.pac.y; const b = s.scores[0]; S.update(s, idle); got.push(s.scores[0] - b); }
+  for (let k = 0; k < 3; k++) { s.ghosts[k].mode = 'fright'; s.ghosts[k].x = s.pac.x; s.ghosts[k].y = s.pac.y; const b = s.scores[0]; S.update(s, idle); got.push(s.scores[0] - b); ok(s.freeze > 0, 'the game stands still after a ghost is eaten'); while (s.freeze > 0) S.update(s, idle); }
   ok(got.join() === '200,400,800', 'ghost chain, got ' + got);
 }
 
@@ -115,16 +115,16 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
 }
 // 9. Fruit: appears after enough pellets; a ghost taking it gets 400 points and a wider view for a while
 {
-  const s = S.newRound([1600, 0, 0, 0], 0); s.eaten = S.CFG.fruitFirst - 1;
+  const s = S.newRound([1600, 0, 0, 0], 0); s.fruitTimer = S.CFG.fruitStay + 0.001;
   const i = s.pellets.findIndex(v => v === 1); s.pac.x = (i % S.W) + 0.5; s.pac.y = Math.floor(i / S.W) + 0.5; S.update(s, idle);
-  ok(s.fruit, 'fruit appears after enough pellets'); ok(S.view(s, 0).fruit, 'Pac-Man sees the fruit');
+  ok(s.fruit, 'fruit appears when its clock reaches the showing time'); ok(S.view(s, 0).fruit, 'Pac-Man sees the fruit');
   const g = s.ghosts[1], p = S.playerOfGhost(s, 1), before = s.scores[p], base = S.view(s, p).sight;
   g.x = s.fruit.x; g.y = s.fruit.y; S.update(s, idle);
   ok(!s.fruit && s.scores[p] === before + 400, 'ghost gets 400 for the fruit, got ' + (s.scores[p] - before));
   const v = S.view(s, p); ok(v.sight > base * 1.5 && v.boost > 0, 'ghost view is wider after the fruit');
   let t = 0; while (S.view(s, p).boost > 0 && t < 2000) { S.update(s, idle); t++; if (s.over) break; }
   ok(near(t * S.CFG.tick, S.CFG.fruitSightTime, 0.3), 'view boost lasts ' + S.CFG.fruitSightTime + 's');
-  const u = S.newRound([1600, 0, 0, 0], 0); u.eaten = 6; const k = u.pellets.findIndex(v => v === 1); u.pac.x = (k % S.W) + 0.5; u.pac.y = Math.floor(k / S.W) + 0.5; S.update(u, idle);
+  const u = S.newRound([1600, 0, 0, 0], 0); u.fruitTimer = S.CFG.fruitStay + 0.001; const k = u.pellets.findIndex(v => v === 1); u.pac.x = (k % S.W) + 0.5; u.pac.y = Math.floor(k / S.W) + 0.5; S.update(u, idle);
   const b0 = u.scores[0]; u.pac.x = u.fruit.x; u.pac.y = u.fruit.y; S.update(u, idle); ok(u.scores[0] === b0 + 400, 'Pac-Man can take the fruit too');
 }
 // 10b. Eating a ghost moves the points from its owner to Pac-Man (measured on the disc: Pac-Man 2230 -> 2430, owner 1330 -> 1130)
@@ -133,8 +133,9 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
   s.frightLeft = 10; g.mode = 'fright'; g.x = s.pac.x; g.y = s.pac.y; S.update(s, idle);
   ok(g.mode === 'eyes' && s.scores[0] === 1800 && s.scores[1] === 1130, `owner loses what Pac-Man gains: ${s.scores[0]} / ${s.scores[1]}`);
   ok(s.roundScores[0] === 200 && s.roundScores[1] === -200, 'round scores follow');
+  while (s.freeze > 0) S.update(s, idle);
   const h = s.ghosts[(gi + 1) % 3]; h.mode = 'fright'; h.x = s.pac.x; h.y = s.pac.y; S.update(s, idle);
-  ok(s.scores[0] === 2200, 'the second ghost in one fright is 400 (not measured), has ' + s.scores[0]);
+  ok(s.scores[0] === 2200, 'the second ghost in one fright is 400 (the chain doubles), has ' + s.scores[0]);
 }
 // 11. An eaten ghost steers itself back to the house, then its player has control again, from inside the house
 {
@@ -259,8 +260,8 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
     return s;
   };
   const a = go(false), b = go(true), eaten = a.eaten;
-  const lost = (b.pac.x - a.pac.x), expect = eaten * S.CFG.pelletPause * S.CFG.pacSpeed;
-  ok(eaten >= 4 && lost > 0 && Math.abs(lost - expect) < 0.02, `pellets hold Pac-Man back: ate ${eaten}, ${lost.toFixed(3)} cells behind a cleared run (expected ${expect.toFixed(3)})`);
+  const lost = (b.pac.x - a.pac.x), expect = (40 / 30) * S.CFG.pacSpeed * (1 - 16 / 17);   // the whole run inside pellet windows: 16/17 speed
+  ok(eaten >= 4 && lost > 0 && Math.abs(lost - expect) < 0.06, `pellets slow Pac-Man to 16/17: ate ${eaten}, ${lost.toFixed(3)} cells behind a cleared run (expected ${expect.toFixed(3)})`);
 }
 {
   // The warp tunnel: ghosts (grey too) slow to three quarters near the edges and cross a hidden stretch out of sight; Pac-Man keeps his speed
@@ -278,10 +279,10 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 0.75, 1e-9), 'frightened speed is 3/
     return { n, hidden, maxx };
   };
   const g = cross('ghost', false), p = cross('pac', false), c = cross('ghost', true);
-  const path = 0.5 + S.CFG.tunnelHidden + 1;      // cells: to the edge, the hidden stretch, and into the last cell on the other side
-  const want = path * 8 / (0.5 * S.CFG.tunnelSlow) / 2;    // 30 Hz ticks, 0.5 px/frame ghost at three quarters
-  ok(Math.abs(g.n - want) <= 2 && g.hidden > 0 && g.maxx < S.W + S.CFG.tunnelHidden + 0.01, `a ghost takes ${g.n} ticks from the last cell on one side to the last cell on the other (expected about ${want.toFixed(0)}), ${g.hidden} of them out of sight`);
-  ok(p.n < g.n * 0.8 && Math.abs(p.n - path * 8 / 0.5 / 2) <= 2, `Pac-Man is not slowed: ${p.n} ticks`);
+  const path = 0.5 + S.CFG.tunnelHidden + 1;      // cells: to the edge, the hidden cell, and across the last cell on the other side (the loop stops at its far side)
+  const want = path * 8 / (0.5 * S.CFG.tunnelSlow) / 2 + S.CFG.tunnelHold * 30;    // 30 Hz ticks: 20 frames a cell and the 30-frame hold (centre to centre it is 70 frames)
+  ok(Math.abs(g.n - want) <= 3 && g.hidden > 0 && g.maxx < S.W + S.CFG.tunnelHidden + 0.01, `a ghost takes ${g.n} ticks from the last cell on one side to the last cell on the other (expected about ${want.toFixed(0)}, the original's 70 frames), ${g.hidden} of them out of sight`);
+  ok(p.n < g.n && Math.abs(p.n - path * 8 / 0.5 / 2) <= 2, `Pac-Man is not slowed or held: ${p.n} ticks`);
   ok(c.n > g.n, `a grey stand-in is slower still: ${c.n} ticks`);
   const s2 = S.newRound([1600, 0, 0, 0], 0); s2.ghosts[0].x = 10.5; s2.ghosts[0].y = row + 0.5;
   ok(!s2.ghosts.some(gh => S.dist(gh, s2.pac) < S.CFG.catchDist), 'distance still sane away from the tunnel');

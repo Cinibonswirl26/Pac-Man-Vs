@@ -147,9 +147,10 @@
   const onOriginalStage = () => stageMusic() === 'original';
   addEventListener('storage', e => { if (e.key === SoundMap.MUSIC_KEY) musicMap = SoundMap.loadMusic(); else if (e.key === SoundMap.KEY) SM.reload(); });   // the lab saved in another tab
   // The siren: a square-ish tone that holds at 563 Hz, climbs to 844 Hz and falls back, every 0.43 s (measured).
-  // Every pellet eaten in the round raises the whole sweep by 0.145% (about 0.8 Hz at the bottom); the period does not
-  // change. Measured over a round: 565 Hz at the start, 651 Hz after 106 pellets, steady while nothing is eaten.
-  const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13, perPellet: 0.00145 };
+  // The original hands its siren the percentage of pellets left as the round goes on (SPEC.md), which is what raises
+  // the pitch: measured at 565 Hz at the start and 651 Hz after 106 of 176 pellets (about 25% over a whole maze),
+  // steady while nothing is eaten, the period unchanged. So the sweep rises by 0.255% for every whole percent eaten.
+  const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13, perPercent: 0.00255 };
   let siren = null;
   function setSiren(on) {
     if (!on) { if (siren) { try { siren.o.stop(); } catch { /* ended */ } siren = null; } return; }
@@ -160,7 +161,8 @@
   }
   function scheduleSiren() {
     if (!siren) return;
-    const { hold, rise, fall } = SIREN, f = siren.o.frequency, k = 1 + SIREN.perPellet * ((snap && snap.eaten) || 0);
+    const { hold, rise, fall } = SIREN, f = siren.o.frequency, total = snap ? (snap.eaten || 0) + (snap.left || 0) : 0;
+    const k = 1 + SIREN.perPercent * (total ? Math.floor(100 * (snap.eaten || 0) / total) : 0);
     const lo = SIREN.lo * k, hi = SIREN.hi * k;
     while (siren.next < ac.currentTime + 1) {        // keep a second of sweeps scheduled ahead
       const t = Math.max(siren.next, ac.currentTime);

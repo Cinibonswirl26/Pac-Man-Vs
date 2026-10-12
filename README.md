@@ -55,7 +55,7 @@ counter shows how many pellets are left. Pac-Man sees the whole maze.
   take (speed, a mirror clone, the pot, fast digestion, points). A ghost holding the red capsule dashes on its
   button (Space, J, a gamepad's A or the on-screen button) with a short cooldown, and one holding the pink capsule
   hops to a spot near Pac-Man with it. They sit on mazes your disc holds but the
-  original never lists; the six original stages are untouched. See the end of `FIDELITY.md`.
+  original never lists; the six original stages are untouched. See the end of `FIDELITY.md`. The rules of the original game itself are written up in `SPEC.md`, read from its program on the player's own disc.
 
 ## Playing with friends
 

@@ -171,31 +171,38 @@ body { background: var(--bg); color: var(--ink); }
 
   // Values measured from the original game (see FIDELITY.md). Speeds were 0.5 px per frame (normal) and
   // 0.375 px per frame (frightened) at 8 px per cell and 59.7275 frames per second.
-  const FPS = 59.7275, CELL = 8;
+  const FPS = 59.94, CELL = 8;             // the console's frame clock; positions are handheld pixels, 8 to a cell (SPEC.md)
   const CFG = {
     tick: 1 / 30,
-    pacSpeed: 0.5 * FPS / CELL,          // 3.73 cells/s on a cleared corridor
-    pelletPause: 1 / FPS,                // eating a pellet holds Pac-Man for a frame: 0.4725 px/frame measured over a pellet row against 0.503 cleared
-    ghostSpeed: (0.5 + 1 / 256) * FPS / CELL,   // a hair faster than Pac-Man: about 1 px more per 128 px
-    frightSpeed: 0.375 * FPS / CELL,     // 2.80 cells/s
-    greySpeed: FPS / CELL / 3,           // a grey stand-in wanders at a third of a pixel a frame: two thirds of ghost speed (measured on the original's radar)
-    // The warp tunnel (a row open at both edges) carries on out of sight: a ghost going off one edge comes back on the
-    // other after a hidden stretch, and every ghost (grey ones too, not Pac-Man) moves at three quarters speed within
-    // the outer cells and the hidden stretch. Measured on the original: 0.375 px/frame against 0.504 on the open row,
-    // 70 frames from the last cell's centre on one side to the last cell's centre on the other.
-    tunnelSlow: 0.75, tunnelEdge: 2.5, tunnelHidden: 2.3,
-    eyeSpeed: 1.0 * FPS / CELL,          // not measured
-    frightTime: 10, frightFlash: 2,
+    // Speeds are the original's frames per cell (SPEC.md, "Movement"): 16 for Pac-Man and every coloured ghost,
+    // 21 frightened, 10 for eyes flying home, 24 for a grey stand-in; a ghost on the tunnel row's outer cells runs
+    // at 1.25 times its frames per cell (Pac-Man is never slowed there).
+    pacSpeed: 8 / 16 * FPS / CELL,
+    pelletSlow: 17,                       // after each pellet Pac-Man runs at 16/17 speed for 17 frames (the window restarts on every pellet)
+    ghostSpeed: 8 / 16 * FPS / CELL,
+    frightSpeed: 8 / 21 * FPS / CELL,
+    greySpeed: 8 / 24 * FPS / CELL,
+    eyeSpeed: 8 / 10 * FPS / CELL,
+    // The warp tunnel (a row open at both edges) carries on out of sight through one hidden cell, the same cell seen
+    // from either end. A ghost is slowed on the three visible cells at each end and the hidden one (the original keeps
+    // the maze with a one-cell border and tests x < 32 and x > 128 px on its 21-wide row) by the factor below, and is
+    // held for 30 frames when it reaches the hidden cell's centre (the original walks it on out of sight for 30
+    // frames and then sets it down there). Watched live: a ghost takes 70 frames from the last visible cell's centre
+    // on one side to the last visible cell's centre on the other, Pac-Man 32.
+    tunnelSlow: 1 / 1.25, tunnelEnd: 3, tunnelHidden: 1, tunnelHold: 30 / FPS,
+    frightTime: 600 / FPS, frightFlash: 120 / FPS,   // 600 frames; the frightened look blinks through the last 120
+    eatFreeze: 30 / FPS,                  // everything stands still for 30 frames after a ghost is eaten
     // Pac-Man leaves a trail in his player's colour that ghosts can follow. Look (wide flat ribbon, paler by Pac-Man) is from the original; the length is a guess.
     trailTime: 2, trailEvery: 0.1,
     ghostSight: 4.6,
     // The 3D circle looks down at an angle, so it shows ground out to about 1.3 times the sight radius ahead of the ghost; what the server sends covers all of it.
     viewReach: 1.35,
-    catchDist: 0.55,                     // how close a ghost and Pac-Man must be (cell centres) to touch; their bodies are about 0.65 wide
-    // Fruit: appears in the middle of the maze once enough pellets are gone (documented: both sides may take it,
-    // ghosts get 400 points and a wider view for a while). The numbers below are guesses.
-    fruitPts: 400, fruitFirst: 6, fruitEvery: 70, fruitStay: 10, fruitSightMult: 1.6, fruitSightTime: 10,
-    clearBonus: 1600, hideAt: 20,          // at 20 pellets left the ghosts' screens stop showing pellets (stated by a player who knows the original)
+    catchDist: 0.25,                     // centres within 2 px (a quarter cell): the original's contact test, used for the catch, the eat and the wake
+    // Fruit (SPEC.md): a timer of 1080 + 60 x (0..19) frames starts each round; the fruit shows when it reaches 480
+    // and bursts at 0, when the timer restarts: one every 10-29 s after the last went, for 8 s. 400 points to whoever
+    // takes it; a ghost's view widens for 720 frames.
+    fruitPts: 400, fruitStay: 480 / FPS, fruitGapMin: 1080 / FPS, fruitGapStep: 60 / FPS, fruitGapSteps: 20, fruitSightMult: 1.6, fruitSightTime: 720 / FPS,
+    clearBonus: 1600, hideAt: 20,          // the bonus only if Pac-Man is still below the target; at 20 pellets left the ghosts' screens stop showing pellets
     pelletPts: 10, powerPts: 110,
     ghostChain: [200, 400, 800, 1600],   // not measured
     stealPts: 1600, startPts: 1600,
@@ -254,7 +261,7 @@ body { background: var(--bg); color: var(--ink); }
   // rows open at both edges wrap round through the hidden tunnel stretch; positions W..W+tunnelHidden are out of sight
   const TROW = ROWS.map(r => !/[#=]/.test(r[0]) && !/[#=]/.test(r[W - 1]));
   const ringOf = y => W + (TROW[Math.floor(y)] ? CFG.tunnelHidden : 0);
-  const inTunnel = e => TROW[Math.floor(e.y)] && (e.x < CFG.tunnelEdge || e.x > W - CFG.tunnelEdge);
+  const inTunnel = e => TROW[Math.floor(e.y)] && (Math.floor(e.x) < CFG.tunnelEnd || Math.floor(e.x) >= W - CFG.tunnelEnd);
 
   /** Start a round. `scores` (4 numbers) is kept and updated in place, so points carry over between rounds. */
   function newRound(scores, pacPlayer, opts) {
@@ -269,7 +276,7 @@ body { background: var(--bg); color: var(--ink); }
     return Object.assign({
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: Object.assign(ent(START.pac), { pause: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
+      pac: Object.assign(ent(START.pac), { pause: 0, slow: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it.
       // opts.claims[i]: the ghost slot stand-in i is already woken by (tests only; a match starts every stand-in grey), or -1
       ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]) && !(opts.claims && opts.claims[i] >= 0), standin: !!(opts.standin && opts.standin[i]), claim: opts.standin && opts.standin[i] && opts.claims && opts.claims[i] >= 0 ? opts.claims[i] : -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
@@ -277,10 +284,12 @@ body { background: var(--bg); color: var(--ink); }
       gp: opts.players ? opts.players.slice() : null,
       scores: scores || [0, 0, 0, 0], roundScores: [0, 0, 0, 0],
       pacPlayer, tick: 0, catcher: -1, steal: 0, winner: -1, time: 0,
-      eaten: 0, nextFruit: CFG.fruitFirst, fruit: null, trail: [], trailLast: -1
+      eaten: 0, fruitTimer: fruitGap(opts.rng || Math.random), fruit: null, freeze: 0, trail: [], trailLast: -1
     }, ARR ? { big: new Uint8Array(W * H), pot: 0, rng: opts.rng || Math.random, padsUsed: new Uint8Array(PADS.length) } : {});
   }
   function ent(p) { return { x: p[0] + 0.5, y: p[1] + 0.5, dir: 1, want: 1 }; }
+  /** The fruit timer's starting value: 1080 + 60 x (0..19) frames in the original. */
+  function fruitGap(rng) { return CFG.fruitGapMin + CFG.fruitGapStep * Math.floor(rng() * CFG.fruitGapSteps); }
 
   // The three non-Pac players take ghost slots 0..2 in seat order, unless the state says who holds which
   // slot (state.gp): the match keeps the slots from round to round, the old Pac-Man taking the catcher's.
@@ -427,7 +436,7 @@ body { background: var(--bg); color: var(--ink); }
   const mirrorX = e => { const ring = ringOf(e.y); return ((W - e.x) % ring + ring) % ring; };
   /** What appears at the fruit spot: the fruit on a plain maze, otherwise a weighted draw. */
   function spawnItem(s) {
-    const f = { x: FRUIT[0] + 0.5, y: FRUIT[1] + 0.5, left: CFG.fruitStay };
+    const f = { x: FRUIT[0] + 0.5, y: FRUIT[1] + 0.5, left: Math.min(CFG.fruitStay, s.fruitTimer) };
     if (ARR && ARR.items) {
       const total = CFG.itemOdds.reduce((a, o) => a + o[1], 0); let r = s.rng() * total;
       f.kind = 'fruit'; for (const [k, w] of CFG.itemOdds) { r -= w; if (r < 0) { f.kind = k; break; } }
@@ -437,7 +446,7 @@ body { background: var(--bg); color: var(--ink); }
   /** Pac-Man (gi -1) or ghost gi takes what is at the fruit spot. Returns true if the round ended. */
   function takeItem(s, gi) {
     const kind = s.fruit.kind || 'fruit', g = gi >= 0 ? s.ghosts[gi] : null, who = gi >= 0 ? colorOf(s, gi) : s.pacPlayer;
-    s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery;
+    s.fruit = null;
     if (kind === 'fruit') {
       if (g) g.sightLeft = CFG.fruitSightTime;
       s.events.push(g ? 'fruitghost' : 'fruit'); award(s, who, CFG.fruitPts); return s.over;
@@ -518,8 +527,7 @@ body { background: var(--bg); color: var(--ink); }
     if (!s.pellets[pi]) return false;
     const power = s.pellets[pi] === 2;
     s.pellets[pi] = 0; s.left--; s.eaten++;
-    if (real && !s.pac.dash && !(s.pac.speedLeft > 0) && !(s.pac.digest > 0)) s.pac.pause += CFG.pelletPause;
-    if (!s.fruit && s.eaten >= s.nextFruit && s.left > 8) spawnItem(s);
+    if (real && !s.pac.dash && !(s.pac.speedLeft > 0) && !(s.pac.digest > 0)) s.pac.slow = CFG.pelletSlow / FPS;
     s.events.push(power ? 'power' : 'pellet');
     if (power) {
       s.frightLeft = CFG.frightTime; s.chain = 0;
@@ -527,7 +535,7 @@ body { background: var(--bg); color: var(--ink); }
     }
     award(s, s.pacPlayer, power ? CFG.powerPts : CFG.pelletPts);
     if (s.over) return true;
-    if (s.left <= 0) { award(s, s.pacPlayer, CFG.clearBonus); s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'cleared'; return true; }
+    if (s.left <= 0) { if (s.scores[s.pacPlayer] < s.target) award(s, s.pacPlayer, CFG.clearBonus); s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'cleared'; return true; }
     return false;
   }
   /** A frightened ghost is eaten: Pac-Man gains the chain points and the owner loses them (measured on the disc). */
@@ -537,7 +545,7 @@ body { background: var(--bg); color: var(--ink); }
     if (g.standin) { g.grey = true; g.claim = -1; }     // a woken stand-in that is eaten goes back to grey
     const pts = CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)], owner = g.grey ? -1 : colorOf(s, i);
     if (owner >= 0) { const lose = Math.min(pts, s.scores[owner]); s.scores[owner] -= lose; s.roundScores[owner] -= lose; }
-    award(s, s.pacPlayer, pts); s.chain++;
+    award(s, s.pacPlayer, pts); s.chain++; s.freeze = CFG.eatFreeze;
     if (ARR) g.clone = null;
     return s.over;
   }
@@ -555,6 +563,11 @@ body { background: var(--bg); color: var(--ink); }
     if (s.over) return;
     dt = dt || CFG.tick;
     s.tick++; s.time += dt; s.events.length = 0;
+    if (s.freeze > 0) {                                        // the standstill after a ghost is eaten: the clocks run, nobody moves
+      s.freeze = Math.max(0, s.freeze - dt);
+      if (s.frightLeft > 0) s.frightLeft = Math.max(0, s.frightLeft - dt);
+      return;
+    }
     if (ARR) tickEffects(s, dt);
 
     // Pac-Man
@@ -562,20 +575,27 @@ body { background: var(--bg); color: var(--ink); }
     if (s.pac.air) flyStep(s, s.pac, 'pac', dt);
     else if (s.pac.bonk > 0) s.pac.bonk = Math.max(0, s.pac.bonk - dt);     // dizzy against a wall: going nowhere
     else {
-      const held = s.pac.dash ? 0 : Math.min(dt, s.pac.pause || 0);          // time still owed to the last pellet (a dash owes nothing)
+      const held = s.pac.dash ? 0 : Math.min(dt, s.pac.pause || 0);          // time still owed to a big pellet (a dash owes nothing)
       s.pac.pause = s.pac.dash ? 0 : (s.pac.pause || 0) - held;
-      moveEnt(s, s.pac, CFG.pacSpeed * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt - held, 'pac');
+      const chewing = s.pac.slow > 0 ? 16 / 17 : 1;                           // the pellet window: 17 frames per cell instead of 16
+      if (s.pac.slow > 0) s.pac.slow = Math.max(0, s.pac.slow - dt);
+      moveEnt(s, s.pac, CFG.pacSpeed * chewing * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt - held, 'pac');
       padCheck(s, s.pac, 'pac');
     }
     if (!s.pac.air && s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
     while (s.trail.length && s.time - s.trail[0].t > CFG.trailTime) s.trail.shift();
     if (!s.pac.air && eatCell(s, s.pac)) return;
     if (ARR) { moveClone(s.pac); if (s.pac.clone && eatCell(s, s.pac.clone)) return; }
+    // The fruit clock: the fruit shows when it reaches fruitStay and bursts when it reaches 0, and then it restarts.
+    const wasUp = s.fruitTimer > CFG.fruitStay;
+    s.fruitTimer -= dt;
+    if (wasUp && s.fruitTimer <= CFG.fruitStay && !s.fruit && s.left > 0) spawnItem(s);
     if (s.fruit) {
-      s.fruit.left -= dt;
+      s.fruit.left = s.fruitTimer;
       if (!s.pac.air && dist(s.pac, s.fruit) < 0.7) { if (takeItem(s, -1)) return; }
-      else if (s.fruit.left <= 0) { s.fruit = null; s.nextFruit = s.eaten + CFG.fruitEvery; }
+      else if (s.fruit.left <= 0) { s.fruit = null; s.events.push('fruitgone'); }
     }
+    if (s.fruitTimer <= 0) s.fruitTimer = fruitGap(s.rng || Math.random);
     if (s.frightLeft > 0) {
       s.frightLeft -= dt;
       if (s.frightLeft <= 0) { s.frightLeft = 0; s.ghosts.forEach(g => { if (g.mode === 'fright') g.mode = 'normal'; }); }
@@ -608,7 +628,9 @@ body { background: var(--bg); color: var(--ink); }
       if (g.dashLeft > 0 && pressed && !g.dash && !(g.dashCool > 0)) {     // the red capsule's dash, on the button: fired the way it faces, then a cooldown
         g.dash = CFG.dashMult; g.turned = false; g.dashCool = CFG.dashCool; s.events.push('dash');
       }
+      if (g.hold > 0) { g.hold = Math.max(0, g.hold - dt); continue; }   // set down on the tunnel's hidden cell after the hold
       moveEnt(s, g, (g.mode === 'fright' ? CFG.frightSpeed : g.grey ? CFG.greySpeed : CFG.ghostSpeed) * (inTunnel(g) ? CFG.tunnelSlow : 1), dt, 'ghost');
+      if (Math.floor(g.x) === W) { if (!g.held) { g.x = W + 0.5; g.hold = CFG.tunnelHold; g.held = true; } } else g.held = false;
       padCheck(s, g, 'ghost');
       if (ARR) { moveClone(g); if (g.dropLeft > 0) dropBig(s, g); }
       if ((g.grey && g.mode !== 'fright') || g.air) continue;   // a grey stand-in takes no part: no fruit, Pac-Man passes through it; frightened, it can be eaten
@@ -4050,9 +4072,10 @@ body { background: var(--bg); color: var(--ink); }
   const onOriginalStage = () => stageMusic() === 'original';
   addEventListener('storage', e => { if (e.key === SoundMap.MUSIC_KEY) musicMap = SoundMap.loadMusic(); else if (e.key === SoundMap.KEY) SM.reload(); });   // the lab saved in another tab
   // The siren: a square-ish tone that holds at 563 Hz, climbs to 844 Hz and falls back, every 0.43 s (measured).
-  // Every pellet eaten in the round raises the whole sweep by 0.145% (about 0.8 Hz at the bottom); the period does not
-  // change. Measured over a round: 565 Hz at the start, 651 Hz after 106 pellets, steady while nothing is eaten.
-  const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13, perPellet: 0.00145 };
+  // The original hands its siren the percentage of pellets left as the round goes on (SPEC.md), which is what raises
+  // the pitch: measured at 565 Hz at the start and 651 Hz after 106 of 176 pellets (about 25% over a whole maze),
+  // steady while nothing is eaten, the period unchanged. So the sweep rises by 0.255% for every whole percent eaten.
+  const SIREN = { lo: 563, hi: 844, hold: 0.12, rise: 0.18, fall: 0.13, perPercent: 0.00255 };
   let siren = null;
   function setSiren(on) {
     if (!on) { if (siren) { try { siren.o.stop(); } catch { /* ended */ } siren = null; } return; }
@@ -4063,7 +4086,8 @@ body { background: var(--bg); color: var(--ink); }
   }
   function scheduleSiren() {
     if (!siren) return;
-    const { hold, rise, fall } = SIREN, f = siren.o.frequency, k = 1 + SIREN.perPellet * ((snap && snap.eaten) || 0);
+    const { hold, rise, fall } = SIREN, f = siren.o.frequency, total = snap ? (snap.eaten || 0) + (snap.left || 0) : 0;
+    const k = 1 + SIREN.perPercent * (total ? Math.floor(100 * (snap.eaten || 0) / total) : 0);
     const lo = SIREN.lo * k, hi = SIREN.hi * k;
     while (siren.next < ac.currentTime + 1) {        // keep a second of sweeps scheduled ahead
       const t = Math.max(siren.next, ac.currentTime);

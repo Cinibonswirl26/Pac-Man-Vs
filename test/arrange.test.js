@@ -121,12 +121,12 @@ const run = (s, n, inp) => { for (let i = 0; i < n; i++) LV.update(s, inp || idl
 // 7. Items: on a level the fruit spot draws fruit or a capsule with a seeded roulette; every kind shows up, gold least
 {
   const seen = {}; const s = LV.newRound([1600, 0, 0, 0], 0, { rng: S.mulberry(5) }); park(s);
-  for (let n = 0; n < 400; n++) { s.fruit = null; s.eaten = s.nextFruit; s.left = 100; s.pellets[0] = 1; s.pac.x = 0.5; s.pac.y = 0.5; s.pac.air = null; LV.update(s, idle); if (s.fruit) seen[s.fruit.kind] = (seen[s.fruit.kind] || 0) + 1; s.fruit = null; }
+  for (let n = 0; n < 400; n++) { s.fruit = null; s.fruitTimer = S.CFG.fruitStay + 0.001; s.left = 100; s.pellets[0] = 1; s.pac.x = 0.5; s.pac.y = 0.5; s.pac.air = null; LV.update(s, idle); if (s.fruit) seen[s.fruit.kind] = (seen[s.fruit.kind] || 0) + 1; s.fruit = null; }
   const kinds = Object.keys(seen);
   ok(['fruit', 'red', 'cyan', 'pink', 'orange', 'gold'].every(k => seen[k] > 0), 'every item kind appears: ' + JSON.stringify(seen));
   ok(seen.gold < seen.fruit && Object.values(seen).every(v => v < seen.fruit + 1) && seen.gold === Math.min(...Object.values(seen)), 'gold is the rarest, fruit the commonest');
   const a = LV.newRound([1600, 0, 0, 0], 0, { rng: S.mulberry(9) }), b = LV.newRound([1600, 0, 0, 0], 0, { rng: S.mulberry(9) });
-  a.eaten = b.eaten = 5; a.pellets[0] = b.pellets[0] = 1; a.pac.x = b.pac.x = 0.5; a.pac.y = b.pac.y = 0.5; LV.update(a, idle); LV.update(b, idle);
+  a.fruitTimer = b.fruitTimer = S.CFG.fruitStay + 0.001; a.pellets[0] = b.pellets[0] = 1; a.pac.x = b.pac.x = 0.5; a.pac.y = b.pac.y = 0.5; LV.update(a, idle); LV.update(b, idle);
   ok(a.fruit && b.fruit && a.fruit.kind === b.fruit.kind, 'the draw follows the seed');
 }
 const spawn = (s, kind) => { s.fruit = { x: 11.5, y: 13.5, left: 10, kind }; };
@@ -143,9 +143,10 @@ const give = (s, kind, e) => { spawn(s, kind); put(e, 11, 13, 1); LV.update(s, i
   const left0 = s.left; put(s.pac, 5, 16, 3); run(s, 30, { pac: 3, ghosts: [null, null, null] });     // row 16 has no pads
   ok(near(s.pac.clone.x, 23 - s.pac.x, 0.01) && s.pac.clone.dir === 1 && s.left < left0 - 4, 'the clone mirrors every move and eats pellets on its side');
   const v = LV.view(s, 0); ok(v.clones.length === 1 && v.clones[0].of === -1 && v.clones[0].m === 'p', 'the view lists the clone');
-  const g = s.ghosts[0]; g.mode = 'fright'; s.frightLeft = 10; put(g, Math.floor(s.pac.clone.x), 16, 1); LV.update(s, idle);
+  const g = s.ghosts[0]; g.mode = 'fright'; s.frightLeft = 10; put(g, Math.floor(s.pac.clone.x), 16, 1); g.x = s.pac.clone.x; g.y = s.pac.clone.y; LV.update(s, idle);
   ok(g.mode === 'eyes' && s.scores[0] >= 2200, 'the clone eats a frightened ghost');
-  const h = s.ghosts[1]; put(h, Math.floor(s.pac.clone.x), 16, 1); LV.update(s, idle);
+  while (s.freeze > 0) LV.update(s, idle);
+  const h = s.ghosts[1]; put(h, Math.floor(s.pac.clone.x), 16, 1); h.x = s.pac.clone.x; h.y = s.pac.clone.y; LV.update(s, idle);
   ok(!s.pac.clone && !s.over && s.events.includes('clonegone'), 'a normal ghost touching the clone only removes it');
   s = LV.newRound([1600, 0, 0, 0], 0); park(s); s.ghosts[2].mode = 'fright'; s.frightLeft = 5; give(s, 'pink', s.pac);
   ok(s.events.includes('pot') && s.ghosts.every(g => g.potted && g.mode === 'normal' && Math.floor(g.x) === 11 && Math.floor(g.y) === 10) && near(s.pot, S.CFG.potTime, 0.05), 'pink: every ghost sits in the pot, fright cleared');
