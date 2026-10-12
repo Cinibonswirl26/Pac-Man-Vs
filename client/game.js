@@ -11,7 +11,13 @@
   let ws = null, room = null, you = 0;
   let snap = null, offline = null, lastPhase = null, lastCount = -1;
   let names = ['You', 'CPU', 'CPU', 'CPU'];
-  const sm = { pac: null, pacAng: null, ghosts: [null, null, null], yaw: [0, 0, 0], sight: [null, null, null] };
+  const sm = { pac: null, pacAng: null, ghosts: [null, null, null], yaw: [0, 0, 0], sight: [null, null, null], start: [null, null, null], moved: [false, false, false] };
+  // A ghost stands facing the camera at the start of a round, as on the original, and turns to its heading once it moves.
+  function ghostYaw(i, gh) {
+    const st = sm.start[i];
+    if (!sm.moved[i] && st && snap.phase === 'play' && Math.hypot(gh.x - st.x, gh.y - st.y) > 0.1) sm.moved[i] = true;
+    return sm.moved[i] ? View3D.YAW[gh.d] || 0 : View3D.YAW[2];
+  }
   // The circle's reach moves towards its target at the original's rate: 1.3 units a frame on a 100-unit reach
   // (SPEC.md), so the fruit's pull-back takes about 1.3 s and the round-start zoom-in from 2.56x takes the 2 s
   // of "Ready". The sim changes the radius in one step; this slides it.
@@ -674,7 +680,10 @@
         } else if (snap.phase !== 'handoff' && snap.phase !== 'countdown') exch = null;
         if (snap.phase === 'handoff' && snap.next === you && !art.screens) { tone(660, 0.1, 'square', 0.12); setTimeout(() => tone(990, 0.18, 'square', 0.12), 110); }   // without the disc's screens, a cue that it is your turn
       }
-      if (snap.phase === 'countdown' && snap.phase !== lastPhase) lastDir = -1;
+      if (snap.phase === 'countdown' && snap.phase !== lastPhase) {
+        lastDir = -1;
+        sm.start = snap.ghosts.map(g => g ? { x: g.x, y: g.y } : null); sm.moved = [false, false, false]; sm.yaw = [0, 0, 0].map(() => View3D.YAW[2]);
+      }
       lastPhase = snap.phase;
       if (onOriginalStage()) {
         if (snap.phase === 'countdown') playMusic(START_JINGLE, false);
@@ -901,7 +910,6 @@
     if (pacScreen) pacScreen.canvas.style.display = hh ? '' : 'none';
     if (screenView) screenView.canvas.style.display = scr ? '' : 'none';
     exchangeTicks(now);
-    drawLookInset(now, !!between);
     if (between) { drawBetween(between, now, dt); return; }
     if (scr) { drawShared(scr, now, dt); return; }
     if (hh) { try { drawPacScreen(hh, now); } catch (e) { console.warn('Pac-Man screen', e); pacScreen.canvas.remove(); pacScreen = false; } return; }
@@ -944,7 +952,7 @@
     const ghosts = [];
     sm.ghosts.forEach((gh, i) => {
       const s = snap.ghosts[i]; if (!gh || !s || s.m === 'r') return;
-      const target = View3D.YAW[gh.d] || 0;
+      const target = ghostYaw(i, gh);
       let dy = target - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
       ghosts.push({ x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], seat: S.playerOfGhost(snap, i), c: gcolor(i), a: s.a, st: s.st, ds: s.ds, bk: s.bk, sq: squashOf('g' + i, s, now) });
@@ -992,23 +1000,10 @@
     scr.canvas.style.width = cw + 'px'; scr.canvas.style.height = cw * 3 / 4 + 'px';
     return cw * Math.min(2, window.devicePixelRatio || 1);
   }
-  // The handheld during the exchange: it tells its holder to look at the TV until the TV's handheld icon reaches the winner,
-  // then shows the next round's maze with "Press START!" to the new Pac-Man. Here the old Pac-Man, who holds it until then,
-  // sees it in a corner of the TV picture.
+  // The new Pac-Man's view turns to the handheld's next-round maze with "Press START!" when the TV's handheld icon reaches
+  // the winner (as the original's handheld does).
   const exchSt = () => ({ before: exch.before, after: exch.after, loser: exch.loser, winner: exch.winner, pacPlayer: exch.loser, standin: exch.standin });
   const handheldAt = () => exch && screenView && !exch.final ? exch.t0 + screenView.exchangeMoments(exchSt()).icon / FPS * 1000 : exchReadyAt();
-  let lookInset = null;
-  function drawLookInset(now, between) {
-    const show = between && exch && !exch.final && !exch.leaveT0 && exch.loser === you && now >= exch.t0 && now < handheldAt() && art.handheld;
-    if (!show) { if (lookInset) lookInset.canvas.style.display = 'none'; return; }
-    if (!lookInset) {
-      const c = document.createElement('canvas'); c.width = Handheld.W; c.height = Handheld.H; c.className = 'pixel inset'; $('stage').appendChild(c);
-      lookInset = { canvas: c, ctx: c.getContext('2d'), frame: Handheld.frame() };
-    }
-    lookInset.canvas.style.display = '';
-    Handheld.lookAtTV(art.handheld, lookInset.frame, (now - exch.t0) / 1000);
-    lookInset.ctx.putImageData(new ImageData(lookInset.frame.data, Handheld.W, Handheld.H), 0, 0);
-  }
   // the count on the exchange screen: a tick every 8th frame while the points move (silent in the original; see the sound map)
   function exchangeTicks(now) {
     if (!exch || exch.leaveT0) return;
@@ -1037,7 +1032,7 @@
     const ghosts = [];
     sm.ghosts.forEach((gh, i) => {
       const s = snap.ghosts[i]; if (!gh || !s) return;
-      let dy = (View3D.YAW[gh.d] || 0) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      let dy = ghostYaw(i, gh) - sm.yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       sm.yaw[i] += dy * Math.min(1, dt * 14);
       ghosts.push({ i, seat: S.playerOfGhost(snap, i), c: gcolor(i), x: gh.x, y: gh.y, m: gh.m, yaw: sm.yaw[i], s: sightNow(i, s.s || CFG.ghostSight, now), hidden: s.m === 'r', a: s.a, st: s.st, ds: s.ds, bk: s.bk, sq: squashOf('g' + i, s, now) });
     });

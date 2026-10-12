@@ -72,6 +72,22 @@
       }
       glTex.set('pill:' + k, R.texture({ w: n, h: n, rgba, wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 }));
     }
+    // The exchange screen's handheld: a plain, unbranded handheld drawn here (the disc's picture is a particular console's),
+    // at twice the size it is shown (120 x 69) so it stays crisp, under the name the screen draws it by.
+    if (typeof document !== 'undefined') {
+      const c = document.createElement('canvas'); c.width = 240; c.height = 138;
+      const g = c.getContext('2d'), rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+      const body = g.createLinearGradient(0, 4, 0, 134); body.addColorStop(0, '#b9bec9'); body.addColorStop(1, '#7d8494');
+      rr(4, 4, 232, 130, 44); g.fillStyle = body; g.fill(); g.lineWidth = 4; g.strokeStyle = '#3c414d'; g.stroke();
+      rr(66, 18, 108, 100, 10); g.fillStyle = '#2b2f38'; g.fill();                                 // the screen's bezel
+      const glass = g.createLinearGradient(0, 28, 0, 108); glass.addColorStop(0, '#a9b9a2'); glass.addColorStop(1, '#7f9479');
+      rr(78, 28, 84, 80, 4); g.fillStyle = glass; g.fill();
+      g.fillStyle = '#3a3f4a'; g.fillRect(24, 56, 30, 10); g.fillRect(34, 46, 10, 30);         // the cross pad
+      g.fillStyle = '#5a3f63'; for (const [x, y] of [[198, 56], [214, 46]]) { g.beginPath(); g.arc(x, y, 8, 0, 7); g.fill(); }   // two buttons
+      g.fillStyle = '#5b6170'; g.fillRect(200, 98, 16, 4); g.fillRect(26, 98, 16, 4);              // small keys below
+      const d = g.getImageData(0, 0, c.width, c.height);
+      glTex.set('handheld:icon', R.texture({ w: c.width, h: c.height, rgba: new Uint8Array(d.data.buffer), wrapS: 0, wrapT: 0, magFilter: 1, minFilter: 1 }));
+    }
     // Panel colours: each player's frame material holds that player's colour in its first TEV register.
     const seatColor = [1, 2, 3, 4].map(i => { const p = scr.byName['P' + i + '_waku']; return p ? scr.materials[p.material].tevColors[0].slice(0, 3) : [1, 1, 1]; });
 
@@ -336,7 +352,7 @@
       tagW: 38, tagH: 25, tagDX: 53, tagDY: 56,                                     // the P1 / COM tag, from the circle's centre
       wait: 60, step: 10, fadeStep: 4,                                              // the count: a 60-frame wait, 10 points a frame
       iconY: 343, iconW: 120, iconH: 69, iconFrom: 28, iconTo: 12, iconSpeed: 4,    // the handheld: under the loser, slides to the winner
-      arrowY: 360, arrowW: 115, arrowH: 35, mesX: 26, mesY: 428, mesW: 588, mesH: 37, mesPeriod: 120,
+      arrowY: 360, arrowW: 115, arrowH: 35, mesX: 26, mesY: 428, mesW: 588, mesH: 37, mesPeriod: 120, message: 'Take the handheld and press START.',
       loserTint: 0xA0 / 255, fadeIn: 26,
       // after Start: the swap, the new Pac-Man's circle into the handheld, the rest of the screen away, the circles to the game's
       shrinkAt: 90, shrinkTime: 60, slideAt: 150, slideSpeed: 8, flyAt: 180, flyTime: 60, ringFadeAt: 240, ringFade: 6,
@@ -439,11 +455,15 @@
       if (ready && loseCol >= 0 && winCol >= 0) {
         const ia = readyA, toLeft = winCol < loseCol;
         if (!leaving || dropY < 200) {
-          pic(ringMat, 'agb_02.bti', iconX, EX.iconY + dropY, EX.iconW, EX.iconH, [1, 1, 1, ia]);
+          pic(ringMat, 'handheld:icon', iconX, EX.iconY + dropY, EX.iconW, EX.iconH, [1, 1, 1, ia]);
           pic(ringMat, 'yajirushi.bti', EX.ringX(loseCol) + (EX.ring - EX.arrowW) / 2, EX.arrowY + dropY, EX.arrowW, EX.arrowH, [1, 1, 1, ia], !toLeft);   // the picture points left
         }
         const pulse = (159 - 96 * Math.cos(2 * Math.PI * (f - 90) / EX.mesPeriod)) / 255;
-        pic(ringMat, 'exchange_mes.bti', EX.mesX, EX.mesY, EX.mesW, EX.mesH, [1, 1, 1, ia * pulse * restA]);
+        // the line asking for Start, in our own wording (the disc's picture of it names a particular console): the same red
+        // rules, the words in the disc's font, the same pulse
+        const ma = ia * pulse * restA, red = [0.9, 0.02, 0, ma];
+        for (const y of [EX.mesY, EX.mesY + EX.mesH - 4]) R.poly([[EX.mesX, y], [EX.mesX + EX.mesW, y], [EX.mesX + EX.mesW, y + 3], [EX.mesX, y + 3]], red);
+        say(EX.message, EX.mesX + EX.mesW / 2, EX.mesY + EX.mesH / 2, 28, [1, 0.93, 0.05, ma]);
       }
       if (f < EX.fadeIn) R.poly(FULL, [0, 0, 0, 1 - f / EX.fadeIn]);
       return canvas;

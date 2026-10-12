@@ -158,6 +158,8 @@ Layout: circles 144 across at x 20 + 152 n, top 140, in the panel's row order; p
 (+53, +56) from the centre; LOSER / WINNER 144 x 52 at y 96; score bars 144 x 40 at y 288; points moved centred at
 y 350; handheld icon 120 x 69 at y 343; arrow 115 x 35 at y 360 centred under the loser, its picture pointing left
 and mirrored when the winner is to the right; message 588 x 37 at (26, 428), alpha 159 - 96 cos(2 pi (f - 90) / 120).
+(This game draws a plain handheld and its own wording for the icon and the message: the disc's pictures of them
+show and name a particular console.)
 Each circle wears its seat's colour, the loser's too; the loser's Pac-Man portrait is darkened to 0xA0. A catch
 that reaches the target counts the points across and goes to the results, with no icon, arrow or tune.
 
