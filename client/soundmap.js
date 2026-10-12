@@ -13,7 +13,7 @@
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v8';
+  const KEY = 'pacvs.soundmap.v9';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const hand = (name, o) => Object.assign({ kind: 'hand', ids: [name], mode: 'one', who: 'pac', force: false, delay: 0, vol: 1 }, o);
@@ -41,22 +41,26 @@
     { id: 'frightLoop', loop: true, label: 'Frightened ghosts loop', when: 'Plays over and over while the ghosts are frightened', cues: [sfx([10], { vol: 0.35 })] },
     { id: 'eyesLoop', loop: true, label: 'Ghost "wee-woo" siren', when: 'Plays over and over while an eaten ghost is flying home', cues: [sfx([12], { vol: 0.35 })] },
     { id: 'ghostEatenSfx', label: 'Ghost eaten sound', when: 'Pac-Man eats a frightened ghost (the rising sweep and the thump)', cues: [sfx([11, 13], { mode: 'all', vol: 0.8 })] },
-    { id: 'powerPac', label: 'Power pellet - Pac-Man side', when: 'Pac-Man eats a power pellet (said to Pac-Man); the original spoke after about 3 in 5', cues: [voice([0, 2], { force: true, who: 'pac', chance: 0.6 })] },
-    { id: 'powerGhost', label: 'Power pellet - ghost side', when: 'Pac-Man eats a power pellet (said to the ghosts)', cues: [voice([1, 3], { force: true, chance: 0.6 })] },
+    // The original's program plays one sound ID on every power pellet; the disc's instrument for it holds lines 0 and 1
+    // as alternates (the two Japanese-sounding takes, 2 and 3, sit on an ID the program never calls).
+    { id: 'powerPac', label: 'Power pellet - Pac-Man side', when: 'Pac-Man eats a power pellet (said to Pac-Man)', cues: [voice([0, 1], { force: true, who: 'pac' })] },
+    { id: 'powerGhost', label: 'Power pellet - ghost side', when: 'Pac-Man eats a power pellet (said to the ghosts)', cues: [voice([0, 1], { force: true })] },
     { id: 'eatGhost', label: 'Ghost eaten', when: 'index = how many ghosts this power pellet has eaten so far (0 = first)', per: 'chain', cues: [voice([10, 11, 12], { mode: 'index' })] },
     { id: 'fruitAppears', label: 'Fruit appears', when: 'The fruit shows up in the maze', cues: [sfx([6]), voice([8, 9])] },
     { id: 'fruitGhost', label: 'Fruit taken by a ghost', when: 'index = the ghost player\'s seat', per: 'seat', cues: [sfx([13]), voice([4, 5, 6, 7], { mode: 'index', force: true })] },
     { id: 'fruitPac', label: 'Fruit taken by Pac-Man', when: 'Pac-Man reaches the fruit', cues: [sfx([13]), voice([26, 27], { force: true })] },
-    { id: 'twentyLeft', label: 'Twenty pellets left', when: 'Twenty pellets remain', cues: [voice([20])] },
-    { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18, 19])] },
+    // Pellet counts, as the original's program calls them: 100 and 50 left play one of the two shouts, 25 left the
+    // worried line, 10 left the ten-pellets line (its alternate take, 19, is on an ID the program never calls).
+    { id: 'hundredLeft', label: 'A hundred pellets left', when: 'A hundred pellets remain', cues: [voice([33, 34])] },
+    { id: 'fiftyLeft', label: 'Fifty pellets left', when: 'Fifty pellets remain', cues: [voice([33, 34])] },
+    { id: 'twentyLeft', label: 'Twenty-five pellets left', when: 'Twenty-five pellets remain', cues: [voice([20])] },
+    { id: 'tenLeft', label: 'Ten pellets left', when: 'Ten pellets remain', cues: [voice([18])] },
     { id: 'pts1000', label: '1000 points to the target', when: 'Anybody is within 1000 of winning', cues: [voice([28])] },
     { id: 'pts500', label: '500 points to the target', when: 'Anybody is within 500 of winning', cues: [voice([29])] },
     // measured on the original: the "Excellent" line starts the instant Pac-Man is caught (the siren stops with it); the knock
     // comes 2.1 s later, as the EXCELLENT box appears
     { id: 'caught', label: 'Pac-Man caught', when: 'index = the catcher\'s seat', per: 'seat', cues: [voice([13, 14, 15, 16], { mode: 'index', force: true }), sfx([4], { vol: 0.9, delay: 2100 })] },
     // Timers: counted from the start of each round, so they begin again after Pac-Man clears the maze or is caught.
-    { id: 'goGoGo', after: 60, label: '"Go go go!" timer', when: 'One minute into a round, in the game only', cues: [voice([33])] },
-    { id: 'youCanDoIt', after: 150, label: '"You can do it!" timer', when: 'Two and a half minutes into a round, in the game only', cues: [voice([34])] },
     { id: 'mazeCleared', label: 'Maze cleared', when: 'Pac-Man eats the last pellet', cues: [voice([17], { force: true })] },
     { id: 'final', label: 'Target score reached', when: 'A player reaches the target score ("End of the game")', cues: [voice([30], { force: true })] },
     { id: 'title', label: 'Game boots', when: 'The disc has just been loaded (title line)', cues: [voice([35], { force: true })] },

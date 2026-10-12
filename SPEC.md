@@ -88,18 +88,37 @@ both drawn as eyes.
 The view radius a ghost sees in its circle: 100 px normally, 125 px when the seat's flag is clear (see below),
 200 px while the fruit effect lasts.
 
-## Announcer and sounds (sound IDs as the program calls them)
+## Announcer and sounds
 
-| Moment | ID |
-| --- | --- |
-| Pellet eaten | 0x1800 |
-| Power pellet | 0x1815, then line 0x2821 |
-| Fruit appears | chime 0x1809 + line 0x2805; fruit timed out: 0x1816 |
-| Pellets left reach 10 / 25 / 50 / 100 | 0x2810 / 0x2813 / 0x2820 / 0x2820 (counted before the pellet being eaten is removed) |
-| Ghost eaten, 1st / 2nd / 3rd+ in a chain | 0x2807 / 0x2806 / 0x2808 (with effects 0x1805 and 0x1803) |
-| Catch, by seat colour 0-3 | 0x280A-0x280D |
-| Maze cleared / target reached | 0x281F / 0x280E |
-| Siren | one sequenced sound per stage, its parameter 8 set to the percentage of pellets left (0x80021D24), which is what raises the pitch as the maze empties |
+The announcer's sound IDs resolve through the disc's audio init table (its instrument bank 2, one instrument per
+ID, each holding one wave or two alternates as key regions) to the narration bank's waves, numbered 0-35 as the
+sound lab lists them. Which moments call which ID was read from the round loop and the pickup routine:
+
+| Moment | ID | Line(s) |
+| --- | --- | --- |
+| Round start, after the start jingle / when the circles have zoomed in and the movers set off | 0x2827 / 0x2828 | 32 Ready / 31 Go |
+| Power pellet (every one) | 0x2821 | 0 or 1 (alternates); 2 and 3 are on an ID never called |
+| Fruit appears / Pac-Man takes it / a ghost of colour 0-3 takes it | 0x2805 / 0x2819 / 0x2801-0x2804 | 8 or 9 / 26 or 27 / 4-7 |
+| Ghost eaten, chain value 200 / 400 / 800 and 1600 | 0x2806 / 0x2807 / 0x2808 | 10 / 11 / 12 |
+| Pellets left reach 100 and 50 / 25 / 10 (counted before the pellet being eaten is removed) | 0x2820 / 0x2813 / 0x2810 | 33 or 34 / 20 / 18 |
+| Leader within 1,000 / 500 of the target (each once, by a high-water mark) | 0x281A / 0x281B | 28 / 29 |
+| Catch, by the catcher's colour 0-3 | 0x280A-0x280D | 13-16 |
+| Maze cleared / a score reaches the target | 0x280E / 0x281F | 17 / 30 |
+| Champion, by colour 0-3 / title | 0x2815-0x2818 / 0x2829 | 22-25 / 35 |
+
+So there are no timed shouts: "Go go go!" and "You can do it!" are the two takes behind the 100- and 50-pellet
+calls. The "ten pellets left" and "fruit appeared" alternate takes (19, 9) sit behind the same IDs as their
+twins. The effects (bank 1) are matched by ear in the sound map; the loops are exclusive: the eyes siren while
+any ghost flies home, else the frightened loop while any is frightened, else the siren, a sequenced sound per
+stage whose parameter 8 is set to the percentage of pellets left (0x80021D24), which raises its pitch.
+
+### The round's clock (0x800231C4 and the round loop)
+
+The start jingle plays first; when it ends (or after 360 frames at most) the round is in play but held: "Ready"
+sounds and the circles zoom in from 256 to 100 units at 1.3 a frame (120 frames). Then "Go", the siren starts
+and the movers set off. A catch: 60 frames of standstill, then 180 frames of the amber picture (phase 6), then
+the next scene. A cleared maze: 240 frames, then the next round. A score at or past the target ends play at
+once (the movers stop, the end line plays).
 
 ## Open questions (being checked live)
 

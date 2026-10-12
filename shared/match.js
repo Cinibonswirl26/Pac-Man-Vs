@@ -11,7 +11,9 @@
   else root.PacMatch = factory(root.PacSim);
 })(typeof self !== 'undefined' ? self : this, function (Sim) {
   'use strict';
-  const COUNTDOWN = 3.5, ROUND_END = 5, HANDOFF = 15;
+  // The original's round start (SPEC.md): the start jingle (4.6 s), then "Ready" while the circles zoom in over
+  // 120 frames (2 s), then "Go" and the movers set off.
+  const READY = 2, COUNTDOWN = 4.6 + READY, ROUND_END = 240 / 59.94, HANDOFF = 15;
   // after a catch: CAUGHT seconds of the catch and the EXCELLENT box, then the exchange screen counts the stolen points across at
   // 120 a second from 1.2 s in and shows the arrow 1.5 s after (measured); the hand-over wait for the new Pac-Man starts then
   const EXCHANGE = steal => 1.2 + Math.max(1, steal || 0) / 120 + 1.5;
@@ -125,5 +127,5 @@
       return v;
     }
   }
-  return { Match, COUNTDOWN, ROUND_END, HANDOFF, CAUGHT, EXCHANGE };
+  return { Match, COUNTDOWN, READY, ROUND_END, HANDOFF, CAUGHT, EXCHANGE };
 });

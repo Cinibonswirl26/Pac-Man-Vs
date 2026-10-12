@@ -296,7 +296,7 @@
   /** Pac-Man (gi -1) or ghost gi takes what is at the fruit spot. Returns true if the round ended. */
   function takeItem(s, gi) {
     const kind = s.fruit.kind || 'fruit', g = gi >= 0 ? s.ghosts[gi] : null, who = gi >= 0 ? colorOf(s, gi) : s.pacPlayer;
-    s.fruit = null;
+    s.fruit = null; s.fruitTimer = fruitGap(s.rng || Math.random);     // the clock restarts on a take as on a burst
     if (kind === 'fruit') {
       if (g) g.sightLeft = CFG.fruitSightTime;
       s.events.push(g ? 'fruitghost' : 'fruit'); award(s, who, CFG.fruitPts); return s.over;

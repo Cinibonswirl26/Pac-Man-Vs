@@ -524,7 +524,7 @@
     const now = performance.now();
     if (!prev || (cur.phase === 'countdown' && prev.phase !== 'countdown')) {
       fx.pops.length = 0; fx.sparkle = -1; fx.burst = null; fx.dust.length = 0; fx.sparks.length = 0; fx.lastPuff.clear();
-      if (cur.phase === 'countdown') { snd.said.clear(); fire('ready'); }     // "Ready?" as the countdown begins
+      if (cur.phase === 'countdown') snd.said.clear();
       return;
     }
     const near = (a, b, d) => a && b && Math.hypot(a.x - b.x, a.y - b.y) < d;
@@ -560,13 +560,18 @@
   function announce(prev, cur) {
     if (cur.phase !== prev.phase) {
       if (cur.phase === 'play' && prev.phase === 'countdown') fire('go');
+      // "Ready" comes when the start jingle has ended and the circles zoom in, two seconds before "Go" (SPEC.md)
+      if (cur.phase === 'countdown' && prev.phase === 'countdown' && cur.left_t <= PacMatch.READY && prev.left_t > PacMatch.READY) fire('ready');
       else if (cur.phase === 'roundover' && cur.why === 'caught') fire('caught', { index: cur.catcher });
       else if (cur.phase === 'roundover' && cur.why === 'cleared') fire('mazeCleared');
       else if (cur.phase === 'final') { fire('final'); fire('champion', { index: cur.winner >= 0 ? cur.winner : 0 }); }
     }
     if (cur.phase !== 'play') { snd.round = null; stopLoops(); return; }
-    setLoop('frightLoop', cur.frightLeft > 0 && cur.ghosts.some(g => g.m === 'f'));
-    setLoop('eyesLoop', cur.ghosts.some(g => g.m === 'e'));
+    // The original plays exactly one of these: the eyes siren while any ghost flies home, else the frightened loop
+    // while any ghost is frightened, else the siren (read from its round loop, SPEC.md).
+    const eyes = cur.ghosts.some(g => g.m === 'e');
+    setLoop('eyesLoop', eyes);
+    setLoop('frightLoop', !eyes && cur.ghosts.some(g => g.m === 'f'));
     // timed encouragement, counted from the start of each round (so it begins again after a clear or a catch)
     if (!snd.round || cur.tick < snd.round.tick0) snd.round = { tick0: cur.tick, done: new Set() };
     const played = (cur.tick - snd.round.tick0) / 30;
@@ -575,7 +580,9 @@
     if (cur.frightLeft > prev.frightLeft + 5) fire(snap && snap.me >= 0 ? 'powerGhost' : 'powerPac');
     if (cur.frightLeft > prev.frightLeft + 5) snd.chain = 0;
     cur.ghosts.forEach((g, i) => { if (prev.ghosts[i] && prev.ghosts[i].m === 'f' && g.m === 'e') fire('eatGhost', { index: snd.chain++ || 0 }); });
-    if (cur.left <= 20 && prev.left > 20) fire('twentyLeft');
+    if (cur.left <= 100 && prev.left > 100) fire('hundredLeft');
+    if (cur.left <= 50 && prev.left > 50) fire('fiftyLeft');
+    if (cur.left <= 25 && prev.left > 25) fire('twentyLeft');
     if (cur.left <= 10 && prev.left > 10) fire('tenLeft');
     const top = Math.max(...cur.scores), toGo = cur.target - top;
     if (toGo <= 500 && !snd.said.has(500)) { snd.said.add(500); snd.said.add(1000); fire('pts500'); }
@@ -629,7 +636,7 @@
       } else if (stageMusic() !== 'none' && (snap.phase === 'countdown' || snap.phase === 'play')) playMusic(stageMusic(), true); else stopMusic();
     }
     // the siren runs while the round is on and no ghost is frightened or flying home; the tune after a catch runs from the exchange screen to the next round
-    setSiren(onOriginalStage() && snap.phase === 'play' && !(snap.frightLeft > 0) && !snap.ghosts.some(g => g && g.m === 'e'));
+    setSiren(onOriginalStage() && snap.phase === 'play' && !snap.ghosts.some(g => g && (g.m === 'e' || g.m === 'f')));
     setTune(snap.why === 'caught' && (snap.phase === 'handoff' || (snap.phase === 'roundover' && performance.now() - phaseT0 >= PacMatch.CAUGHT * 1000)));
     scheduleSiren(); scheduleTune();
     if (snap.phase === 'countdown') { const c = Math.ceil(snap.left_t); if (c !== lastCount) { lastCount = c; tone(c > 0 ? 520 : 880, 0.12, 'square', 0.1); } }

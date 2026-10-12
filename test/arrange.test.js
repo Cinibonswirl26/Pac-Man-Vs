@@ -184,7 +184,7 @@ const give = (s, kind, e) => { spawn(s, kind); put(e, 11, 13, 1); LV.update(s, i
   ok(near(g.hopLeft, S.CFG.capsuleTime, 0.05), 'pink: the ghost gets the hop');
   run(s, 30); ok(!g.air && !s.events.includes('hop'), 'nothing happens until the button is pressed');
   LV.update(s, { pac: null, ghosts: [null, null, null], act: [true, false, false] }); ok(g.air && s.events.includes('hop'), 'the button sends it off');
-  const hd = Math.abs(g.air.x1 - s.pac.x) + Math.abs(g.air.y1 - s.pac.y);
+  const hd = Math.abs(g.air.x1 - Math.floor(s.pac.x) - 0.5) + Math.abs(g.air.y1 - Math.floor(s.pac.y) - 0.5);   // from Pac-Man's cell centre
   ok(hd >= S.CFG.hopNear - 0.01 && hd <= S.CFG.hopFar + 0.01 && !LV.wallAt(Math.floor(g.air.x1), Math.floor(g.air.y1), 'ghost'), 'to an open cell 2-4 away from Pac-Man');
   const dest = [g.air.x1, g.air.y1]; LV.update(s, { pac: null, ghosts: [null, null, null], act: [true, false, false] }); ok(g.air && g.air.x1 === dest[0], 'pressing again in the air does nothing');
   run(s, 20); ok(!g.air && Math.abs(g.x - dest[0]) < 0.4 && Math.abs(g.y - dest[1]) < 0.4, 'it lands where it was sent');
