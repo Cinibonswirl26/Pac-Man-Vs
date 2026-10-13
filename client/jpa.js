@@ -120,12 +120,16 @@
     let frame = 0, carry = 0, made = 0;
     const rateKey = res.keys.find(k => k.type === 0);
     function spawn() {
-      // where on the emitter's volume (circle, point; others are treated as a point)
+      // where on the emitter's volume (circle, line, point; others are treated as a point)
       let pos = [0, 0, 0];
       if (b.volume === 'circle') {
         const th = b.fixedInterval ? 2 * Math.PI * b.volSweep * (made % Math.max(1, b.div)) / Math.max(1, b.div) : 2 * Math.PI * b.volSweep * rnd();
         const d = b.volMinRad + (1 - b.volMinRad) * (b.fixedDensity ? Math.sqrt(rnd()) : rnd());
         pos = [b.volSize * d * Math.sin(th), 0, b.volSize * d * Math.cos(th)];
+      }
+      else if (b.volume === 'line') {   // along z: evenly spaced end to end when the interval is fixed, else at random
+        const k = b.fixedInterval ? (made % Math.max(1, b.div)) / Math.max(1, b.div - 1) : rnd();
+        pos = [0, 0, b.volSize * (k - 0.5)];
       }
       made++;
       const vOmni = norm(pos), vAxis = norm([pos[0], 0, pos[2]]), dir = norm(b.dir);

@@ -180,6 +180,7 @@
 
     // ---- the ghost circles
     const ringMat = Object.assign({}, MODULATE), scoreMat = Object.assign({}, MODULATE);
+    const glowMat = Object.assign({}, MODULATE, { blend: { type: 1, src: 4, dst: 1 } });   // additive: source alpha onto the picture
     // Badge labels are dark letters: paint them with the vertex colour where the texture is dark.
     const labelMat = Object.assign({}, MODULATE, { stages: [Object.assign({}, MODULATE.stages[0], { op: {
       color: { a: 10, b: 15, c: 8, d: 15, op: 0, bias: 0, scale: 0, clamp: 1, reg: 0 }, alpha: MODULATE.stages[0].op.alpha } })] });
@@ -293,6 +294,7 @@
       if (out > 0) R.poly(FULL, [0, 0, 0, out]);
     }
     /** The game screen. st: {time, target, left, scores, pacPlayer, fruitUp, fruitKind, ghosts: [{seat, x, y, ...}], views: [per ghost]} */
+    let leadT0 = null, leadF = 0;
     function render(st, width) {
       frameStart(width);
       const f = st.time * 60;
@@ -327,6 +329,14 @@
         if (isCom(st, seat)) { if (!scr.byName['P' + (r + 1) + '_COM']) sprite(ringMat, 'fs_gameTokutenNop_00.bti', tvx(b.x + 117), tvy(b.y + b.h / 2), 48 * MAP.sx, 48 * MAP.sy); return; }
         drawText(scoreMat, String(st.scores[seat]), { x: b.x + 90, y: b.y, w: b.w - 102, h: b.h }, { fontW: 22, fontH: 22, hBind: 1, charSpace: -1, charColor: [1, 1, 1, 1] });
       });
+      // the leader's row: a line of thirteen glows rises through it again and again (the particle file's emitter 26, kept
+      // by the program on the row of the highest shown score above 0, at x 95 of the 608 x 448 layout, 44 px a row)
+      const lead = st.scores ? st.scores.reduce((b, v, i) => (v > (b < 0 ? 0 : st.scores[b]) ? i : b), -1) : -1;
+      if (lead >= 0 && order.indexOf(lead) >= 0) {
+        if (leadT0 == null || st.time < leadT0 || (st.time - leadT0) * 60 - leadF > 300) leadT0 = st.time;   // a new screen, or a long gap
+        leadF = (st.time - leadT0) * 60;
+        effects('lead', tvx(95), tvy(279 + 44 * order.indexOf(lead)), leadF);
+      }
       // radar: one square per ghost in its player's colour
       const rd = scr.byName.Rdr;
       if (rd && st.W) {
@@ -377,7 +387,7 @@
     // (the program starts them at the circles' centres when the screen reaches its ready state), run on the screen's clock.
     // The program's particles live in its 608 x 448 layout space; the rays' length is matched to the original's picture
     // (they reach from about 30 to 125 px from the centre), as this reader does not model the particle camera.
-    const FX_EMITTERS = { winner: { ids: [14, 15], size: 1.5 }, loser: { ids: [11], size: 1 }, poof: { ids: [3], size: 1 } }, FX_SCALE = TVW / 608, fxRuns = new Map(), fxTex = new Map();
+    const FX_EMITTERS = { winner: { ids: [14, 15], size: 1.5 }, loser: { ids: [11], size: 1 }, poof: { ids: [3], size: 1 }, lead: { ids: [26], size: 1, add: true } }, FX_SCALE = TVW / 608, fxRuns = new Map(), fxTex = new Map();
     function effects(kind, x, y, f, tag) {
       const P = assets.particles; if (!P || typeof JPA === 'undefined') return;
       const fxk = FX_EMITTERS[kind]; if (!fxk) return;
@@ -394,7 +404,7 @@
         }
         for (const q of run.em.quads(x, y, FX_SCALE, fxk.size)) {
           const c = [1, 1, 1, q.alpha];
-          R.quad(ringMat, i => (i === 0 ? tex : null), [{ x: q.pts[0][0], y: q.pts[0][1], u: 0, v: 0, c }, { x: q.pts[1][0], y: q.pts[1][1], u: 1, v: 0, c },
+          R.quad(fxk.add ? glowMat : ringMat, i => (i === 0 ? tex : null), [{ x: q.pts[0][0], y: q.pts[0][1], u: 0, v: 0, c }, { x: q.pts[1][0], y: q.pts[1][1], u: 1, v: 0, c },
             { x: q.pts[2][0], y: q.pts[2][1], u: 1, v: 1, c }, { x: q.pts[3][0], y: q.pts[3][1], u: 0, v: 1, c }]);
         }
       }

@@ -32,5 +32,10 @@ const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.open
     ok(P.textures[r.tdb[r.bsp.texIdx]].name === 'mk_smoke' && n === 7, 'smoke puff: seven clouds at once, ' + n);
     ok(new Set(ang).size > 3, 'the clouds are turned at random');
     e.runTo(20); ok(e.count === 0, 'the puff is gone after 20 frames'); }
+  // the leader's row on the panel: emitter 26, a line of thirteen glows 140/12 apart rising 1.4 a frame for 15 frames, every 26
+  { const e = JPA.emitter(P.resources.get(26), 1); e.step(); const q = e.quads(0, 0, 1).map(x => (x.pts[0][0] + x.pts[2][0]) / 2).sort((a, b) => a - b);
+    ok(q.length === 13 && Math.abs(q[1] - q[0] - 140 / 12) < 0.01 && Math.abs(q[12] - q[0] - 140) < 0.01, 'light row: thirteen glows end to end over 140, ' + q.length);
+    const y0 = e.quads(0, 0, 1)[0].pts[0][1]; e.step(); ok(Math.abs(e.quads(0, 0, 1)[0].pts[0][1] - y0 + 1.4) < 0.01, 'the row rises 1.4 a frame');
+    e.runTo(16); ok(e.count === 0, 'gone after 15 frames'); e.runTo(27); ok(e.count === 13, 'the next row 26 frames after the first'); }
   if (fails) process.exit(1); console.log('particles ok');
 })().catch(e => { console.log('FAIL', e.stack); process.exit(1); });

@@ -88,6 +88,13 @@ row of the score panel, from a table at 0x800EDD34 of one point per row: (74, 27
 (74, 411) in the 608 x 448 layout, the rows' ghost icons. It appears only there, not in the maze, the ghosts'
 circles or on the handheld.
 
+The panel's leading row has a light effect of its own: the particle file's emitter 26 (`IP2_glow3_i`, a soft glow, drawn
+additively in yellow to white over the row's own colour). It is a line of thirteen glows, 140 layout px end to end, rising
+1.4 px a frame for 15 frames, a new line every 26 frames. The program keeps one running on the screen layer and moves it
+each frame to the row of the highest shown score above 0, from a table at 0x800EDD64: (95, 279), (95, 323), (95, 367)
+and (95, 411). Pac-Man starts with 1,600 points, so this is usually his row. On the 30 fps recordings it reads as a
+dim grid of bulbs that brightens a row at a time.
+
 The handheld's picture (0x8001D5A4 builds the packet): each mover's x, y, a flags byte (direction, 64 = flashing
 frightened look, 32 = eyes, 16 = frightened, colour x 4) and the slot. A grey stand-in and an eaten ghost are
 both drawn as eyes.
