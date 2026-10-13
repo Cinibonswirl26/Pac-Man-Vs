@@ -244,14 +244,20 @@
 
   // ------------------------------------------------------------------ disc assets
   const art = { pac: [], logo: null, press: null, mazes: [], three: null, screens: null, handheld: null };
-  let view3 = null, screenView = null, onDiscMaze = false, curStage = null, stageWant = 0, curDisc = null, pacScreen = null;
+  let view3 = null, screenView = null, onDiscMaze = false, curStage = null, stageWant = 0, curDisc = null, curArr = null, pacScreen = null;
+  const blockStages = new Map();   // Arrangement levels' block stages (3D and handheld), made once per maze
   /** Switch the board to another maze (or back to the built-in one). A maze that came from the disc also
    *  loads its 3D stage model; until that is ready the flat view is used. */
   function setMaze(m) {
     const next = m ? PacSim.create(m) : PacSim;
     const disc = m && art.mazes.find(d => d.rows.join('/') === m.rows.join('/'));
-    curStage = null; onDiscMaze = false; stageWant = disc ? disc.stage : 0; curDisc = disc || null;
-    if (disc && art.three && music.disc) {
+    curStage = null; onDiscMaze = false; stageWant = disc ? disc.stage : 0; curDisc = disc || null; curArr = null;
+    if (m && m.arrange && art.three && typeof BlockStage !== 'undefined') {
+      // Arrangement levels have their own look, the toy-block world, made in code for every screen
+      const key = m.rows.join('/');
+      if (!blockStages.has(key)) blockStages.set(key, { stage: BlockStage.build(m, key), hand: BlockStage.handheldImage(m) });
+      curArr = Object.assign({ blocks: blockStages.get(key).hand }, m); curStage = blockStages.get(key).stage; onDiscMaze = true; stageWant = -1;
+    } else if (disc && art.three && music.disc) {
       const want = disc.stage;
       View3D.loadStage(music.disc, art.three, disc).then(st => { if (stageWant === want) { curStage = st; onDiscMaze = true; } }, e => console.warn('stage model', e));
     }
@@ -277,7 +283,7 @@
   }
   /** Pac-Man's own screen, drawn from the disc's pictures, when a disc maze is in play. */
   function pacScreenCanvas() {
-    if (!art.handheld || !curDisc || pacScreen === false) return null;
+    if (!art.handheld || !(curDisc || curArr) || pacScreen === false) return null;
     if (!pacScreen) {
       const c = document.createElement('canvas'); c.width = Handheld.W; c.height = Handheld.H; c.className = 'shared pixel';
       $('stage').insertBefore(c, $('banner'));
@@ -287,8 +293,9 @@
   }
   const freshCache = new WeakMap();
   function freshPellets() {   // the stage's pellets as they are at the start of a round
-    if (!freshCache.has(curDisc)) { const a = new Uint8Array(W * H); curDisc.rows.forEach((row, y) => [...row].forEach((ch, x) => { a[y * W + x] = ch === '.' ? 1 : ch === 'o' ? 2 : 0; })); freshCache.set(curDisc, a); }
-    return freshCache.get(curDisc);
+    const m = curArr || curDisc;
+    if (!freshCache.has(m)) { const a = new Uint8Array(W * H); m.rows.forEach((row, y) => [...row].forEach((ch, x) => { a[y * W + x] = ch === '.' ? 1 : ch === 'o' ? 2 : 0; })); freshCache.set(m, a); }
+    return freshCache.get(m);
   }
   function drawPacScreen(ps, now) {
     const st = $('stage'), cw = Math.max(240, Math.min(st.clientWidth, st.clientHeight * 3 / 2));
@@ -302,7 +309,7 @@
     const waiting = myHandoff();
     Handheld.render(art.handheld, ps.frame, {
       banner: waiting,
-      seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset, W, H, pellets: waiting ? freshPellets() : snap.pellets,
+      ...(curArr ? { blocks: curArr.blocks } : { seg: art.handheld.segments[curDisc.stage - 1], c0: curDisc.colOffset, r0: curDisc.rowOffset }), W, H, pellets: waiting ? freshPellets() : snap.pellets,
       pac: !waiting && sm.pac ? { x: sm.pac.x, y: sm.pac.y, d: sm.pac.d, moving: now - (ps.movedAt || 0) < 120, a: snap.pac && snap.pac.a, ds: snap.pac && snap.pac.ds, bk: snap.pac && snap.pac.bk, sq: squashOf('pac', snap.pac, now) } : null,
       ghosts: waiting ? [] : sm.ghosts.map((gh, i) => gh && snap.ghosts[i] ? { x: gh.x, y: gh.y, d: gh.d, m: snap.ghosts[i].m, seat: gcolor(i), a: snap.ghosts[i].a, st: snap.ghosts[i].st, ds: snap.ghosts[i].ds, bk: snap.ghosts[i].bk, sq: squashOf('g' + i, snap.ghosts[i], now) } : null).filter(Boolean),
       pacSeat: waiting ? snap.next : snap.pacPlayer, scores: snap.scores, target: snap.target, fruit: waiting ? null : snap.fruit, frightLeft: snap.frightLeft, time: now / 1000, cam: ps.cam,
@@ -943,7 +950,7 @@
     // Ghost players with the disc get the original shared screen; Pac-Man keeps the full maze.
     // Everyone sees the exchange and results screens.
     // the next Pac-Man, while the game waits for them, gets Pac-Man's own screen with its "Press START!" sign
-    const waiting = myHandoff() && now >= handheldAt() && art.handheld && curDisc && pacScreenCanvas();
+    const waiting = myHandoff() && now >= handheldAt() && art.handheld && (curDisc || curArr) && pacScreenCanvas();
     const between = waiting ? null : discScreen(), scr = between || (!waiting && snap.me >= 0 ? sharedScreen() : null);
     const hh = waiting || (!scr && snap.me < 0 ? pacScreenCanvas() : null);
     if (onHandheld !== !!hh) { onHandheld = !!hh; if (onHandheld) { stopMusic(); setSiren(false); setTune(false); stopLoops(); } }

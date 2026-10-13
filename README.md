@@ -56,7 +56,10 @@ counter shows how many pellets are left. Pac-Man sees the whole maze.
   take (speed, a mirror clone, the pot, fast digestion, points). A ghost holding the red capsule dashes on its
   button (Space, J, a gamepad's A or the on-screen button) with a short cooldown, and one holding the pink capsule
   hops to a spot near Pac-Man with it. They sit on mazes your disc holds but the
-  original never lists; the six original stages are untouched. See the end of `FIDELITY.md`. The rules of the original game itself are written up in `SPEC.md`, read from its program on the player's own disc.
+  original never lists (and on the built-in maze), drawn in a look of their own after the arcade's first world: walls
+  of glossy toy blocks in red, yellow, green and blue on a purple woven floor, in the ghosts' 3D views and on Pac-Man's
+  handheld. That art is made in code (`client/blockstage.js`); nothing is taken from the arcade game. The six original
+  stages are untouched. See the end of `FIDELITY.md`. The rules of the original game itself are written up in `SPEC.md`, read from its program on the player's own disc.
 
 ## Playing with friends
 
@@ -169,7 +172,7 @@ Do not commit game files to this repo.
 | `shared/sim.js` | Maze, movement, rules, fog-of-war views, CPU players. Used by server and browser. |
 | `shared/match.js` | Roulette, rounds, point stealing, the target score. Used by server and browser. |
 | `server/server.js` | HTTP static host plus WebSocket rooms. The server is authoritative (30 Hz) and sends each player only what they may see, so ghosts cannot read Pac-Man's position. |
-| `client/` | UI, canvas renderer, input, sound, `disc.js` (disc image, archives, textures, streamed audio), `mazedata.js` (the maze data), `j3d.js` (J3D models and animations: BMD, BCK, BTK), `gx.js` (WebGL renderer that turns each of the game's materials into a shader), `view3d.js` (the ghosts' 3D view), `j2d.js` (BLO2 screen layouts and BFN fonts), `jpa.js` (the particle file and a small particle simulator) and `screens.js` (the shared game screen, exchange and results screens). |
+| `client/` | UI, canvas renderer, input, sound, `disc.js` (disc image, archives, textures, streamed audio), `mazedata.js` (the maze data), `j3d.js` (J3D models and animations: BMD, BCK, BTK), `gx.js` (WebGL renderer that turns each of the game's materials into a shader), `view3d.js` (the ghosts' 3D view), `blockstage.js` (the Arrangement levels' block world, made in code), `j2d.js` (BLO2 screen layouts and BFN fonts), `jpa.js` (the particle file and a small particle simulator) and `screens.js` (the shared game screen, exchange and results screens). |
 | `test/` | Simulation, match flow, WebSocket end-to-end, maze validation, disc reader and 3D model checks, AI benchmark. |
 
 Not implemented: the original's Pac-Man screen, the title and rule-select screens, and the original's computer players.

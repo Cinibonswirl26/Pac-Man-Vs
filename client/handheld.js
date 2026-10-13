@@ -162,9 +162,33 @@
     piece(0, 0, base); piece(8, 0, base + 1); piece(0, 8, base + 32); piece(8, 8, base + 33);
   }
 
+  // The play area's width (the panel takes the rest), and an Arrangement level's maze picture (BlockStage.handheldImage)
+  // with its pellets: cell (x, y) covers pixels 8x - dx .. and 8y - dy .., as the sprites are placed
+  const PLAY_W = 164, GOLD = [255, 204, 88], GOLD_BIG = [255, 226, 130];
+  function drawBlocks(f, st, dx, dy) {
+    const b = st.blocks;
+    for (let y = 0; y < H; y++) for (let x = 0; x < PLAY_W; x++) {
+      const mx = x + dx, my = y + dy, o = (y * W + x) * 4;
+      if (mx < 0 || my < 0 || mx >= b.w || my >= b.h) { f.data[o] = f.data[o + 1] = f.data[o + 2] = 0; continue; }
+      const i = (my * b.w + mx) * 3; f.data[o] = b.rgb[i]; f.data[o + 1] = b.rgb[i + 1]; f.data[o + 2] = b.rgb[i + 2];
+    }
+    const dot = (cx, cy, r, c) => {
+      for (let y = Math.floor(cy - r); y < cy + r; y++) for (let x = Math.floor(cx - r); x < cx + r; x++) {
+        if (x < 0 || y < 0 || x >= PLAY_W || y >= H || Math.hypot(x + 0.5 - cx, y + 0.5 - cy) > r + 0.2) continue;
+        const o = (y * W + x) * 4; f.data[o] = c[0]; f.data[o + 1] = c[1]; f.data[o + 2] = c[2];
+      }
+    };
+    for (let y = 0; y < st.H; y++) for (let x = 0; x < st.W; x++) {
+      const p = st.pellets[y * st.W + x]; if (!p) continue;
+      const cx = 8 * x + 4 - dx, cy = 8 * y + 4 - dy;
+      if (p === 2) dot(cx, cy, 3, GOLD_BIG); else dot(cx, cy, 1, GOLD);
+    }
+  }
+
   /**
    * Draw Pac-Man's screen for one moment of the game.
-   * st: { seg (the stage's tile table: rows of 32 entries), c0, r0 (table column / row of cell (0,0)), W, H,
+   * st: { seg (the stage's tile table: rows of 32 entries), c0, r0 (table column / row of cell (0,0)), or blocks (an
+   *       Arrangement level's maze picture, BlockStage.handheldImage) instead, W, H,
    *       pellets (W*H: 0 none, 1 pellet, 2 power), pac {x, y, d, moving} | null, caught (Pac-Man was just caught: seconds since),
    *       ghosts [{x, y, d, m, seat}] (m: 'n' normal, 'f' frightened, 'e' eyes, 'r' in the house), pacSeat, scores [4], target,
    *       fruit {x, y} | null, frightLeft, time (seconds), cam (an object that keeps the scroll between frames) }
@@ -176,19 +200,25 @@
     const cam = st.cam || (st.cam = { dy: 0 });
     if (st.pac) { const top = 8 * st.pac.y - 8; cam.dy = Math.min(Math.max(cam.dy, top - 88), top - 36); }
     const dy = Math.round(cam.dy);
+    // a maze wider than the screen's play area (an Arrangement level on the 23-wide built-in maze) scrolls sideways too
+    if (st.blocks && st.W * 8 > PLAY_W && st.pac) cam.dx = Math.min(Math.max(0, Math.round(8 * st.pac.x - PLAY_W / 2)), st.W * 8 - PLAY_W);
+    const dx = st.blocks ? (cam.dx || 0) : 0;
     // maze layer
-    const map = new Uint16Array(32 * 32).fill(15);
-    for (let r = 0; r < st.seg.length && r < 32; r++) for (let c = 0; c < 21; c++) {
-      let id = st.seg[r][c];
-      if (id === 30 || id === 31) { const x = c - st.c0, y = r - st.r0; if (!(x >= 0 && y >= 0 && x < st.W && y < st.H && st.pellets[y * st.W + x])) id = 15; }
-      map[r * 32 + c] = id;
+    if (st.blocks) drawBlocks(f, st, dx, dy);
+    else {
+      const map = new Uint16Array(32 * 32).fill(15);
+      for (let r = 0; r < st.seg.length && r < 32; r++) for (let c = 0; c < 21; c++) {
+        let id = st.seg[r][c];
+        if (id === 30 || id === 31) { const x = c - st.c0, y = r - st.r0; if (!(x >= 0 && y >= 0 && x < st.W && y < st.H && st.pellets[y * st.W + x])) id = 15; }
+        map[r * 32 + c] = id;
+      }
+      drawMap(f, hw, map, 32, 32, 0, dy, {});
     }
-    drawMap(f, hw, map, 32, 32, 0, dy, {});
     // panel layer
     drawMap(f, hw, panelMap(hw, st), 32, 32, 0, 0, {});
     // sprites: lower slots are drawn on top, so draw the list backwards
     const sprites = [];
-    const sx = c => Math.round(8 * c - 8), sy = c => Math.round(8 * c - 8) - dy, badges = [];
+    const sx = c => Math.round(8 * c - 8) - dx, sy = c => Math.round(8 * c - 8) - dy, badges = [];
     // a flight (Arrangement levels) lifts the sprite along an arc
     const lift = e => e && e.a ? Math.round(10 * Math.sin(Math.PI * e.a[4])) : 0;
     for (const c of st.clones || []) {                 // mirror clones: Pac-Man's in grey, a ghost's blinking in its colour
@@ -240,7 +270,7 @@
     sprites.push(...badges);
     // score popups float over the spot: [{x, y, text}]; the digits sit 4 pixels apart
     for (const p of st.pops || []) {
-      const t = String(p.text), x0 = Math.round(8 * p.x - 2 * t.length - 4), y0 = sy(p.y) - 4;
+      const t = String(p.text), x0 = Math.round(8 * p.x - 2 * t.length - 4) - dx, y0 = sy(p.y) - 4;
       for (let i = t.length - 1; i >= 0; i--) sprites.push({ tile: DIGIT0 + t.charCodeAt(i) - 48, pal: 0, x: x0 + 4 * i, y: y0, hf: 0, vf: 0 });
     }
     if (st.banner && Math.floor(fr / 32) % 2 === 0) {

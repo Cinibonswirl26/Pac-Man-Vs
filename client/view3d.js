@@ -73,7 +73,7 @@
     let cur = null;   // the stage model on the GPU: {k, model, anim}
     const useStage = st => {
       if (cur && cur.k === st.k) return cur;
-      cur = { k: st.k, model: R.model(st.bmd, J3D.pose(st.bmd)), anim: st.btk };
+      cur = { k: st.k, model: R.model(st.bmd, st.poses || J3D.pose(st.bmd)), anim: st.btk };   // a stage made in code (BlockStage) brings its own poses
       return cur;
     };
     const ghost = R.model(assets.ghost, J3D.pose(assets.ghost, J3D.animate(assets.ghostAnim, 0)));
@@ -162,7 +162,7 @@
         const p = v.pellets[y * v.W + x]; if (!p) continue;
         pel.push([wx(x + 0.5), fl + 250, wz(y + 0.5), p === 2 ? 560 + 80 * Math.sin(v.time * 9) : 260]);
       }
-      R.sprites(dot, pel);
+      R.sprites(dot, pel, st.pelletTint);
       // Pac-Man's trail: a wide flat ribbon in his player's colour, pale next to him and fading out at its tail
       if (v.trail && v.trail.length && v.trailColor) {
         const pts = []; let last = v.pac ? [v.pac.x, v.pac.y] : null;
