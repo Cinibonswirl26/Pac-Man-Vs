@@ -88,6 +88,13 @@ to stop; the port is closed again on the way out. If your router has UPnP switch
 which port to forward by hand (or use the tunnel script below, which needs no router changes). The links are plain
 http on your own address: use it for games with people you know.
 
+It opens your browser on the game with a note to host: load your disc, pick a maze and press **Host an online
+room**. The lobby then shows a **Hosting from this PC** box with ready links to send, one for friends over the
+internet (the public address your router reported) and one for the same Wi-Fi, each with a Copy button; **Copy invite
+link** uses the internet one too. If the router would not open the port, the box says so and how to forward it by
+hand. Windows may say the program is from an unknown publisher (it is not code-signed): choose "More info", then
+"Run anyway".
+
 Getting the file: the GitHub Action in `.github/workflows/exe.yml` builds it on every push of this folder (and on
 demand from the Actions tab); open the run and download **PacManVs-exe**. Or build it yourself with
 `npm install` then `npm run build:exe` (writes `host/dist/PacManVs.exe`; on Mac or Linux it downloads the matching

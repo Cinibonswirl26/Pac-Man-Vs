@@ -375,6 +375,33 @@
   // The page normally comes from the game server itself. Packaged as an app it is loaded from the app's own files,
   // and the player types in where the server is (what a host's window printed, or a room link).
   const STANDALONE = !!window.PACVS_APP || location.protocol === 'file:' || /androidplatform\.net$/.test(location.hostname);
+  // Hosting with the single-file host program: it tells its own browser the links that reach this PC (/hostinfo answers
+  // only on the PC itself), so invites carry an address friends can use rather than "localhost".
+  let hostInfo = null;
+  const onThisPC = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  function fetchHostInfo() {
+    if (STANDALONE || !onThisPC) return Promise.resolve(null);
+    return fetch('/hostinfo', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { hostInfo = j; return j; }, () => null);
+  }
+  /** Where friends should go: the public address, else the address on this network, else this page's own. */
+  const inviteOrigin = () => (hostInfo && (hostInfo.public || hostInfo.lan)) || serverOrigin() || location.origin;
+  function renderHostLinks() {
+    const box = $('hostLinks'); if (!box) return;
+    if (!hostInfo || !room) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    const q = '/?room=' + room.code, rows = [];
+    if (hostInfo.public) rows.push(['Friends over the internet', hostInfo.public + q]);
+    if (hostInfo.lan) rows.push(['Same Wi-Fi or network', hostInfo.lan + q]);
+    $('hostLinkRows').innerHTML = rows.map(([k, v], i) => `<div class="hl"><span>${k}:</span><code>${esc(v)}</code><button data-copy="${i}">Copy</button></div>`).join('') +
+      (hostInfo.upnp === 'pending' ? '<p class="note">Asking your router to open the port…</p>'
+        : hostInfo.upnp === 'failed' ? `<p class="note">Your router did not open the port by itself (${esc(hostInfo.reason || 'UPnP is off')}). Friends on your network can still join. For the internet, forward TCP port ${esc(hostInfo.port)} to this PC in the router's settings ("Port forwarding"), or use the tunnel script (host/Play-Online-Windows.cmd in the game's source folder), which needs no router changes.</p>`
+        : hostInfo.public ? '' : '<p class="note">The port is open, but the router did not say your public address: friends use http://&lt;your public address&gt;:' + esc(hostInfo.port) + q + '.</p>');
+    box.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+      const link = rows[+b.dataset.copy][1];
+      try { await navigator.clipboard.writeText(link); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); } catch { /* the link is shown to copy by hand */ }
+    });
+    if (hostInfo.upnp === 'pending') setTimeout(() => fetchHostInfo().then(() => { if (room) renderHostLinks(); }), 1500);
+  }
   function serverOrigin() {
     if (!STANDALONE) return location.origin;
     let v = ($('server').value || '').trim();
@@ -436,6 +463,7 @@
       $('start').classList.toggle('hidden', !host);
       $('lobbyNote').textContent = host ? 'You are the host. Start whenever everyone is in.' : 'Waiting for the host to start.';
     }
+    renderHostLinks();
   }
   /** The colour seat ghost i wears right now (-1 = a grey stand-in): its player's, or the colour of the ghost that woke it. */
   const gcolor = i => { const c = snap.ghosts[i] && snap.ghosts[i].c; return c == null ? S.playerOfGhost(snap, i) : c; };
@@ -461,7 +489,7 @@
   $('start').onclick = () => send({ t: 'start' });
   $('leave').onclick = () => toMenu();
   $('copyLink').onclick = async () => {
-    const link = `${serverOrigin() || location.origin}/?room=${room.code}`;
+    const link = `${inviteOrigin()}/?room=${room.code}`;
     try { await navigator.clipboard.writeText(link); $('lobbyNote').textContent = 'Invite link copied.'; }
     catch { $('lobbyNote').textContent = 'Copy this link: ' + link; }
   };
@@ -1117,6 +1145,12 @@
       const m = /[?&]room=([A-Za-z0-9]{1,4})/.exec($('server').value);
       if (m) $('code').value = m[1].toUpperCase();
     };
+  }
+  fetchHostInfo();
+  // opened by the host program: point the way to hosting a room
+  if (new URLSearchParams(location.search).get('host') === '1' && onThisPC) {
+    $('menuErr').textContent = 'This PC is hosting. Load your disc, pick a maze, then press "Host an online room" and send friends the link it shows.';
+    $('host').classList.add('primary'); try { $('host').scrollIntoView({ block: 'center' }); } catch { /* old browser */ }
   }
   const qr = new URLSearchParams(location.search).get('room');
   if (qr) { $('code').value = qr.toUpperCase().slice(0, 4); $('menuErr').textContent = 'Enter your name and press Join to enter room ' + $('code').value + '.'; }

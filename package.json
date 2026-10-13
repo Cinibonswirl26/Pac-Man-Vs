@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "node server/server.js",
-    "test": "node test/sim.test.js && node test/match.test.js && node test/server.test.js && node test/mazeroom.test.js && node test/arrange.test.js && node test/quick.test.js && node test/handsound.test.js && node test/tones.test.js && node test/blockstage.test.js && node test/soundmap.test.js && node test/upnp.test.js",
+    "test": "node test/sim.test.js && node test/match.test.js && node test/server.test.js && node test/mazeroom.test.js && node test/arrange.test.js && node test/quick.test.js && node test/handsound.test.js && node test/tones.test.js && node test/blockstage.test.js && node test/soundmap.test.js && node test/upnp.test.js && node test/hostinfo.test.js",
     "test:disc": "node test/disc.test.js \"$DISC\" && node test/mazedata.test.js \"$DISC\" && node test/j3d.test.js \"$DISC\" && node test/screens.test.js \"$DISC\" && node test/jpa.test.js \"$DISC\"",
     "bench": "node test/ai.bench.js",
     "build:exe": "node host/build-exe.js"

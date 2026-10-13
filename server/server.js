@@ -14,8 +14,18 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 const STATIC = { '/': 'client/index.html', '/soundlab': 'client/soundlab.html' };
 let SEA = null; try { const sea = require('node:sea'); if (sea.isSea()) SEA = sea; } catch (e) { /* older Node */ }
 
+// Set by the single-file host program (host/exe.js): the links that reach this PC, for the host's own page.
+const hostInfo = { on: false };
+const isLocal = a => a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
+  if (url === '/hostinfo') {      // only for the host's own browser: visitors never see the PC's addresses
+    if (!hostInfo.on || !isLocal(req.socket.remoteAddress)) { res.writeHead(404); return res.end('not found'); }
+    const { on, ...info } = hostInfo;
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(info));
+  }
   let file = STATIC[url];
   if (!file && (url.startsWith('/client/') || url.startsWith('/shared/'))) file = url.slice(1);
   if (!file) { res.writeHead(404); return res.end('not found'); }
@@ -182,4 +192,4 @@ wss.on('connection', ws => {
 setInterval(() => wss.clients.forEach(w => { if (!w.isAlive) return w.terminate(); w.isAlive = false; w.ping(); }), 15000);
 
 if (require.main === module && !SEA) server.listen(PORT, () => console.log(`Pac-Man Vs. server on http://localhost:${PORT}`));
-module.exports = { server, wss, rooms, sanitizeMaze };
+module.exports = { server, wss, rooms, sanitizeMaze, hostInfo };

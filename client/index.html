@@ -65,6 +65,8 @@
   @media (pointer: coarse) { #pad { display: grid; } }
   @media (max-width: 520px) { #hud { grid-template-columns: repeat(2, 1fr); } #seats { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  #hostLinkRows .hl { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  #hostLinkRows code { user-select: all; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -136,6 +138,7 @@
     <div id="roomCode" class="code">----</div>
     <div class="row"><button id="copyLink">Copy invite link</button><button id="leave">Leave</button></div>
   </div>
+  <div id="hostLinks" class="card hidden"><h2>Hosting from this PC</h2><div id="hostLinkRows"></div></div>
   <div class="card"><h2>Seats</h2><div id="seats"></div>
     <p class="note">Anyone who joins takes the next free seat. The host chooses what plays each empty seat: a computer player or a grey stand-in ghost.</p></div>
   <button id="start" class="primary">Start match</button>
