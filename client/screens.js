@@ -337,6 +337,12 @@
         }
       }
       st.ghosts.slice(0, 3).forEach((g, slot) => ghostCircle(slot, g.seat, st.views[slot], st.time, isCom(st, g.seat)));      // a stand-in's circle stays grey and marked COM, woken or not
+      // a stand-in woken by a ghost player: a puff of smoke (the particle file's emitter 3) on its panel row, from the
+      // program's table of positions, one per row 44 px apart at x 74 (st.poofs: [{ seat, f: frames since the wake }])
+      for (const pf of st.poofs || []) {
+        const r = order.indexOf(pf.seat); if (r < 0) continue;
+        effects('poof', tvx(74), tvy(279 + 44 * r), pf.f, String(r));
+      }
       if (st.sparkle !== undefined) sparkles(st.sparkle);
       if (st.caught) caught(st.caught);
       return canvas;
@@ -371,14 +377,15 @@
     // (the program starts them at the circles' centres when the screen reaches its ready state), run on the screen's clock.
     // The program's particles live in its 608 x 448 layout space; the rays' length is matched to the original's picture
     // (they reach from about 30 to 125 px from the centre), as this reader does not model the particle camera.
-    const FX_EMITTERS = { winner: { ids: [14, 15], size: 1.5 }, loser: { ids: [11], size: 1 } }, FX_SCALE = TVW / 608, fxRuns = new Map(), fxTex = new Map();
-    function effects(kind, x, y, f) {
+    const FX_EMITTERS = { winner: { ids: [14, 15], size: 1.5 }, loser: { ids: [11], size: 1 }, poof: { ids: [3], size: 1 } }, FX_SCALE = TVW / 608, fxRuns = new Map(), fxTex = new Map();
+    function effects(kind, x, y, f, tag) {
       const P = assets.particles; if (!P || typeof JPA === 'undefined') return;
       const fxk = FX_EMITTERS[kind]; if (!fxk) return;
       for (const id of fxk.ids) {
         const res = P.resources.get(id); if (!res || !res.bem || !res.bsp) continue;
-        let run = fxRuns.get(kind + id);
-        if (!run || run.em.frame > f + 1 || run.x !== x || run.y !== y) { run = { em: JPA.emitter(res, 7919 * (id + 1)), x, y }; fxRuns.set(kind + id, run); }
+        const key = kind + (tag || '') + ':' + id;   // a tag keeps runs of the same effect apart (two poofs at once)
+        let run = fxRuns.get(key);
+        if (!run || run.em.frame > f + 1 || run.x !== x || run.y !== y) { run = { em: JPA.emitter(res, 7919 * (id + 1)), x, y }; fxRuns.set(key, run); }
         run.em.runTo(Math.floor(f) + 1);
         let tex = fxTex.get(id);
         if (tex === undefined) {

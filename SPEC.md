@@ -81,6 +81,13 @@ larger gap, never reversing); woken by a coloured ghost's touch it takes that co
 ahead of him instead). Eyes follow a per-stage flow field home (0x80021DC0); on arrival the ghost is whole
 again: a seat's ghost in its colour, a stand-in grey.
 
+The wake itself (in the round routine, beside the 2 px test) plays effect 0x1817 and starts the particle file's
+emitter 3 on the screen layer. Emitter 3 is a smoke puff: seven `mk_smoke` clouds thrown out at once on a circle,
+each turned at random, slowing by 0.78 a frame and gone after about 15 frames. It starts over the woken stand-in's
+row of the score panel, from a table at 0x800EDD34 of one point per row: (74, 279), (74, 323), (74, 367) and
+(74, 411) in the 608 x 448 layout, the rows' ghost icons. It appears only there, not in the maze, the ghosts'
+circles or on the handheld.
+
 The handheld's picture (0x8001D5A4 builds the packet): each mover's x, y, a flags byte (direction, 64 = flashing
 frightened look, 32 = eyes, 16 = frightened, colour x 4) and the slot. A grey stand-in and an eaten ghost are
 both drawn as eyes.

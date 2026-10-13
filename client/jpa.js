@@ -7,7 +7,7 @@
  *   BEM1  the emitter: its volume (shape, size, sweep, divisions), rates, start frame, particle life, velocities
  *   BSP1  the particle's look: shape, size, colours, how texture and colours combine, which texture
  *   ESP1  the particle's scale and alpha over its life, and its rotation
- *   FLD1  fields acting on the particles (only the spin field is simulated)
+ *   FLD1  fields acting on the particles (the spin and gravity fields are simulated)
  *   KFA1  key-framed curves over the emitter's life (only the emission rate is simulated)
  *   TDB1  the emitter's texture numbers
  * Anything else is listed in `unknown` and ignored. UMD: window.JPA in the browser, module.exports in Node. */
@@ -133,8 +133,14 @@
       if (b.velRatio) { const k = 1 + b.velRatio * (rnd() * 2 - 1); vel = vel.map(v => v * k); }
       pos = pos.map((v, i) => v * b.scl[i]);
       const e = res.esp;
-      parts.push({ pos, vel, age: 0, life: Math.max(1, Math.round(b.life * (1 - b.lifeRndm * rnd()))),
-        scaleRnd: e ? 1 - e.scaleOutRndm * rnd() : 1 });
+      const part = { pos, vel, age: 0, life: Math.max(1, Math.round(b.life * (1 - b.lifeRndm * rnd()))),
+        scaleRnd: e ? 1 - e.scaleOutRndm * rnd() : 1, ang: 0, spin: 0 };
+      // a flat (billboard) particle may start turned and keep turning; angles are in 65536ths of a turn
+      if (e && e.rotate && res.bsp && res.bsp.shape === 'billboard') {
+        part.ang = (e.rotAngle + e.rotAngleRndm * (rnd() - 0.5)) * 2 * Math.PI / 65536;
+        part.spin = (e.rotSpeed + e.rotSpeedRndm * (rnd() - 0.5)) * 2 * Math.PI / 65536;
+      }
+      parts.push(part);
     }
     function step() {
       // emission: every rateStep + 1 frames from the start frame (for ever when maxFrame is 0)
@@ -152,7 +158,9 @@
           const a = norm(f.axis), c = Math.cos(f.mag), s = Math.sin(f.mag), [x, y, z] = p.pos, d = a[0] * x + a[1] * y + a[2] * z;
           p.pos = [x * c + (a[1] * z - a[2] * y) * s + a[0] * d * (1 - c), y * c + (a[2] * x - a[0] * z) * s + a[1] * d * (1 - c), z * c + (a[0] * y - a[1] * x) * s + a[2] * d * (1 - c)];
         }
+        for (const f of res.fields) if (f.type === 'gravity') { const a = norm(f.axis); p.vel = p.vel.map((v, i) => v + a[i] * f.mag); }   // a steady pull
         p.vel = p.vel.map(v => v * b.airResist);
+        p.ang += p.spin;
         p.pos = p.pos.map((v, i) => v + p.vel[i]);
         p.age++;
       }
@@ -180,6 +188,7 @@
           const d = s.dirType === 1 ? rotate(p.pos, b.rot) : s.dirType === 2 ? rotate(p.pos, b.rot).map(v => -v) : rotate(p.vel, b.rot);
           const l = Math.hypot(d[0], d[1]); if (l > 1e-6) { ux = d[0] / l; uy = d[1] / l; }
         }
+        if (p.ang) { const c = Math.cos(p.ang), sn = Math.sin(p.ang); [ux, uy] = [ux * c - uy * sn, ux * sn + uy * c]; }
         const vx = -uy, vy = ux;     // across the quad
         // pivot: 0 = the quad hangs back from the particle, 1 = centred, 2 = it reaches forward (outward for a ray)
         const offY = e ? [-1, 0, 1][e.pivot[1]] : 0, offX = e ? [-1, 0, 1][e.pivot[0]] : 0;

@@ -561,7 +561,7 @@
     if (!raf) raf = requestAnimationFrame(frame);
   }
   // Effects on the shared screen: points floating over whoever scored, stars when the fruit goes, the catch impact.
-  const fx = { pops: [], sparkle: -1, burst: null, dust: [], sparks: [], lastPuff: new Map() }, FX_POP = 1.3, FX_BURST = 1.1, FX_SPARK = 0.8, FX_DUST = 0.45, FX_DASH = 0.5;
+  const fx = { pops: [], sparkle: -1, burst: null, dust: [], sparks: [], lastPuff: new Map(), poofs: [] }, FX_POP = 1.3, FX_BURST = 1.1, FX_SPARK = 0.8, FX_DUST = 0.45, FX_DASH = 0.5, FX_POOF = 0.5;   // the poof's puffs live 15 frames; half a second covers it
   // Pac-Man's end as the ghosts see it (see FIDELITY.md): on contact the "Excellent" line starts and he is gone, the rays
   // and the points burst from the spot; at 1 s the circles pull back and he is back on the spot playing the disc's own
   // death animation (two and a half turns, then shrinking to nothing, 118 frames); the picture goes amber and the
@@ -573,7 +573,7 @@
     const prev = fxPrev; fxPrev = cur;
     const now = performance.now();
     if (!prev || (cur.phase === 'countdown' && prev.phase !== 'countdown')) {
-      fx.pops.length = 0; fx.sparkle = -1; fx.burst = null; fx.dust.length = 0; fx.sparks.length = 0; fx.lastPuff.clear();
+      fx.pops.length = 0; fx.sparkle = -1; fx.burst = null; fx.dust.length = 0; fx.sparks.length = 0; fx.lastPuff.clear(); fx.poofs.length = 0;
       if (cur.phase === 'countdown') snd.said.clear();
       return;
     }
@@ -586,6 +586,8 @@
       if (gi >= 0) { fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(pts), t0: now }); if (kind === 'fruit') fire('fruitGhost', { index: S.playerOfGhost(cur, gi) }); }
       else if (f && near(cur.pac, f, 1.2)) { fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(pts), t0: now }); if (kind === 'fruit') fire('fruitPac'); }
     }
+    // a stand-in woken by a ghost player (it takes that player's colour): a puff of smoke on its row of the panel
+    cur.ghosts.forEach((g, i) => { const p = prev.ghosts[i]; if (p && p.c != null && p.c < 0 && g.c != null && g.c >= 0) fx.poofs.push({ seat: S.playerOfGhost(cur, i), t0: now }); });
     if (cur.ev && cur.ev.includes('bigpellet') && cur.pac) fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.bigPts), t0: now });
     // a dash launch: a burst of green sparks where the dasher left the arrow (whoever just started dashing)
     if (cur.ev && cur.ev.includes('dash')) {
@@ -1056,7 +1058,8 @@
     const efx = fxViews(now);
     const views = ghosts.map(g => ({ trail: snap.trail, trailTime: CFG.trailTime, trailColor: rgbOf(SEAT_COLORS[snap.pacPlayer]), dim: snap.frightLeft > 0 ? 1 : 0, stage: curStage, me: g, zoom: g.s / CFG.ghostSight * pullBack(), ghosts: shown, pac: pacView(), pellets: snap.pellets, W, H, fruit: snap.fruit, flash, pops: efx.pops, burst: efx.burst, dust: efx.dust, sparks: efx.sparks, pads: arrPads(), clones: snap.clones, big: snap.big }));
     try {
-      scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, standin: standins(), fruitUp: snap.fruitUp, fruitKind: snap.fruit && snap.fruit.k, ghosts, views, W, H }, cw);
+      for (let k = fx.poofs.length - 1; k >= 0; k--) if (now - fx.poofs[k].t0 > FX_POOF * 1000) fx.poofs.splice(k, 1);
+      scr.render({ sparkle: fx.sparkle >= 0 ? (now - fx.sparkle) / 1000 : undefined, caught, poofs: fx.poofs.map(p => ({ seat: p.seat, f: (now - p.t0) * 0.05994 })), time: now / 1000, target: snap.target, left: snap.left, scores: snap.scores, pacPlayer: snap.pacPlayer, standin: standins(), fruitUp: snap.fruitUp, fruitKind: snap.fruit && snap.fruit.k, ghosts, views, W, H }, cw);
     } catch (e) { console.warn('shared screen', e); screenView.canvas.remove(); screenView = false; cv.style.display = ''; }
   }
   function drawMinimap(u) {
@@ -1089,5 +1092,5 @@
   idbGet('disc').then(b => { if (b) loadDisc(b, false); }).catch(() => { /* no saved disc */ });
   addEventListener('resize', () => { cell = 0; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (mode) onSnap(true); });
-  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get music() { return musicName; }, get art() { return art; }, get disc() { return music.disc; }, get offline() { return offline; }, get exch() { return exch; }, get sight() { return sm.sight.map(t => t && t.v); } };   // for automated tests
+  window.__pacvs = { get snap() { return snap; }, get mode() { return mode; }, get music() { return musicName; }, get art() { return art; }, get disc() { return music.disc; }, get offline() { return offline; }, get exch() { return exch; }, get sight() { return sm.sight.map(t => t && t.v); }, get fx() { return fx; } };   // for automated tests
 })();

@@ -1,5 +1,5 @@
 // node test/jpa.test.js <disc image>: the particle file on the player's disc, and the exchange screen's effects
-// (emitters 14 and 15 on the winner's circle, 11 on the loser's) run through the simulator.
+// (emitters 14 and 15 on the winner's circle, 11 on the loser's) and the stand-in's smoke puff (3) run through the simulator.
 const fs = require('fs'), Disc = require('../client/disc.js'), JPA = require('../client/jpa.js');
 const file = process.argv[2]; if (!file) { console.log('usage: node test/jpa.test.js <image>'); process.exit(2); }
 const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.openSync(file, 'r'); const buf = Buffer.alloc(b - a); fs.readSync(fd, buf, 0, b - a, a); fs.closeSync(fd); return buf.buffer.slice(buf.byteOffset, buf.byteOffset + (b - a)); } }) };
@@ -26,5 +26,11 @@ const blob = { slice: (a, b) => ({ arrayBuffer: async () => { const fd = fs.open
   // the loser's streaks: the spawn rate follows its key-framed curve between 0.1 and 0.7 a frame
   const k = P.resources.get(11).keys[0];
   ok(k && k.loop && Math.abs(JPA.curve(k, 0) - 0.1) < 1e-6 && Math.abs(JPA.curve(k, 15) - 0.4) < 1e-3 && Math.abs(JPA.curve(k, 30) - 0.1) < 1e-6, 'streak rate curve, looping every 30 frames');
+  // a stand-in woken: emitter 3, a puff of seven smoke clouds thrown out at once, turned at random, gone in about 15 frames
+  { const r = P.resources.get(3), e = JPA.emitter(r, 3); e.step(); const n = e.count, q = e.quads(0, 0, 1);
+    const ang = q.map(x => Math.atan2(x.pts[1][1] - x.pts[0][1], x.pts[1][0] - x.pts[0][0]).toFixed(2));
+    ok(P.textures[r.tdb[r.bsp.texIdx]].name === 'mk_smoke' && n === 7, 'smoke puff: seven clouds at once, ' + n);
+    ok(new Set(ang).size > 3, 'the clouds are turned at random');
+    e.runTo(20); ok(e.count === 0, 'the puff is gone after 20 frames'); }
   if (fails) process.exit(1); console.log('particles ok');
 })().catch(e => { console.log('FAIL', e.stack); process.exit(1); });
