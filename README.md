@@ -12,7 +12,7 @@ game and which are still guesses.
 ## Run it
 
 ```
-cd pacvs
+cd pacvs            # your clone of this repository
 npm install
 npm start            # http://localhost:8080  (PORT=3000 npm start to change)
 npm test             # simulation, match flow, server (no disc needed)
