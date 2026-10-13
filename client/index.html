@@ -14,6 +14,7 @@
   html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; overscroll-behavior: none; }
   body { display: flex; flex-direction: column; align-items: center; padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom); }
   .hidden { display: none !important; }
+  [hidden] { display: none !important; }
   select { font: inherit; color: var(--ink); background: #0b0d20; border: 2px solid var(--line); border-radius: 6px; padding: 10px 12px; min-height: 44px; width: 100%; margin-top: 4px; }
   h1 { font-size: clamp(22px, 5vw, 40px); margin: 0; letter-spacing: .04em; color: var(--pac); text-shadow: 3px 3px 0 #b03a00; }
   #logo { max-width: min(520px, 90vw); image-rendering: auto; }
@@ -67,12 +68,57 @@
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   #hostLinkRows .hl { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
   #hostLinkRows code { user-select: all; word-break: break-all; }
+
+  /* ---- the original's menu look, with its own pictures from the player's disc (game.js menuArt sets the images) ---- */
+  #press, .plate, #stageBanner, #hints { display: none; }
+  body.disc-ui { --ui-orange: #ff6600; --ui-yellow: #ffd200; --ui-frame: #ffc800; --ui-red: #e00000;
+    background: #000 var(--ui-dots) repeat; background-size: 64px 64px; image-rendering: auto;
+    font: 800 15px/1.4 "Arial Rounded MT Bold", "Varela Round", "Nunito", "Trebuchet MS", system-ui, sans-serif; }
+  html:has(body.disc-ui), body.disc-ui { background: #ffea00 var(--ui-dots) repeat; background-size: 64px 64px; }
+  body.disc-ui { height: auto; min-height: 100%; }
+  html:has(body.disc-ui #lobby:not(.hidden)), body.disc-ui:has(#lobby:not(.hidden)) { background: repeating-linear-gradient(#000 0 2px, #5c1400 2px 8px); }
+  html:has(body.disc-ui #game:not(.hidden)), body.disc-ui:has(#game:not(.hidden)) { background: var(--bg); height: 100%; }
+  body.disc-ui .card { background: #000; border: 5px solid var(--ui-orange); border-radius: 14px; box-shadow: 0 0 0 2px #000, 0 6px 0 #0006; }
+  body.disc-ui .card h2 { color: #fff; font-size: 16px; letter-spacing: .04em; text-transform: none; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 2px 2px 0 #000; }
+  body.disc-ui .note { color: #f2e6c4; font-weight: 600; }
+  body.disc-ui .err { color: #ff8a6a; }
+  body.disc-ui select, body.disc-ui input[type=text] { background: #000; color: #fff; border: 3px solid var(--ui-frame); border-radius: 10px; font-weight: 800; }
+  body.disc-ui button { position: relative; background: var(--ui-yellow); color: var(--ui-red); border: 4px solid var(--ui-orange); border-radius: 12px; font-weight: 900; padding-inline: 36px; text-shadow: none; }
+  body.disc-ui button.primary { font-size: 17px; box-shadow: inset 0 -4px 0 #ff9d00; }
+  body.disc-ui button:hover:not(:disabled), body.disc-ui button:focus-visible { background: #ff8a00; color: #fff; border-color: #fff; outline: none; text-shadow: 1px 1px 0 #a02000; }
+  /* the choice under the cursor: Pac-Man on either side, as the original marks it */
+  body.disc-ui button::before, body.disc-ui button::after { content: ''; position: absolute; top: 50%; width: 22px; height: 22px; margin-top: -11px; background: var(--ui-cursor) center / contain no-repeat; image-rendering: pixelated; opacity: 0; pointer-events: none; }
+  body.disc-ui button::before { left: 7px; }
+  body.disc-ui button::after { right: 7px; transform: scaleX(-1); }
+  body.disc-ui button:hover:not(:disabled)::before, body.disc-ui button:hover:not(:disabled)::after,
+  body.disc-ui button:focus-visible::before, body.disc-ui button:focus-visible::after { opacity: 1; animation: uiChomp .27s steps(1) infinite; }
+  @keyframes uiChomp { 50% { background-image: var(--ui-cursor2); } }
+  body.disc-ui #press { display: inline-block; height: 26px; margin-top: 6px; image-rendering: pixelated; animation: uiBlink 1.07s steps(1) infinite; }
+  @keyframes uiBlink { 50% { visibility: hidden; } }
+  body.disc-ui .plate:not(.hidden) { display: block; width: min(280px, 100%); margin: 0 auto 6px; image-rendering: auto; }
+  body.disc-ui .card > .plate:not(.hidden) + h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }   /* the plate says it; kept for screen readers */
+  body.disc-ui #stageBanner:not(.hidden) { display: block; width: min(296px, 100%); margin: 0 auto; border-radius: 8px; }
+  body.disc-ui .code { color: var(--ui-yellow); font-size: 52px; text-shadow: 3px 3px 0 var(--ui-red), -2px -2px 0 #000; }
+  body.disc-ui #lobby .card:first-child { border-width: 7px; border-radius: 28px; }
+  body.disc-ui .seat { background: #000; border: 3px solid var(--ui-frame); border-radius: 10px; color: #fff; }
+  body.disc-ui .seat.me { border-color: var(--ui-orange); background: #2a0e00; }
+  body.disc-ui #hostLinks { border-color: var(--ui-frame); }
+  body.disc-ui #hints { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; color: #fff; font-size: 13px; padding: 4px 12px 18px; text-shadow: 1px 1px 0 #000; }
+  body.disc-ui:has(#game:not(.hidden)) #hints { display: none; }
+  body.disc-ui #hints span { display: flex; align-items: center; gap: 6px; }
+  body.disc-ui .ib { width: 24px; height: 24px; display: inline-block; background: center / contain no-repeat; image-rendering: pixelated; }
+  body.disc-ui .ib.a { background-image: var(--ui-btnA); } body.disc-ui .ib.b { background-image: var(--ui-btnB); } body.disc-ui .ib.st { background-image: var(--ui-stick); }
+  body.disc-ui h1 { color: var(--ui-yellow); }
+  /* on the yellow title ground, text outside the windows is dark */
+  body.disc-ui #menu > .note, body.disc-ui #menu > div:first-child > .note { color: #4a2400; font-weight: 800; }
+  body.disc-ui:has(#menu:not(.hidden)) #hints { color: #4a2400; text-shadow: none; }
 </style>
 </head>
 <body>
 
 <section id="menu">
   <div style="text-align:center"><img id="logo" class="hidden" alt="Pac-Man Vs."><h1 id="title">PAC-MAN VS. ONLINE</h1>
+    <div><img id="press" class="hidden" alt=""></div>
     <p class="note">One Pac-Man sees the whole maze. Three ghosts see only what is close to them.</p></div>
 
   <div class="card">
@@ -87,7 +133,7 @@
         <select id="soloRole"><option value="ghost" selected>A ghost, hunting a CPU Pac-Man</option><option value="pac">Pac-Man</option><option value="random">Random, like the original</option></select></label>
       <label class="note" for="soloLevel">CPU skill
         <select id="soloLevel"><option value="0">Easy</option><option value="1" selected>Normal</option><option value="2">Hard</option></select></label>
-      <label class="note" for="target">Points to win
+      <label class="note" for="target"><img class="plate hidden" data-plate="score" alt="">Points to win
         <select id="target"><option value="7000" selected>7,000</option><option value="10000">10,000</option><option value="15000">15,000</option></select></label>
     </div>
     <div class="row" id="seatKinds">
@@ -99,8 +145,9 @@
         <select id="kind3" class="kind"><option value="standin" selected>Stand-in ghost</option><option value="cpu">Computer player</option></select></label>
     </div>
     <p class="note">A stand-in is the original's grey ghost: it wanders, Pac-Man passes through it, and it only joins the hunt once a ghost player runs through it. A computer player plays to win. In an online room, people take seats in order and the host can change the rest in the lobby.</p>
-    <label class="note" for="mazeSel">Maze
+    <label class="note" for="mazeSel"><img class="plate hidden" data-plate="stage" alt="">Maze
       <select id="mazeSel"><option value="builtin">Built-in maze</option></select></label>
+    <img id="stageBanner" class="hidden" alt="">
     <button id="solo" class="primary">Start single player</button>
     <div class="row" id="serverRow" hidden>
       <label class="note" for="server">Game server <input id="server" type="text" placeholder="address or room link" aria-label="Game server address" style="width:16em"></label>
@@ -139,11 +186,13 @@
     <div class="row"><button id="copyLink">Copy invite link</button><button id="leave">Leave</button></div>
   </div>
   <div id="hostLinks" class="card hidden"><h2>Hosting from this PC</h2><div id="hostLinkRows"></div></div>
-  <div class="card"><h2>Seats</h2><div id="seats"></div>
+  <div class="card"><img class="plate hidden" data-plate="players" alt="" aria-hidden="true"><h2>Seats</h2><div id="seats"></div>
     <p class="note">Anyone who joins takes the next free seat. The host chooses what plays each empty seat: a computer player or a grey stand-in ghost.</p></div>
   <button id="start" class="primary">Start match</button>
   <p id="lobbyNote" class="note"></p>
 </section>
+
+<div id="hints" aria-hidden="true"><span><i class="ib a"></i>. . CONFIRM</span><span><i class="ib b"></i>. . RETURN</span><span><i class="ib st"></i>. . SELECT</span></div>
 
 <section id="game" class="hidden">
   <div id="hud"></div>

@@ -341,6 +341,40 @@
     sel.value = [...sel.options].some(o => o.value === keep) ? keep : art.mazes.length ? 'disc:1' : 'builtin';
   }
   function toCanvas(t) { const c = document.createElement('canvas'); c.width = t.w; c.height = t.h; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h), 0, 0); return c; }
+  // The menus in the original's style: its own pictures from the disc's title and rule screens, as CSS images
+  // (index.html styles body.disc-ui). The original's banner for each of its six stages, by the name on it.
+  const BANNERS = { 'Haunted Hall': 'banner_ph', 'Manic Manor': 'banner_hh', 'R.I.P. Park': 'banner_dp', 'Frantic Forest': 'banner_uw', 'Panic Pier': 'banner_wb', 'Original Pac-Man': 'banner_or' };
+  const menuPics = {};
+  async function menuArt(d, titleTex) {
+    const pics = {};
+    for (const n of ['PAC_Rule_main', 'PAC_Rule_NOP', 'PAC_Rule_score', 'PAC_Rule_Stage']) {
+      let arc; try { arc = Disc.rarc(Disc.yaz0(await d.read('PROOT/Screen/' + n + '.szs'))); } catch (e) { continue; }
+      for (const [k, v] of arc) if (/\.bti$/i.test(k)) { const name = k.split('/').pop().replace(/\.bti$/i, '').toLowerCase(); if (!pics[name]) pics[name] = v; }
+    }
+    const url = name => { if (!pics[name]) return null; try { return toCanvas(Disc.decodeBTI(pics[name])).toDataURL(); } catch (e) { return null; } };
+    const root = document.documentElement.style, set = (v, u) => { if (u) root.setProperty(v, `url("${u}")`); };
+    // the title screen's background: the dot sheet in yellow (1, 1, 0) over a ground of (1, 0.92, 0) showing through its
+    // holes, as the layout's two layers tint them (pac_title.blo: Haikei and dotback)
+    const dots = titleTex('dot_back2.bti');
+    if (dots) {
+      const g = dots.getContext('2d'), im = g.getImageData(0, 0, dots.width, dots.height);
+      for (let i = 0; i < im.data.length; i += 4) { const k = im.data[i + 3] / 255; im.data[i] = 255; im.data[i + 1] = Math.round(234 + 21 * k); im.data[i + 2] = 0; im.data[i + 3] = 255; }
+      g.putImageData(im, 0, 0); set('--ui-dots', dots.toDataURL());
+    }
+    set('--ui-cursor', url('fs_pacmanicon_01')); set('--ui-cursor2', url('fs_pacmanicon_02')); set('--ui-btnA', url('fs_buttona_00')); set('--ui-btnB', url('fs_buttonb_00')); set('--ui-stick', url('fs_title3dstickanim_00'));
+    for (const [k, n] of [['players', 'fs_howmanytitle_00'], ['score', 'fs_timetitle_00'], ['stage', 'fs_coursetitle_00']]) {
+      const u = url(n); document.querySelectorAll(`img.plate[data-plate="${k}"]`).forEach(im => { if (u) { im.src = u; im.classList.remove('hidden'); } });
+    }
+    for (const name in BANNERS) menuPics[name] = url(BANNERS[name]);
+    if (art.press) { $('press').src = art.press.toDataURL(); $('press').classList.remove('hidden'); }
+    document.body.classList.add('disc-ui');
+    showBanner();
+  }
+  /** The original's banner under the maze menu when one of its six stages is chosen. */
+  function showBanner() {
+    const m = /^disc:(\d+)$/.exec($('mazeSel').value), d = m && art.mazes.find(x => x.stage === +m[1]), u = d && menuPics[d.name];
+    $('stageBanner').classList.toggle('hidden', !u); if (u) { $('stageBanner').src = u; $('stageBanner').alt = d.name; }
+  }
   async function loadDisc(blob, remember) {
     const st = $('discStatus'); st.className = 'note';
     try {
@@ -352,11 +386,12 @@
       art.pac = ['pac_eat.1.bti', 'pac_eat.2.bti', 'pac_eat.3.bti'].map(tex).filter(Boolean);
       art.logo = tex('pactitle_06.bti'); art.press = tex('press_start.bti');
       if (art.logo) { $('logo').src = art.logo.toDataURL(); $('logo').classList.remove('hidden'); $('title').classList.add('hidden'); }
+      try { await menuArt(d, tex); } catch (e) { console.warn('menu art', e); }
       music.disc = d; music.bufs.clear();
       try { const w = await Sound.load(d); snd.sfx = w.sfx; snd.voice = w.voice; titleOnce(); } catch (e) { console.warn('sound', e); snd.sfx = snd.voice = null; }
       try {   // the original stage 1 maze, read from the disc's maze data
         art.mazes = MazeData.all(await d.read(MazeData.PATH), PacSim.makeMaze);
-        fillMazes();
+        fillMazes(); showBanner();
       } catch (e) { console.warn('maze', e); art.mazes = []; }
       try { art.three = await View3D.load(d); view3 = null; } catch (e) { console.warn('3D models', e); art.three = null; }
       try { art.screens = await Screens.load(d); } catch (e) { console.warn('shared screen', e); art.screens = null; }
@@ -486,6 +521,15 @@
     if (c.length !== 4) { $('menuErr').textContent = 'Room codes have 4 letters.'; return; }
     $('menuErr').textContent = ''; connect(() => send({ t: 'join', code: c, name: playerName() }));
   };
+  // the original's menu sounds: the cursor as the choice moves (keyboard, pad), confirm on a button, back on leaving
+  $('mazeSel').addEventListener('change', showBanner);
+  let menuKeys = false;
+  addEventListener('keydown', () => { menuKeys = true; }, true); addEventListener('pointerdown', () => { menuKeys = false; }, true);
+  for (const id of ['menu', 'lobby']) {
+    $(id).addEventListener('focusin', e => { if (menuKeys && /^(BUTTON|SELECT|INPUT)$/.test(e.target.tagName)) fire('menuMove'); });
+    $(id).addEventListener('change', e => { if (e.target.tagName === 'SELECT') fire('menuMove'); });
+    $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) fire(b.id === 'leave' ? 'menuBack' : 'menuOk'); });
+  }
   $('start').onclick = () => send({ t: 'start' });
   $('leave').onclick = () => toMenu();
   $('copyLink').onclick = async () => {

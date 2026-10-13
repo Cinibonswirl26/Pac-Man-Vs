@@ -15,7 +15,7 @@
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v12';
+  const KEY = 'pacvs.soundmap.v13';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const tone = (name, o) => Object.assign({ kind: 'tone', ids: [name], mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
@@ -74,6 +74,9 @@
     // Timers: counted from the start of each round, so they begin again after Pac-Man clears the maze or is caught.
     { id: 'mazeCleared', label: 'Maze cleared', when: 'Pac-Man eats the last pellet', cues: [voice([17], { force: true })] },
     { id: 'final', label: 'Target score reached', when: 'A player reaches the target score ("End of the game")', cues: [voice([30], { force: true })] },
+    { id: 'menuMove', label: 'Menu: cursor', when: 'Moving between choices on the menus (keyboard or pad)', cues: [sfx([5], { vol: 0.6 })] },
+    { id: 'menuOk', label: 'Menu: confirm', when: 'Pressing a menu button', cues: [sfx([2], { vol: 0.7 })] },
+    { id: 'menuBack', label: 'Menu: back', when: 'Leaving a room or going back', cues: [sfx([3], { vol: 0.7 })] },
     { id: 'title', label: 'Game boots', when: 'The disc has just been loaded (title line)', cues: [voice([35], { force: true })] },
     // Arrangement levels (not in the original): effect slots the disc leaves unnamed are tried for these
     { id: 'dash', label: 'Dash arrow', when: 'Someone is hurled along a corridor by a dash arrow', cues: [sfx([0], { vol: 0.6 })] },
