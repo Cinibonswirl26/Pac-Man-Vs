@@ -1,8 +1,8 @@
 /* Tones the TV makes that are not on the disc. A few effects in the original's effect sequence play the sound chip's
  * own built-in waves instead of a recorded one; the exchange screen's count is one of them. These are recreations,
  * measured from a recording of the original's sound output, made on the fly.
- * Each sound is a list of voices: a pitch, a wave shape, when it starts, and its loudness at each TV frame
- * (1/59.94 s), ramped smoothly between frames. A new play of the same sound cuts the last one off, as the original
+ * Each sound is a list of voices: a pitch (one, or one per TV frame for a run of notes), a wave shape, when it starts,
+ * and its loudness at each TV frame (1/59.94 s), ramped smoothly between frames. A new play of the same sound cuts the last one off, as the original
  * reuses its voice.
  * UMD: window.Tones in the browser, module.exports in Node. */
 (function (root, factory) {
@@ -20,6 +20,8 @@
   };
   const WAVES = { square: square() };
 
+  /** Per-frame pitches from [MIDI note, frames] pairs. */
+  function notes(list) { const out = []; for (const [n, k] of list) for (let i = 0; i < k; i++) out.push(440 * Math.pow(2, (n - 69) / 12)); return out; }
   const SOUNDS = {
     // The exchange screen's count, played every 8th frame while the points move: G5 (786 Hz), then B5 (985 Hz) five
     // frames later as G fades, both square waves; the B note dies away over 14 frames unless the next count cuts it
@@ -29,6 +31,14 @@
         { wave: 'square', freq: 785.7, at: 0, amp: [1, 0.95, 0.92, 0.9, 0.88, 0.85, 0.6, 0.4, 0.3, 0.15, 0.1, 0.06, 0.03, 0] },
         { wave: 'square', freq: 985.2, at: 5, amp: [1, 1, 0.95, 0.9, 0.84, 0.79, 0.75, 0.7, 0.64, 0.58, 0.48, 0.36, 0.25, 0.13, 0] }
       ]
+    },
+    // The fruit bursts untaken: a square wave running down a semitone every two frames from C5 to C#4, and the same run
+    // again ten frames behind, softer, like an echo (two recordings, read frame by frame under the round's siren)
+    fruitGone: {
+      level: 0.11,
+      voices: [0, 10].map((at, k) => ({ wave: 'square', at,
+        freq: notes([[72, 2], [71, 2], [70, 2], [69, 2], [68, 2], [67, 2], [66, 2], [65, 2], [64, 2], [63, 2], [62, 2], [61, 2]]),
+        amp: Array.from({ length: 25 }, (_, i) => (i < 24 ? (k ? 0.6 : 1) : 0)) }))
     }
   };
 
@@ -48,7 +58,8 @@
     const t0 = ctx.currentTime, level = def.level * (vol == null ? 1 : vol);
     const parts = def.voices.map(v => {
       const osc = ctx.createOscillator(), g = ctx.createGain(), t1 = t0 + v.at * FRAME;
-      osc.setPeriodicWave(periodic(ctx, v.wave)); osc.frequency.value = v.freq; osc.connect(g); g.connect(dest);
+      osc.setPeriodicWave(periodic(ctx, v.wave)); osc.connect(g); g.connect(dest);
+      if (Array.isArray(v.freq)) v.freq.forEach((f, i) => osc.frequency.setValueAtTime(f, t1 + i * FRAME)); else osc.frequency.value = v.freq;
       g.gain.setValueAtTime(0, t0); g.gain.setValueAtTime(v.amp[0] * level, t1);
       for (let i = 1; i < v.amp.length; i++) g.gain.linearRampToValueAtTime(v.amp[i] * level, t1 + i * FRAME);
       osc.start(t1); osc.stop(t1 + v.amp.length * FRAME + 0.02);
