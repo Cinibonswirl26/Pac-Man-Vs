@@ -128,7 +128,7 @@
   const DEATH_TILES = [[72, 73, 44, 39], [74, 75, 106, 107], [76, 77, 108, 109], [78, 79, 110, 111], [78, 79, 160, 161], [130, 131, 162, 163], null];
   const GHOST_BASE = [200, 196, 204, 192];         // body frames facing up, right, down, left (two feet frames each, 2 tiles apart)
   const FRIGHT = [132, 134], EYES = [140, 138, 142, 136];   // eyes looking up, right, down, left (pupils drawn at that side of the whites)
-  const CHERRY = 384, DIGIT0 = 388, BADGE = 420;      // BADGE: the player-number badge (two tiles per player) shown over frightened ghosts
+  const CHERRY = 384, DIGIT0 = 388, BADGE = 420, BADGE_C = 428;   // BADGE_C: the C badge of a stand-in      // BADGE: the player-number badge (two tiles per player) shown over frightened ghosts
   const FPS = 59.7275;
   const START_BANNER = 448;                        // "Press START!" is 11 tiles across and 2 down at (40, 88); it blinks, 32 frames on and 32 off
 
@@ -138,19 +138,32 @@
     for (let r = 0; r < 32; r++) for (let c = 21; c < 32; c++) m[r * 32 + c] = hw.u16(PANEL_MAP + 64 * r + 2 * c);
     const k = Math.max(0, [7000, 10000, 15000].indexOf(st.target));
     for (let i = 0; i < 5; i++) m[TARGET_ROW * 32 + 23 + i] = (TARGET_TILES + 5 * k + i) | (9 << 12);
-    for (let s = 0; s < 4; s++) {
-      const bank = 2 + s, top = 5 + 4 * s, pacRow = s === st.pacSeat;
+    // The rows in the TV panel's order: the people in seat order with the last of them at the bottom and the grey
+    // stand-ins between. A stand-in's row is grey (bank 13) and says COMPUTER with dashes for a score; its ghost icon
+    // takes the colour of the player who woke it. (Read off the original's handheld in a two-player game.)
+    const com = sx => !!(st.standin && st.standin[sx]) && sx !== st.pacSeat;
+    const people = [0, 1, 2, 3].filter(i => !com(i)), coms = [0, 1, 2, 3].filter(com);
+    const order = people.length >= 2 ? people.slice(0, -1).concat(coms, people.slice(-1)) : people.concat(coms);
+    const NUM = [[108, 109], [122, 123], [124, 125], [126, 127]];
+    order.forEach((s, r) => {
+      const isCom = com(s), bank = isCom ? 13 : 2 + s, top = 5 + 4 * r, pacRow = s === st.pacSeat;
+      for (let rr = top - 1; rr <= top + 2; rr++) for (let c = 21; c < 30; c++) {   // recolour the row's frame
+        const e = m[rr * 32 + c], b = e >> 12; if (b >= 2 && b <= 5) m[rr * 32 + c] = (e & 0xFFF) | (bank << 12);
+      }
+      const head = isCom ? [104, 256, 257, 258, 259, 260] : [104, 105, 106, 107, ...NUM[s]];
+      head.forEach((t, i) => { m[(top - 1) * 32 + 21 + i] = t | (bank << 12); });
+      const owner = isCom && st.owner && st.owner[s] >= 0 ? st.owner[s] : -1, iconBank = owner >= 0 ? [6, 7, 8, 10][owner] : bank;   // the waker's ghost on the grey row (banks 6, 7, 8, 10)
       for (let i = 0; i < 3; i++) {
-        m[top * 32 + 21 + i] = (96 + i + (pacRow ? 0 : 3)) | (bank << 12);
-        m[(top + 1) * 32 + 21 + i] = (112 + i + (pacRow ? 0 : 3)) | (bank << 12);
+        m[top * 32 + 21 + i] = (96 + i + (pacRow ? 0 : 3)) | (iconBank << 12);
+        m[(top + 1) * 32 + 21 + i] = (112 + i + (pacRow ? 0 : 3)) | (iconBank << 12);
       }
       const digits = String(Math.max(0, Math.min(99999, st.scores[s] | 0))).padStart(5, '0');
       for (let i = 0; i < 5; i++) {
         const d = digits.charCodeAt(i) - 48;
-        m[top * 32 + 24 + i] = (128 + 2 * d) | (bank << 12);
-        m[(top + 1) * 32 + 24 + i] = (129 + 2 * d) | (bank << 12);
+        m[top * 32 + 24 + i] = (isCom ? 261 : 128 + 2 * d) | (bank << 12);
+        m[(top + 1) * 32 + 24 + i] = (isCom ? 131 : 129 + 2 * d) | (bank << 12);
       }
-    }
+    });
     return m;
   }
 
@@ -190,7 +203,7 @@
    * st: { seg (the stage's tile table: rows of 32 entries), c0, r0 (table column / row of cell (0,0)), or blocks (an
    *       Arrangement level's maze picture, BlockStage.handheldImage) instead, W, H,
    *       pellets (W*H: 0 none, 1 pellet, 2 power), pac {x, y, d, moving} | null, caught (Pac-Man was just caught: seconds since),
-   *       ghosts [{x, y, d, m, seat}] (m: 'n' normal, 'f' frightened, 'e' eyes, 'r' in the house), pacSeat, scores [4], target,
+   *       ghosts [{x, y, d, m, seat}] (m: 'n' normal, 'f' frightened, 'e' eyes, 'r' in the house), pacSeat, scores [4], standin [4] (seats played by grey stand-ins), owner [4] (a stand-in seat's waker, -1 none), target,
    *       fruit {x, y} | null, frightLeft, time (seconds), cam (an object that keeps the scroll between frames) }
    */
   function render(hw, f, st) {
@@ -254,7 +267,9 @@
       // frightened, a stand-in looks like any frightened ghost, without a player badge
       if (g.m === 'f') {
         sprite16(sprites, FRIGHT[Math.floor(fr / 12) % 2], st.frightLeft < 2 && Math.floor(fr / 8) % 2 ? 6 : 5, sx(g.x), sy(g.y), 0);
-        if (g.seat >= 0) badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
+        // over a frightened ghost: its player's number, or a grey C on a stand-in, woken or not (as on the original)
+        if (g.standin) badges.push({ tile: BADGE_C, pal: 7, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE_C + 1, pal: 7, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
+        else if (g.seat >= 0) badges.push({ tile: BADGE + 2 * g.seat, pal: 1 + g.seat, x: sx(g.x), y: sy(g.y) - 8, hf: 0, vf: 0 }, { tile: BADGE + 2 * g.seat + 1, pal: 1 + g.seat, x: sx(g.x) + 8, y: sy(g.y) - 8, hf: 0, vf: 0 });
       }
       else if (g.m === 'e' || g.seat < 0) sprite16(sprites, EYES[g.d], 7, sx(g.x), sy(g.y), 0);
       else sprite16(sprites, GHOST_BASE[g.ds >= 2 ? Math.floor(fr / 2) % 4 : g.d] + foot, 1 + g.seat, sx(g.x), sy(g.y) - lift(g), 0, g.sq);
