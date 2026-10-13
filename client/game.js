@@ -603,6 +603,7 @@
     if (myHandoff() && e.code !== 'Escape' && e.code !== 'KeyM') { e.preventDefault(); ready(); return; }
     if (e.code in KEYS) { e.preventDefault(); if (mode) setDir(KEYS[e.code]); }
     else if (e.code === 'Space' || e.code === 'KeyJ') { if (mode) { e.preventDefault(); act(); } }
+    else if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleFullscreen(); }
     else if (e.code === 'KeyM') { music.enabled = !music.enabled; if (!music.enabled) stopMusic(); else onSnap(true); }
     else if (e.code === 'Escape' && mode) toMenu();
   });
@@ -639,13 +640,32 @@
   };
   stageEl.addEventListener('touchend', swipeEnd);
   stageEl.addEventListener('touchcancel', swipeEnd);
-  let padA = false;
+  let padA = false, padSel = false;
+  // Fullscreen: the button in the corner, F, or a gamepad's Select. The whole page goes fullscreen, so the menus,
+  // the lobby and every screen of the game fill it; the pictures resize themselves as on any resize.
+  const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const fsOK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  function toggleFullscreen() {
+    if (!fsOK) return;
+    try {
+      if (fsEl()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else { const r = document.documentElement, go = r.requestFullscreen || r.webkitRequestFullscreen; const p = go.call(r, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => { /* refused (not from a click or key) */ }); }
+    } catch { /* not allowed here */ }
+  }
+  const fsBtn = $('fullscreen');
+  if (fsBtn) {
+    fsBtn.hidden = !fsOK;   // iPhone Safari has no fullscreen for pages; the button stays away there
+    fsBtn.onclick = () => { toggleFullscreen(); fsBtn.blur(); };
+    const label = () => { const on = !!fsEl(); fsBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); fsBtn.title = on ? 'Leave fullscreen (F)' : 'Fullscreen (F)'; fsBtn.classList.toggle('on', on); };
+    document.addEventListener('fullscreenchange', label); document.addEventListener('webkitfullscreenchange', label); label();
+  }
   function pollPad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
       if (!p) continue;
       if (myHandoff() && ((p.buttons[0] && p.buttons[0].pressed) || (p.buttons[9] && p.buttons[9].pressed))) { ready(); break; }
       const a = !!(p.buttons[0] && p.buttons[0].pressed); if (a && !padA) act(); padA = a;
+      const sel = !!(p.buttons[8] && p.buttons[8].pressed); if (sel && !padSel) toggleFullscreen(); padSel = sel;   // Select / Back / View
       let d = -1;
       if (p.buttons[12] && p.buttons[12].pressed) d = 0; else if (p.buttons[15] && p.buttons[15].pressed) d = 1;
       else if (p.buttons[13] && p.buttons[13].pressed) d = 2; else if (p.buttons[14] && p.buttons[14].pressed) d = 3;

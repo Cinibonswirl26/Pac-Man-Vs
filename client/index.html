@@ -66,6 +66,12 @@
   @media (pointer: coarse) { #pad { display: grid; } }
   @media (max-width: 520px) { #hud { grid-template-columns: repeat(2, 1fr); } #seats { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  #fullscreen { position: fixed; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); z-index: 6; width: 44px; height: 44px; min-height: 0; padding: 0; display: flex; align-items: center; justify-content: center; background: rgba(5,6,15,0.7); border-radius: 8px; opacity: .75; }
+  #fullscreen:hover, #fullscreen:focus-visible { opacity: 1; }
+  body:has(#game:not(.hidden)) #fullscreen { top: auto; bottom: calc(8px + env(safe-area-inset-bottom)); }   /* out of the way of the scores in play */
+  #fullscreen .out, #fullscreen.on .in { display: none; } #fullscreen.on .out { display: inline; }
+  body.disc-ui #fullscreen { background: #000; color: #fff; border: 3px solid var(--ui-orange); padding: 0; }
+  body.disc-ui #fullscreen::before, body.disc-ui #fullscreen::after { display: none; }
   #hostLinkRows .hl { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
   #hostLinkRows code { user-select: all; word-break: break-all; }
 
@@ -115,6 +121,8 @@
 </style>
 </head>
 <body>
+
+<button id="fullscreen" type="button" aria-label="Fullscreen" title="Fullscreen (F)" aria-pressed="false"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path class="in" d="M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path class="out" d="M9 3v6H3M21 9h-6V3M15 21v-6h6M3 15h6v6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 
 <section id="menu">
   <div style="text-align:center"><img id="logo" class="hidden" alt="Pac-Man Vs."><h1 id="title">PAC-MAN VS. ONLINE</h1>
@@ -176,7 +184,7 @@
     <p id="discStatus" class="note" aria-live="polite">No disc loaded. The game uses its built-in graphics and sounds.</p>
     <p class="note"><a href="/soundlab" id="labLink" style="color:var(--cyan)">Sound lab</a>: listen to the disc's sounds and choose what plays when.</p>
   </div>
-  <p class="note">Move with arrow keys or WASD, swipe anywhere on the game on touch screens (tap to hop or dash), or use a gamepad. M toggles music.</p>
+  <p class="note">Move with arrow keys or WASD, swipe anywhere on the game on touch screens (tap to hop or dash), or use a gamepad. M toggles music, F (or the corner button, or a gamepad's Select) toggles fullscreen.</p>
 </section>
 
 <section id="lobby" class="hidden">
