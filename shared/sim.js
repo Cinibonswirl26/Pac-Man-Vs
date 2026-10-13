@@ -664,13 +664,17 @@
     const best = new Float32Array(T).fill(1e9);
     for (const g of s.ghosts) {
       if (g.mode === 'eyes' || (g.grey && g.mode !== 'fright')) continue;
-      const harmless = g.mode === 'fright' && s.frightLeft > 3;
-      if (harmless) continue;
+      // a frightened ghost cannot hurt Pac-Man until its fright ends: it creeps at the frightened speed until then,
+      // and only a tile it reaches after that is a danger
+      const fr = g.mode === 'fright' ? Math.max(0, s.frightLeft) : 0;
       // a ghost still inside the house is counted from the exit, a moment later
       const inside = inHouse(Math.floor(g.x), Math.floor(g.y)) || cellAt(Math.floor(g.x), Math.floor(g.y)) === 'D';
       const sx = inside ? EXIT[0] + 0.5 : g.x, sy = inside ? EXIT[1] + 0.5 : g.y, delay = inside ? 1 : 0;
       const dm = distMap(sx, sy, 'ghost');
-      for (let i = 0; i < T; i++) if (dm[i] >= 0) { const t = delay + dm[i] / CFG.ghostSpeed; if (t < best[i]) best[i] = t; }
+      for (let i = 0; i < T; i++) if (dm[i] >= 0) {
+        const t = delay + (fr > 0 ? fr + Math.max(0, dm[i] - fr * CFG.frightSpeed) / CFG.ghostSpeed : dm[i] / CFG.ghostSpeed);
+        if (t < best[i]) best[i] = t;
+      }
     }
     return best;
   }
@@ -704,21 +708,18 @@
     const sx = Math.floor(p.x), sy = Math.floor(p.y);
     const skip = (x, y) => !safe(tileIdx(x, y)) && !(x === sx && y === sy);
 
-    // 1. While the ghosts are scared: hunt them, or keep clearing the maze, whichever pays more per second.
-    if (level >= 1 && s.frightLeft > 1.5) {
-      let bestG = null, bRate = 0;
-      const pts = CFG.ghostChain[Math.min(s.chain, CFG.ghostChain.length - 1)];
+    // 1. While the ghosts are scared: chase the nearest one he can catch with 2.5 s of fright to spare (cutting it finer
+    //    gets him caught as it ends; the pellets will still be there afterwards), unless the last few pellets can be
+    //    cleared before he would get to it. Easy only chases close ones.
+    if (s.frightLeft > 1.5) {
+      let bestG = null, bt = 1e9;
       for (const g of s.ghosts) {
         if (g.mode !== 'fright') continue;
-        const gi = tileIdx(g.x, g.y), t = pd[gi] >= 0 ? pd[gi] / (CFG.pacSpeed - CFG.frightSpeed * 0.5) : 1e9;
-        if (t < s.frightLeft - 0.8) { const rate = pts / Math.max(t, 1.5); if (rate > bRate) { bRate = rate; bestG = g; } }
+        const gi = tileIdx(Math.floor(g.x), Math.floor(g.y)), t = pd[gi] >= 0 ? pd[gi] / (CFG.pacSpeed - CFG.frightSpeed * 0.5) : 1e9;
+        if (t < s.frightLeft - 2.5 && (level >= 1 || t < 3) && t < bt) { bt = t; bestG = g; }
       }
-      if (bestG) {
-        // what clearing the rest would pay: the pellets plus the bonus, over the time a tour of them takes
-        const tour = clearTime(s, pd), clearRate = (s.left * CFG.pelletPts + CFG.clearBonus) / Math.max(tour, 1);
-        if (bRate >= clearRate || tour > s.frightLeft + 25) {
-          const tx = Math.floor(bestG.x), ty = Math.floor(bestG.y); const d = pathStep(p.x, p.y, 'pac', (x, y) => x === tx && y === ty); if (d != null) return keepHeading(p, d, ga, pd, margin);
-        }
+      if (bestG && !(s.left <= 30 && clearTime(s, pd) < bt)) {
+        const tx = Math.floor(bestG.x), ty = Math.floor(bestG.y); const d = pathStep(p.x, p.y, 'pac', (x, y) => x === tx && y === ty); if (d != null) return keepHeading(p, d, ga, pd, margin);
       }
     }
     // 2. Close ghost and a power pellet we can safely reach: take it.
