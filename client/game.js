@@ -606,9 +606,12 @@
       const kind = (f && f.k) || 'fruit', pts = kind === 'fruit' ? CFG.fruitPts : kind === 'gold' ? CFG.goldPts : CFG.capsulePts;
       if (gi >= 0) { fx.pops.push({ x: cur.ghosts[gi].x, y: cur.ghosts[gi].y, text: String(pts), t0: now }); if (kind === 'fruit') fire('fruitGhost', { index: S.playerOfGhost(cur, gi) }); }
       else if (f && near(cur.pac, f, 1.2)) { fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(pts), t0: now }); if (kind === 'fruit') fire('fruitPac'); }
+      else if (kind === 'fruit') fire('fruitGone');     // nobody took it: its time ran out
     }
+    // a ghost's fruit sight ends: its view starts to close back in
+    cur.ghosts.forEach((g, i) => { const p = prev.ghosts[i]; if (p && p.s != null && g.s != null && g.s < p.s - 1e-6 && cur.phase === 'play') fire('sightBack', { index: S.playerOfGhost(cur, i) }); });
     // a stand-in woken by a ghost player (it takes that player's colour): a puff of smoke on its row of the panel
-    cur.ghosts.forEach((g, i) => { const p = prev.ghosts[i]; if (p && p.c != null && p.c < 0 && g.c != null && g.c >= 0) fx.poofs.push({ seat: S.playerOfGhost(cur, i), t0: now }); });
+    cur.ghosts.forEach((g, i) => { const p = prev.ghosts[i]; if (p && p.c != null && p.c < 0 && g.c != null && g.c >= 0) { fx.poofs.push({ seat: S.playerOfGhost(cur, i), t0: now }); fire('standinWoken'); } });
     if (cur.ev && cur.ev.includes('bigpellet') && cur.pac) fx.pops.push({ x: cur.pac.x, y: cur.pac.y, text: String(CFG.bigPts), t0: now });
     // a dash launch: a burst of green sparks where the dasher left the arrow (whoever just started dashing)
     if (cur.ev && cur.ev.includes('dash')) {

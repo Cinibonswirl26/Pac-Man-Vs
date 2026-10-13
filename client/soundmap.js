@@ -2,7 +2,8 @@
  * (/client/soundlab.html) lets a player change them, and the choices are kept in the browser and used by the game.
  * A cue is one sound played for an event:
  *   kind  'voice' (announcer line), 'sfx' (effect), 'hand' (Pac-Man's own screen: 'waka', 'fruit', 'eatGhost' or 'death')
- *         or 'tone' (a TV sound the original makes with the sound chip's own waves, not on the disc: 'count')
+ *         or 'tone' (a TV sound the original makes with the sound chip's own waves, not on the disc: 'count', 'wake',
+ *         'fruitGone', 'sightWide', 'sightBack')
  *   ids   the numbers of the sounds (or the hand sound's name)
  *   mode  'one' = play one of ids at random, 'all' = play all of them, 'index' = ids[n] for the player or seat n
  *   who   'all', 'pac' (only the player who is Pac-Man hears it) or 'ghost' (only the ghost players)
@@ -14,7 +15,7 @@
   else root.SoundMap = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const KEY = 'pacvs.soundmap.v11';
+  const KEY = 'pacvs.soundmap.v12';
   const voice = (ids, o) => Object.assign({ kind: 'voice', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
   const sfx = (ids, o) => Object.assign({ kind: 'sfx', ids, mode: 'one', who: 'all', force: false, delay: 0, vol: 0.8 }, o);
   const tone = (name, o) => Object.assign({ kind: 'tone', ids: [name], mode: 'one', who: 'all', force: false, delay: 0, vol: 1 }, o);
@@ -50,7 +51,10 @@
     { id: 'powerGhost', label: 'Power pellet - ghost side', when: 'Pac-Man eats a power pellet (said to the ghosts)', cues: [voice([0, 1], { force: true })] },
     { id: 'eatGhost', label: 'Ghost eaten', when: 'index = how many ghosts this power pellet has eaten so far (0 = first)', per: 'chain', cues: [voice([10, 11, 12], { mode: 'index' })] },
     { id: 'fruitAppears', label: 'Fruit appears', when: 'The fruit shows up in the maze', cues: [sfx([6]), voice([8, 9])] },
-    { id: 'fruitGhost', label: 'Fruit taken by a ghost', when: 'index = the ghost player\'s seat', per: 'seat', cues: [sfx([13]), voice([4, 5, 6, 7], { mode: 'index', force: true })] },
+    { id: 'fruitGhost', label: 'Fruit taken by a ghost', when: 'index = the ghost player\'s seat', per: 'seat', cues: [sfx([13]), voice([4, 5, 6, 7], { mode: 'index', force: true }), tone('sightWide')] },
+    { id: 'sightBack', label: 'Fruit sight ends', when: 'A ghost\'s widened view starts to close again, 12 s after it took the fruit', per: 'seat', cues: [tone('sightBack')] },
+    { id: 'fruitGone', label: 'Fruit gone', when: 'Nobody took the fruit in time and it bursts', cues: [tone('fruitGone')] },
+    { id: 'standinWoken', label: 'Stand-in woken', when: 'A ghost player touches a grey stand-in and it takes their colour', cues: [tone('wake')] },
     { id: 'fruitPac', label: 'Fruit taken by Pac-Man', when: 'Pac-Man reaches the fruit', cues: [sfx([13]), voice([26, 27], { force: true }), hand('fruit')] },
     // Pellet counts, as the original's program calls them: 100 and 50 left play one of the two shouts, 25 left the
     // worried line, 10 left the ten-pellets line (its alternate take, 19, is on an ID the program never calls).
