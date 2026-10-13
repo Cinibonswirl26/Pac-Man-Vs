@@ -60,7 +60,7 @@
   #banner .handoff .big { font-size: clamp(18px, 3.6vw, 28px); }
   #banner .handoff .sm { font-size: clamp(12px, 2.2vw, 15px); }
   #pad { display: none; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); gap: 6px; padding: 8px; }
-  #pad button { padding: 0; font-size: 22px; }
+  #pad button { padding: 0; font-size: 22px; -webkit-tap-highlight-color: transparent; }
   #hop.cool { opacity: 0.45; }
   #hop { position: fixed; right: 16px; bottom: 16px; width: 92px; height: 92px; border-radius: 50%; border: 3px solid #ff6ec8; background: rgba(255,110,200,0.25); color: #fff; font-weight: 700; font-size: 16px; z-index: 5; }
   @media (pointer: coarse) { #pad { display: grid; } }
@@ -72,6 +72,10 @@
   #fullscreen .out, #fullscreen.on .in { display: none; } #fullscreen.on .out { display: inline; }
   body.disc-ui #fullscreen { background: #000; color: #fff; border: 3px solid var(--ui-orange); padding: 0; }
   body.disc-ui #fullscreen::before, body.disc-ui #fullscreen::after { display: none; }
+  /* the in-play touch buttons are controls, not menu choices: no Pac-Man cursors, and no hover look that sticks after a tap */
+  body.disc-ui #pad button, body.disc-ui #hop { padding: 0; }
+  body.disc-ui #pad button::before, body.disc-ui #pad button::after, body.disc-ui #hop::before, body.disc-ui #hop::after { display: none; }
+  body.disc-ui #pad button:hover:not(:disabled), body.disc-ui #pad button:focus-visible { background: var(--ui-yellow); color: var(--ui-red); border-color: var(--ui-orange); text-shadow: none; }
   #hostLinkRows .hl { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
   #hostLinkRows code { user-select: all; word-break: break-all; }
 
