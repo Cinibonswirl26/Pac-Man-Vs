@@ -529,16 +529,37 @@
   });
   document.querySelectorAll('#pad button').forEach(b => { b.addEventListener('pointerdown', e => { e.preventDefault(); setDir(+b.dataset.d); }); });
   $('hop').addEventListener('pointerdown', e => { e.preventDefault(); act(); });
-  let tx = 0, ty = 0;
   const cv = $('cv'), g = cv.getContext('2d');
   $('stage').addEventListener('pointerdown', () => { ready(); });
-  cv.addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
-  cv.addEventListener('touchmove', e => {
-    const dx = e.touches[0].clientX - tx, dy = e.touches[0].clientY - ty;
-    if (Math.hypot(dx, dy) < 22) return;
-    setDir(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
-    tx = e.touches[0].clientX; ty = e.touches[0].clientY;
+  // Swipes, anywhere on the playing area (the maze, the ghost's 3D view or the shared screen): the direction is taken as
+  // soon as the finger has moved SWIPE px, and a swipe can bend into a new direction without lifting the finger (each
+  // turn starts a new swipe from where the last one was taken). A quick tap uses the ghost's power (hop or dash); on
+  // the exchange screen it says ready, as before. The page does not scroll or zoom under the finger while playing.
+  const SWIPE = 18, TAP_MS = 250;
+  let sw = null;
+  const stageEl = $('stage');
+  const touchOf = (e, id) => [...e.changedTouches].find(t => t.identifier === id);
+  stageEl.addEventListener('touchstart', e => {
+    if (!mode || sw) return;
+    const t = e.changedTouches[0]; sw = { id: t.identifier, x: t.clientX, y: t.clientY, t0: performance.now(), moved: false };
   }, { passive: true });
+  stageEl.addEventListener('touchmove', e => {
+    if (!mode) return;
+    e.preventDefault();
+    const t = sw && touchOf(e, sw.id); if (!t) return;
+    const dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+    if (Math.hypot(dx, dy) < SWIPE) return;
+    const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0);
+    if (d !== lastDir || !sw.moved) setDir(d);
+    sw.x = t.clientX; sw.y = t.clientY; sw.moved = true;
+  }, { passive: false });
+  const swipeEnd = e => {
+    const t = sw && touchOf(e, sw.id); if (!t) return;
+    if (e.type === 'touchend' && !sw.moved && performance.now() - sw.t0 < TAP_MS && !myHandoff()) act();
+    sw = null;
+  };
+  stageEl.addEventListener('touchend', swipeEnd);
+  stageEl.addEventListener('touchcancel', swipeEnd);
   let padA = false;
   function pollPad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];

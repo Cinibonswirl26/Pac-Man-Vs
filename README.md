@@ -46,7 +46,7 @@ counter shows how many pellets are left. Pac-Man sees the whole maze.
   a tap, or a gamepad's A/Start) on the handheld's "Press START!" screen, as on the original. The circles then fly
   to their places and the next round starts; by itself after 15 seconds if nobody presses. A computer player
   presses Start by itself.
-- Controls: arrow keys or WASD, swipe on touch screens, on-screen arrows on phones, or a gamepad.
+- Controls: arrow keys or WASD; on touch screens, swipe anywhere on the game (a swipe can bend round a corner without lifting the finger; a tap hops or dashes) or use the on-screen arrows; or a gamepad.
   `M` toggles music, `Esc` leaves the match.
 - **Arrangement levels**: the maze menu's last group holds levels that are not part of the original. They
   borrow mechanics from the 1996 arcade *Pac-Man Arrangement*: dash arrows that hurl whoever crosses them their way
