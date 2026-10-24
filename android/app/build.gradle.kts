@@ -18,7 +18,10 @@ android {
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("web"))
 }
 
-dependencies { implementation("androidx.webkit:webkit:1.12.1") }
+dependencies {
+    implementation("androidx.webkit:webkit:1.12.1")
+    implementation("org.nanohttpd:nanohttpd-websocket:2.3.1")   // the phone's web server while it hosts (HostServer.java)
+}
 
 // The page files come straight from the game folder at build time, so the app never drifts from the web version.
 val web = layout.buildDirectory.dir("web")

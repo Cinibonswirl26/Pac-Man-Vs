@@ -59,6 +59,7 @@
   #banner .handoff { margin-top: auto; background: rgba(5,6,15,0.88); border: 2px solid var(--pac); border-radius: 10px; padding: 8px 14px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 14px; max-width: 520px; }
   #banner .handoff .big { font-size: clamp(18px, 3.6vw, 28px); }
   #banner .handoff .sm { font-size: clamp(12px, 2.2vw, 15px); }
+  body.app-start #menu > :not(#appStart):not(:first-child) { display: none !important; }   /* the app's first question, under the title */
   #pad { display: none; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); gap: 6px; padding: 8px; }
   #pad button { padding: 0; font-size: 22px; -webkit-tap-highlight-color: transparent; }
   #hop.cool { opacity: 0.45; }
@@ -132,6 +133,13 @@
   <div style="text-align:center"><img id="logo" class="hidden" alt="Pac-Man Vs."><h1 id="title">PAC-MAN VS. ONLINE</h1>
     <div><img id="press" class="hidden" alt=""></div>
     <p class="note">One Pac-Man sees the whole maze. Three ghosts see only what is close to them.</p></div>
+
+  <div id="appStart" class="card hidden">   <!-- the app's first question: host here, or join a friend -->
+    <h2>Play with friends</h2>
+    <div class="row"><button id="appHost" class="primary">Host a game on this Wi-Fi</button><span class="note">friends on the same Wi-Fi join with the link the lobby shows; nothing on your router changes</span></div>
+    <div class="row"><button id="appJoin" class="primary">Join a friend's game</button><span class="note">with the address or link they sent you</span></div>
+    <p id="appErr" class="err" role="alert"></p>
+  </div>
 
   <div class="card">
     <h2>Your name</h2>
@@ -217,6 +225,7 @@
 <script src="/shared/sim.js"></script>
 <script src="/shared/match.js"></script>
 <script src="/shared/arrange.js"></script>
+<script src="/shared/hub.js"></script>
 <script src="/client/disc.js"></script>
 <script src="/client/mazedata.js"></script>
 <script src="/client/sound.js"></script>

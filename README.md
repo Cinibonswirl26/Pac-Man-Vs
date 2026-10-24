@@ -112,9 +112,17 @@ cartridge is in it, players still bring their own copy in the browser. `--port=8
 ### The Android app
 
 `PacManVs.apk` is the game's page wrapped as a phone app: full-screen landscape, the disc picked from the phone's
-files with the page's own button, and a **Game server** box on the menu where you type the address a host's
-window printed (or paste a room link, which fills the room code in too). It has no server of its own; it joins
-one of the above. The GitHub Action in `.github/workflows/apk.yml` builds it on every push of the page files
+files with the page's own button. It opens on one question:
+
+- **Host a game on this Wi-Fi.** The room server runs on the phone (the same code the PC's program runs, inside
+  the page), and the app's own small web server lets friends on the same Wi-Fi in: the lobby shows a
+  `http://<the phone's address>:8080/?room=CODE` link to send, which they open in a browser or type into their
+  app's Game server box. Nothing on the router changes, so it is for people on the same network (a phone's hotspot
+  counts); keep the app open on the hosting phone, since the game runs there.
+- **Join a friend's game.** The menu's **Game server** box takes the address a host's window printed, or a pasted
+  room link, which fills the room code in too. It then joins any of the servers above.
+
+The GitHub Action in `.github/workflows/apk.yml` builds it on every push of the page files
 and attaches **PacManVs-apk** to the run; or build it yourself with the Android SDK: `gradle -p android
 assembleDebug` (writes `android/app/build/outputs/apk/debug/app-debug.apk`). It is signed with a debug key,
 so the phone asks once to allow installs from your browser or file manager. The app packs only this folder's

@@ -411,6 +411,10 @@
   // The page normally comes from the game server itself. Packaged as an app it is loaded from the app's own files,
   // and the player types in where the server is (what a host's window printed, or a room link).
   const STANDALONE = !!window.PACVS_APP || location.protocol === 'file:' || /androidplatform\.net$/.test(location.hostname);
+  // The Android app puts its bridge at window.PacvsApp: the page can then host a game itself, as the PC's host program
+  // does. The room server (shared/hub.js) runs here in the page, the app's own web server lets friends on the Wi-Fi in.
+  const APP = window.PacvsApp || null;
+  let hostHub = null;   // the room server, while this device hosts
   // Hosting with the single-file host program: it tells its own browser the links that reach this PC (/hostinfo answers
   // only on the PC itself), so invites carry an address friends can use rather than "localhost".
   let hostInfo = null;
@@ -425,11 +429,13 @@
     const box = $('hostLinks'); if (!box) return;
     if (!hostInfo || !room) { box.classList.add('hidden'); return; }
     box.classList.remove('hidden');
+    box.querySelector('h2').textContent = hostInfo.device === 'phone' ? 'Hosting from this phone' : 'Hosting from this PC';
     const q = '/?room=' + room.code, rows = [];
     if (hostInfo.public) rows.push(['Friends over the internet', hostInfo.public + q]);
     if (hostInfo.lan) rows.push(['Same Wi-Fi or network', hostInfo.lan + q]);
     $('hostLinkRows').innerHTML = rows.map(([k, v], i) => `<div class="hl"><span>${k}:</span><code>${esc(v)}</code><button data-copy="${i}">Copy</button></div>`).join('') +
-      (hostInfo.upnp === 'off' ? '<p class="note">Hosting for this network only: nothing on your router was changed, so only people on this Wi-Fi or network can join. For friends over the internet, close the program and start it again choosing to host over the internet.</p>'
+      (hostInfo.upnp === 'off' && hostInfo.device === 'phone' ? '<p class="note">Friends on this Wi-Fi open the link in a browser, or type it into the app\'s Game server box. Keep this app open: the game runs on this phone. Nothing on your router was changed, so nobody elsewhere can join.</p>'
+        : hostInfo.upnp === 'off' ? '<p class="note">Hosting for this network only: nothing on your router was changed, so only people on this Wi-Fi or network can join. For friends over the internet, close the program and start it again choosing to host over the internet.</p>'
         : hostInfo.upnp === 'pending' ? '<p class="note">Asking your router to open the port…</p>'
         : hostInfo.upnp === 'failed' ? `<p class="note">Your router did not open the port by itself (${esc(hostInfo.reason || 'UPnP is off')}). Friends on your network can still join. For the internet, forward TCP port ${esc(hostInfo.port)} to this PC in the router's settings ("Port forwarding"), or use the tunnel script (host/Play-Online-Windows.cmd in the game's source folder), which needs no router changes.</p>`
         : hostInfo.public ? '' : '<p class="note">The port is open, but the router did not say your public address: friends use http://&lt;your public address&gt;:' + esc(hostInfo.port) + q + '.</p>');
@@ -447,6 +453,7 @@
     try { return new URL(v).origin; } catch { return null; }
   }
   function connect(then) {
+    if (hostHub) { ws = loopback(); ws.onopen = then; ws.onmessage = e => onMsg(JSON.parse(e.data)); ws.onclose = () => { ws = null; }; return; }
     const origin = serverOrigin();
     if (!origin) { $('menuErr').textContent = 'Enter the game server address first (the one the host\'s window shows).'; return; }
     store.set('pacvs.server', $('server').value.trim());
@@ -458,6 +465,16 @@
     ws.onclose = () => { if (mode === 'online') { toMenu('Disconnected from the server.'); } ws = null; };
   }
   function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+  /** The host's own seat when this device hosts: a stand-in for a socket, talking to the hub in this page. */
+  function loopback() {
+    const sock = { readyState: 1, onopen: null, onmessage: null, onclose: null };
+    const later = f => Promise.resolve().then(f);   // as a socket would: never within the caller
+    const c = hostHub.connect(text => later(() => { if (sock.readyState === 1 && sock.onmessage) sock.onmessage({ data: text }); }));
+    sock.send = text => c.message(text);
+    sock.close = () => { if (sock.readyState !== 1) return; sock.readyState = 3; c.close(); later(() => { if (sock.onclose) sock.onclose(); }); };
+    later(() => { if (sock.onopen) sock.onopen(); });
+    return sock;
+  }
   function onMsg(m) {
     if (m.t === 'err') { $('menuErr').textContent = m.msg; return; }
     if (m.t === 'room') {
@@ -1210,6 +1227,33 @@
     $('server').onchange = () => {                                        // a pasted room link fills the code in too
       const m = /[?&]room=([A-Za-z0-9]{1,4})/.exec($('server').value);
       if (m) $('code').value = m[1].toUpperCase();
+    };
+  }
+  // ------------------------------------------------------------------ the app: host on this Wi-Fi, or join
+  // Friends' messages come through the app's web server into the hub here; the app calls these by visitor number.
+  const visitors = new Map();
+  window.PacvsHost = {
+    open(id) { if (hostHub) visitors.set(id, hostHub.connect(text => APP.send(id, text))); },
+    message(id, text) { const c = visitors.get(id); if (c) c.message(text); },
+    close(id) { const c = visitors.get(id); if (c) { c.close(); visitors.delete(id); } }
+  };
+  if (APP) {
+    document.body.classList.add('app-start'); $('appStart').classList.remove('hidden');
+    $('appHost').onclick = () => {
+      let r; try { r = JSON.parse(APP.startHost(8080) || '{}'); } catch { r = {}; }
+      if (!r.port) { $('appErr').textContent = r.error || 'The app could not start its web server.'; return; }
+      hostHub = PacHub.create();
+      hostInfo = { port: r.port, local: 'http://127.0.0.1:' + r.port, lan: r.lan, public: null, upnp: 'off', reason: '', device: 'phone' };
+      $('serverRow').hidden = true; $('online').hidden = true;   // no server to type in, and no quick match against yourself
+      document.body.classList.remove('app-start'); $('appStart').classList.add('hidden');
+      $('menuErr').textContent = r.lan ? 'This phone is hosting for this Wi-Fi. Pick a maze, then press "Host an online room" and send friends the link it shows.'
+        : 'This phone is hosting, but it has no Wi-Fi address yet: join a Wi-Fi network, or turn on a hotspot, so friends can reach it.';
+      $('host').classList.add('primary'); try { $('host').scrollIntoView({ block: 'center' }); } catch { /* old browser */ }
+    };
+    $('appJoin').onclick = () => {
+      document.body.classList.remove('app-start'); $('appStart').classList.add('hidden');
+      $('menuErr').textContent = 'Type the address or paste the link your friend sent into the Game server box, then Join.';
+      try { $('server').focus(); } catch { /* no focus */ }
     };
   }
   fetchHostInfo();
