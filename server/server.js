@@ -15,7 +15,7 @@ const STATIC = { '/': 'client/index.html', '/soundlab': 'client/soundlab.html' }
 let SEA = null; try { const sea = require('node:sea'); if (sea.isSea()) SEA = sea; } catch (e) { /* older Node */ }
 
 // Set by the single-file host program (host/exe.js): the links that reach this PC, for the host's own page.
-const hostInfo = { on: false };
+const hostInfo = { on: false };   // filled by the host program: port, local, lan, public, upnp (pending/open/failed/off), reason
 const isLocal = a => a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 
 const server = http.createServer((req, res) => {

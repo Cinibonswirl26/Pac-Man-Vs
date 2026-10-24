@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    jobs:
+jobs:
   build:
     runs-on: windows-latest
     defaults:
@@ -22,7 +22,7 @@ on:
       - run: node host/build-exe.js
       - name: Smoke test the exe
         run: |
-          $p = Start-Process -FilePath host\dist\PacManVs.exe -ArgumentList '--port=8090' -PassThru -RedirectStandardOutput exe.log -RedirectStandardError exe.err
+          $p = Start-Process -FilePath host\dist\PacManVs.exe -ArgumentList '--host','--port=8090' -PassThru -RedirectStandardOutput exe.log -RedirectStandardError exe.err
           Start-Sleep -Seconds 8
           $r = Invoke-WebRequest -UseBasicParsing http://localhost:8090/
           $s = Invoke-WebRequest -UseBasicParsing http://localhost:8090/shared/sim.js

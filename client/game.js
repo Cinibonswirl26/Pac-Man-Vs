@@ -429,7 +429,8 @@
     if (hostInfo.public) rows.push(['Friends over the internet', hostInfo.public + q]);
     if (hostInfo.lan) rows.push(['Same Wi-Fi or network', hostInfo.lan + q]);
     $('hostLinkRows').innerHTML = rows.map(([k, v], i) => `<div class="hl"><span>${k}:</span><code>${esc(v)}</code><button data-copy="${i}">Copy</button></div>`).join('') +
-      (hostInfo.upnp === 'pending' ? '<p class="note">Asking your router to open the port…</p>'
+      (hostInfo.upnp === 'off' ? '<p class="note">Hosting for this network only: nothing on your router was changed, so only people on this Wi-Fi or network can join. For friends over the internet, close the program and start it again choosing to host over the internet.</p>'
+        : hostInfo.upnp === 'pending' ? '<p class="note">Asking your router to open the port…</p>'
         : hostInfo.upnp === 'failed' ? `<p class="note">Your router did not open the port by itself (${esc(hostInfo.reason || 'UPnP is off')}). Friends on your network can still join. For the internet, forward TCP port ${esc(hostInfo.port)} to this PC in the router's settings ("Port forwarding"), or use the tunnel script (host/Play-Online-Windows.cmd in the game's source folder), which needs no router changes.</p>`
         : hostInfo.public ? '' : '<p class="note">The port is open, but the router did not say your public address: friends use http://&lt;your public address&gt;:' + esc(hostInfo.port) + q + '.</p>');
     box.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {

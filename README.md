@@ -80,21 +80,28 @@ The server has to be reachable by everyone. Either:
 
 Rooms live in memory and disappear when everyone leaves.
 
-### Free: one Windows program, no setup (opens the port through your router)
+### Free: one Windows program, no setup
 
-`PacManVs.exe` is the whole server in one file: double-click it, allow it through the Windows firewall when asked,
-and it starts hosting, asks your router to open the port through UPnP, prints three links (you, same Wi-Fi,
-internet) and opens the page. Send friends the internet link, `http://<your public address>:8080`. Close the window
-to stop; the port is closed again on the way out. If your router has UPnP switched off it says so and tells you
-which port to forward by hand (or use the tunnel script below, which needs no router changes). The links are plain
-http on your own address: use it for games with people you know.
+`PacManVs.exe` is the whole server in one file. Double-click it and it asks what you want to do:
 
-It opens your browser on the game with a note to host: load your disc, pick a maze and press **Host an online
-room**. The lobby then shows a **Hosting from this PC** box with ready links to send, one for friends over the
-internet (the public address your router reported) and one for the same Wi-Fi, each with a Copy button; **Copy invite
-link** uses the internet one too. If the router would not open the port, the box says so and how to forward it by
-hand. Windows may say the program is from an unknown publisher (it is not code-signed): choose "More info", then
-"Run anyway".
+1. **Host a game for friends over the internet.** It starts hosting, asks your router to open the port through
+   UPnP, prints three links (you, same Wi-Fi, internet) and opens the page. Send friends the internet link,
+   `http://<your public address>:8080`. Close the window to stop; the port is closed again on the way out. If your
+   router has UPnP switched off it says so and tells you which port to forward by hand (or use the tunnel script
+   below, which needs no router changes). The links are plain http on your own address: use it for games with
+   people you know.
+2. **Host a game on this Wi-Fi or network only.** The same, but the router is left alone: only people on your
+   network can join, with the same-Wi-Fi link.
+3. **Join a friend's game.** Paste the link they sent and it opens in your browser. Nothing is hosted from your PC
+   and no port is opened; pasting the link into a browser yourself does the same.
+
+When hosting, allow the program through the Windows firewall when asked. It opens your browser on the game with a
+note to host: load your disc, pick a maze and press **Host an online room**. The lobby then shows a **Hosting from
+this PC** box with ready links to send, one for friends over the internet (the public address your router reported)
+and one for the same Wi-Fi, each with a Copy button; **Copy invite link** uses the internet one too. If the router
+would not open the port, the box says so and how to forward it by hand. Windows may say the program is from an
+unknown publisher (it is not code-signed): choose "More info", then "Run anyway". From a shortcut or script,
+`--host`, `--lan` or `--join=<link>` skip the question.
 
 Getting the file: the GitHub Action in `.github/workflows/exe.yml` builds it on every push of this folder (and on
 demand from the Actions tab); open the run and download **PacManVs-exe**. Or build it yourself with
