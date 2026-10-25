@@ -910,11 +910,12 @@
   let cell = 0, mazeCv = null, fogCv = null, dpr = 1;
   function layout() {
     const st = $('stage'), aw = st.clientWidth, ah = st.clientHeight;
-    const c = Math.max(8, Math.floor(Math.min(aw / W, ah / H)));
     dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (c === cell && cv.width === W * c * dpr) return;
-    cell = c; cv.width = W * c * dpr; cv.height = H * c * dpr; cv.style.width = W * c + 'px'; cv.style.height = H * c + 'px';
-    mazeCv = document.createElement('canvas'); mazeCv.width = cv.width; mazeCv.height = cv.height; drawMaze(mazeCv.getContext('2d'), c * dpr);
+    const cd = Math.max(8 * dpr, Math.floor(Math.min(aw * dpr / W, ah * dpr / H)));   // a cell in whole device pixels, so a dense screen loses less to rounding
+    const c = cd / dpr;
+    if (c === cell && cv.width === W * cd) return;
+    cell = c; cv.width = W * cd; cv.height = H * cd; cv.style.width = W * c + 'px'; cv.style.height = H * c + 'px';
+    mazeCv = document.createElement('canvas'); mazeCv.width = cv.width; mazeCv.height = cv.height; drawMaze(mazeCv.getContext('2d'), cd);
     fogCv = document.createElement('canvas'); fogCv.width = cv.width; fogCv.height = cv.height;
   }
   function wall(x, y) { return y >= 0 && y < H && x >= 0 && x < W && (S.ROWS[y][x] === '#' || S.ROWS[y][x] === '='); }

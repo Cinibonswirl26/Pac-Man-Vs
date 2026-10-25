@@ -65,7 +65,19 @@
   #hop.cool { opacity: 0.45; }
   #hop { position: fixed; right: 16px; bottom: 16px; width: 92px; height: 92px; border-radius: 50%; border: 3px solid #ff6ec8; background: rgba(255,110,200,0.25); color: #fff; font-weight: 700; font-size: 16px; z-index: 5; }
   @media (pointer: coarse) { #pad { display: grid; } }
-  @media (max-width: 520px) { #hud { grid-template-columns: repeat(2, 1fr); } #seats { grid-template-columns: 1fr; } }
+  /* a short screen (a phone on its side): the scores shrink to a line each so the maze gets the height */
+  @media (max-height: 540px) {
+    #game { gap: 2px; padding-top: 2px; }
+    #hud { gap: 4px; }
+    .pl { display: flex; align-items: center; gap: 6px; padding: 1px 6px; font-size: 11px; }
+    .pl .n { flex: 1; min-width: 0; } .pl .n .note { min-width: 0; overflow: hidden; text-overflow: ellipsis; } .pl .s { flex: none; font-size: 13px; }
+    #status { font-size: 11px; }
+  }
+  /* on a touch screen on its side the pad floats over the corner instead of taking a strip off the bottom */
+  @media (pointer: coarse) and (orientation: landscape) {
+    #pad { position: fixed; left: calc(10px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 5; padding: 0; grid-template-columns: repeat(3, 50px); grid-template-rows: repeat(2, 50px); opacity: .9; }
+  }
+  @media (max-width: 520px) { body { padding-inline: 4px; } #hud { grid-template-columns: repeat(2, 1fr); } #seats { grid-template-columns: 1fr; } }   /* a narrow screen: the maze takes the width */
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   #fullscreen { position: fixed; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); z-index: 6; width: 44px; height: 44px; min-height: 0; padding: 0; display: flex; align-items: center; justify-content: center; background: rgba(5,6,15,0.7); border-radius: 8px; opacity: .75; }
   #fullscreen:hover, #fullscreen:focus-visible { opacity: 1; }
