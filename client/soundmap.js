@@ -102,13 +102,19 @@
   // Stage numbers are the disc's (1 = Original Pac-Man ... 13 = Haunted Hall); 0 is the built-in maze.
   const MUSIC_KEY = 'pacvs.music.v1';
   const STREAM_NAMES = {
-    pacmanBGM00_FX_LR: 'Classic start jingle', pacmaniaBGM02_FX_LR: 'Pac-Mania track 2', pacmaniaBGM03_FX_LR: 'Pac-Mania track 3',
-    pacmaniaBGM05_FX_LR: 'Exchange screen tune (Pac-Mania track 5)', pacmaniaBGM06_FX_LR: 'Pac-Mania track 6', pacmaniaBGM07_FX_LR: 'Pac-Mania track 7',
-    Pac_Arr_bgm02_LR_Comp: 'Arrangement track', Pac_Arr_Clear_LR: 'Maze cleared jingle', Pac_Opening_Comp_LR: 'Opening theme (menus)', Pac_Op_loop73_LR: 'Opening loop'
+    pacmanBGM00_FX_LR: 'Classic start jingle', pacmaniaBGM02_FX_LR: 'Panic Pier (Pac-Mania track 2)', pacmaniaBGM03_FX_LR: 'Frantic Forest (Pac-Mania track 3)',
+    pacmaniaBGM05_FX_LR: 'Exchange screen tune (Pac-Mania track 5)', pacmaniaBGM06_FX_LR: 'R.I.P. Park (Pac-Mania track 6)', pacmaniaBGM07_FX_LR: 'Manic Manor (Pac-Mania track 7)',
+    Pac_Arr_bgm02_LR_Comp: 'Haunted Hall (Arrangement track)', Pac_Arr_Clear_LR: 'Maze cleared jingle', Pac_Opening_Comp_LR: 'Opening theme (menus)', Pac_Op_loop73_LR: 'Opening loop'
   };
   const ROTATION = ['pacmaniaBGM02_FX_LR', 'pacmaniaBGM03_FX_LR', 'pacmaniaBGM06_FX_LR', 'pacmaniaBGM07_FX_LR'];
   const MUSIC_CHOICES = [['original', 'As the original stage: start jingle, then the siren'], ['rotate', 'Pac-Mania tracks, a different one each round'], ['none', 'No music']];
-  function musicDefaults() { const m = { 0: 'original' }; for (let k = 1; k <= 13; k++) m[k] = k === 1 ? 'original' : 'rotate'; return m; }
+  // What the original plays on each of its stages (heard from the game itself, see FIDELITY.md): the Original stage has
+  // the siren, each other stage its own stream. The disc's mazes without a menu entry never play in the original, so they
+  // take the track of the family they resemble: the piers Panic Pier's, Night Forest Frantic Forest's, the parks
+  // R.I.P. Park's, Spotlight Hall Haunted Hall's.
+  const STAGE_MUSIC = { 1: 'original', 5: 'pacmaniaBGM02_FX_LR', 6: 'pacmaniaBGM03_FX_LR', 4: 'pacmaniaBGM06_FX_LR', 8: 'pacmaniaBGM07_FX_LR', 13: 'Pac_Arr_bgm02_LR_Comp',
+    2: 'pacmaniaBGM02_FX_LR', 3: 'pacmaniaBGM02_FX_LR', 11: 'pacmaniaBGM02_FX_LR', 7: 'pacmaniaBGM03_FX_LR', 9: 'pacmaniaBGM06_FX_LR', 12: 'pacmaniaBGM06_FX_LR', 10: 'Pac_Arr_bgm02_LR_Comp' };
+  function musicDefaults() { const m = { 0: 'original' }; for (let k = 1; k <= 13; k++) m[k] = STAGE_MUSIC[k] || 'rotate'; return m; }
   function loadMusic() {
     const m = musicDefaults();
     try { const o = JSON.parse(localStorage.getItem(MUSIC_KEY)); if (o && typeof o === 'object') for (const k of Object.keys(m)) if (typeof o[k] === 'string' && o[k]) m[k] = o[k]; } catch { /* none saved */ }
@@ -155,5 +161,5 @@
     };
     return api;
   }
-  return { EVENTS, VOICE_NAMES, SFX_NAMES, defaults, load, save, create, KEY, STREAM_NAMES, ROTATION, MUSIC_CHOICES, MUSIC_KEY, musicDefaults, loadMusic, saveMusic, musicFor };
+  return { EVENTS, VOICE_NAMES, SFX_NAMES, defaults, load, save, create, KEY, STREAM_NAMES, ROTATION, STAGE_MUSIC, MUSIC_CHOICES, MUSIC_KEY, musicDefaults, loadMusic, saveMusic, musicFor };
 });

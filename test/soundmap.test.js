@@ -13,8 +13,12 @@ for (const e of SM.EVENTS) ok(m.map[e.id].length, e.id + ' has a default');
 log.length = 0; m.fire('exchangeTick', { me: 0 }); m.fire('exchangeTick', { me: -1 }); ok(log.join() === 'tcount,tcount', 'everyone hears the count tone on the exchange screen: ' + log);
 // music by stage
 const md = SM.musicDefaults();
-ok(md[1] === 'original' && md[0] === 'original' && md[7] === 'rotate', 'defaults: the Original stage and the built-in maze as the original, the rest rotate');
-ok(SM.musicFor(md, 1, 3) === 'original' && SM.musicFor(md, 7, 0) === 'pacmaniaBGM02_FX_LR' && SM.musicFor(md, 7, 5) === 'pacmaniaBGM03_FX_LR', 'rotation by round');
-ok(SM.musicFor({ 7: 'Pac_Arr_bgm02_LR_Comp' }, 7, 2) === 'Pac_Arr_bgm02_LR_Comp' && SM.musicFor({ 1: 'none' }, 1, 0) === 'none' && SM.musicFor({}, 2, 1) === 'pacmaniaBGM03_FX_LR', 'a chosen stream, silence, and a missing entry falling back');
+ok(md[1] === 'original' && md[0] === 'original', 'defaults: the Original stage and the built-in maze as the original');
+ok(md[5] === 'pacmaniaBGM02_FX_LR' && md[6] === 'pacmaniaBGM03_FX_LR' && md[4] === 'pacmaniaBGM06_FX_LR' && md[8] === 'pacmaniaBGM07_FX_LR' && md[13] === 'Pac_Arr_bgm02_LR_Comp', "defaults: each of the original's stages has its own stream, as the game plays them");
+ok(md[2] === md[5] && md[11] === md[5] && md[7] === md[6] && md[9] === md[4] && md[10] === md[13], 'the mazes without a menu entry take the track of their family');
+ok(Object.values(md).every(v => v === 'original' || SM.STREAM_NAMES[v]), 'every default is a named stream or the original treatment');
+ok(SM.musicFor(md, 1, 3) === 'original' && SM.musicFor(md, 5, 0) === 'pacmaniaBGM02_FX_LR' && SM.musicFor(md, 5, 5) === 'pacmaniaBGM02_FX_LR', 'the stage track does not change with the round');
+ok(SM.musicFor({ 7: 'rotate' }, 7, 0) === 'pacmaniaBGM02_FX_LR' && SM.musicFor({ 7: 'rotate' }, 7, 5) === 'pacmaniaBGM03_FX_LR', 'rotation by round when chosen');
+ok(SM.musicFor({ 7: 'Pac_Arr_bgm02_LR_Comp' }, 7, 2) === 'Pac_Arr_bgm02_LR_Comp' && SM.musicFor({ 1: 'none' }, 1, 0) === 'none' && SM.musicFor({}, 2, 1) === 'pacmaniaBGM02_FX_LR', 'a chosen stream, silence, and a missing entry falling back to the default');
 ok(SM.ROTATION.every(n => SM.STREAM_NAMES[n]), 'every rotation track is named');
 if (fails) process.exit(1); console.log('sound map ok');
