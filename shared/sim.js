@@ -71,7 +71,7 @@
     // cyan: a mirror clone for 10 s; pink: every ghost into the pot in the house for 4 s (a ghost taking it hops
     // to a cell 2-4 away from Pac-Man instead); orange: pellets digested without pausing for 10 s (a ghost drops big pellets that slow
     // Pac-Man); gold: 100 points and nothing else. Points are fruit-like here (the arcade gave 1000).
-    speedMult: 2, capsuleTime: 10, dashCool: 2, hopNear: 2, hopFar: 4, potTime: 4, capsulePts: 400, goldPts: 100, bigPause: 0.5, bigPts: 50, bigMax: 10,
+    speedMult: 2, capsuleTime: 10, dashCool: 2, hopNear: 2, hopFar: 4, potTime: 4, capsulePts: 400, goldPts: 100, bigSlowTime: 0.8, bigSlowSpeed: 0.7, bigPts: 50, bigMax: 10,
     itemOdds: [['fruit', 3], ['red', 2], ['cyan', 2], ['pink', 2], ['orange', 2], ['gold', 1]]
   };
 
@@ -126,7 +126,7 @@
     return Object.assign({
       pellets, total, left: total, target: opts.target || CFG.defaultTarget,
       frightLeft: 0, chain: 0, over: false, overReason: '', events: [],
-      pac: Object.assign(ent(START.pac), { pause: 0, slow: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
+      pac: Object.assign(ent(START.pac), { bigSlow: 0, slow: 0 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, speedLeft: 0, digest: 0, clone: null } : {}),
       // opts.standin[i]: ghost slot i has nobody playing it and is a grey stand-in: harmless until a ghost player touches it.
       // opts.claims[i]: the ghost slot stand-in i is already woken by (tests only; a match starts every stand-in grey), or -1
       ghosts: START.ghosts.map((g, i) => Object.assign(ent(g), { mode: 'normal', id: i, sightLeft: 0, grey: !!(opts.standin && opts.standin[i]) && !(opts.claims && opts.claims[i] >= 0), standin: !!(opts.standin && opts.standin[i]), claim: opts.standin && opts.standin[i] && opts.claims && opts.claims[i] >= 0 ? opts.claims[i] : -1 }, ARR ? { dash: 0, turned: false, bonk: 0, air: null, onPad: -1, stun: 0, dashLeft: 0, dashCool: 0, clone: null, dropLeft: 0, dropped: 0, potted: false, hopLeft: 0 } : {})),
@@ -355,7 +355,7 @@
     if (j == null || g.dropped >= CFG.bigMax) return;
     const x = j % W, y = Math.floor(j / W);
     if (inHouse(x, y) || cellAt(x, y) === 'D' || s.pellets[j] || s.big[j] || padAt[j] >= 0 || (x === FRUIT[0] && y === FRUIT[1])) return;
-    s.big[j] = 1; g.dropped++;
+    s.big[j] = 1; s.left++; g.dropped++;   // a new dot in the maze: the pellet counter goes up with it and down when it is eaten
   }
   /** Whether a ghost is out of play for touching anything: in the air, dizzy or in the pot. */
   const outOfPlay = g => g.air || g.stun > 0 || g.bonk > 0 || g.potted;
@@ -369,10 +369,11 @@
   function eatCell(s, e) {
     if (e.x >= W) return false;                 // nothing to eat in the hidden part of the tunnel
     const pi = Math.floor(e.y) * W + Math.floor(e.x), real = e === s.pac;
-    if (ARR && s.big[pi]) {                     // a big pellet dropped by a ghost: worth more, slow to chew
-      s.big[pi] = 0; s.events.push('bigpellet'); award(s, s.pacPlayer, CFG.bigPts);
-      if (real && !s.pac.dash && !(s.pac.speedLeft > 0) && !(s.pac.digest > 0)) s.pac.pause += CFG.bigPause;
+    if (ARR && s.big[pi]) {                     // a big pellet dropped by a ghost: a dot like the rest, worth more, and slow to chew
+      s.big[pi] = 0; s.left--; s.eaten++; s.events.push('bigpellet'); award(s, s.pacPlayer, CFG.bigPts);
+      if (real && !s.pac.dash && !(s.pac.speedLeft > 0) && !(s.pac.digest > 0)) s.pac.bigSlow = CFG.bigSlowTime;   // a slowdown that restarts on each one, not a stop that adds up
       if (s.over) return true;
+      if (s.left <= 0) return clearRound(s);
     }
     if (!s.pellets[pi]) return false;
     const power = s.pellets[pi] === 2;
@@ -385,8 +386,13 @@
     }
     award(s, s.pacPlayer, power ? CFG.powerPts : CFG.pelletPts);
     if (s.over) return true;
-    if (s.left <= 0) { if (s.scores[s.pacPlayer] < s.target) award(s, s.pacPlayer, CFG.clearBonus); s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'cleared'; return true; }
+    if (s.left <= 0) return clearRound(s);
     return false;
+  }
+  /** The last dot is gone: the bonus if Pac-Man is still below the target, and the round is over. */
+  function clearRound(s) {
+    if (s.scores[s.pacPlayer] < s.target) award(s, s.pacPlayer, CFG.clearBonus);
+    s.over = true; s.overReason = s.winner >= 0 ? 'won' : 'cleared'; return true;
   }
   /** A frightened ghost is eaten: Pac-Man gains the chain points and the owner loses them (measured on the disc). */
   function eatGhost(s, i) {
@@ -425,11 +431,11 @@
     if (s.pac.air) flyStep(s, s.pac, 'pac', dt);
     else if (s.pac.bonk > 0) s.pac.bonk = Math.max(0, s.pac.bonk - dt);     // dizzy against a wall: going nowhere
     else {
-      const held = s.pac.dash ? 0 : Math.min(dt, s.pac.pause || 0);          // time still owed to a big pellet (a dash owes nothing)
-      s.pac.pause = s.pac.dash ? 0 : (s.pac.pause || 0) - held;
       const chewing = s.pac.slow > 0 ? 16 / 17 : 1;                           // the pellet window: 17 frames per cell instead of 16
       if (s.pac.slow > 0) s.pac.slow = Math.max(0, s.pac.slow - dt);
-      moveEnt(s, s.pac, CFG.pacSpeed * chewing * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt - held, 'pac');
+      const heavy = s.pac.bigSlow > 0 && !s.pac.dash ? CFG.bigSlowSpeed : 1;  // after a big pellet: slower for a moment (a dash is not slowed)
+      if (s.pac.bigSlow > 0) s.pac.bigSlow = s.pac.dash ? 0 : Math.max(0, s.pac.bigSlow - dt);
+      moveEnt(s, s.pac, CFG.pacSpeed * chewing * heavy * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt, 'pac');
       padCheck(s, s.pac, 'pac');
     }
     if (!s.pac.air && s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
