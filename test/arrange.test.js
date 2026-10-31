@@ -70,6 +70,8 @@ const run = (s, n, inp) => { for (let i = 0; i < n; i++) LV.update(s, inp || idl
   ok(s4.pac.dash > 0 && s4.pac.dash < db - 0.3 && s4.pac.dir === 1 && s4.pac.x > xb, `holding the opposite direction brakes hard (${db.toFixed(2)} -> ${s4.pac.dash.toFixed(2)}) without reversing yet`);
   t = 0; while (s4.pac.dash && t++ < 30) LV.update(s4, inp(3));
   ok(t <= 8 && !s4.pac.dash && !s4.pac.bonk, `the brake spends the dash in ${t} ticks`);
+  t = 0; while (s4.pac.dir !== 3 && t++ < 20) LV.update(s4, inp(3));               // the turn back waits for the original's turning window
+  ok(t <= 9, `he turns back by the next centre at the latest (${t} ticks)`);
   const xr = s4.pac.x; run(s4, 5, inp(3));
   ok(s4.pac.dir === 3 && s4.pac.x < xr && near((xr - s4.pac.x) / (5 * S.CFG.tick), S.CFG.pacSpeed, 0.5), 'then he walks back at walking speed');
   // a wall: the bonk

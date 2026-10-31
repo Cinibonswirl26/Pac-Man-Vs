@@ -16,7 +16,7 @@ for (let seed = 1; seed <= 20; seed++) {
       const x = Math.floor(e.x), y = Math.floor(e.y);
       ok(S.ROWS[y][((x % S.W) + S.W) % S.W] !== '#', `seed ${seed} step ${steps}: entity in wall at ${e.x},${e.y}`);
       const onX = Math.abs(e.x - Math.floor(e.x) - 0.5) < 1e-3, onY = Math.abs(e.y - Math.floor(e.y) - 0.5) < 1e-3;
-      ok(onX || onY, `seed ${seed} step ${steps}: off-lane ${e.x},${e.y}`);
+      ok(onX || onY || e.driftAx, `seed ${seed} step ${steps}: off-lane ${e.x},${e.y}`);
     }
     if (Math.hypot(s.pac.x - lastX, s.pac.y - lastY) > 1e-6) moved++;
     lastX = s.pac.x; lastY = s.pac.y;
@@ -286,6 +286,40 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 16 / 21, 1e-9) && near(S.CFG.eyeSpee
   ok(c.n > g.n, `a grey stand-in is slower still: ${c.n} ticks`);
   const s2 = S.newRound([1600, 0, 0, 0], 0); s2.ghosts[0].x = 10.5; s2.ghosts[0].y = row + 0.5;
   ok(!s2.ghosts.some(gh => S.dist(gh, s2.pac) < S.CFG.catchDist), 'distance still sane away from the tunnel');
+}
+// The original's turning rules (its turning routine at 0x8001DC0C, SPEC.md "Movement"): a held direction is taken at a
+// centre or up to 3 px (3/8 cell) past it; a turn at right angles drifts back to the centre line diagonally; a turn back
+// waits until then too; one change per move.
+{
+  const mk = (x, dir) => { const s = S.newRound([1600, 0, 0, 0], 0); s.pellets.fill(0); s.left = 99; s.fruitTimer = 1e9;
+    s.ghosts.forEach((g, i) => { g.x = 18.5 + i; g.y = 19.5; g.dir = g.want = 3; });   // far away, along the bottom row
+    s.pac.x = x; s.pac.y = 4.5; s.pac.dir = s.pac.want = dir; return s; };
+  const go = (s, d, n = 1) => { for (let i = 0; i < n; i++) S.update(s, { pac: d, ghosts: [null, null, null] }); };
+  const per = S.CFG.pacSpeed * S.CFG.tick;                               // cells a tick
+  // up pressed 2 px past the (5,4) junction while heading right: taken, from the junction's centre
+  let s = mk(5.5 + 2 / 8, 1); go(s, 0);
+  ok(s.pac.dir === 0 && s.pac.y < 4.5 && s.pac.x < 5.75 && s.pac.x > 5.5, `a turn 2 px late is taken, drifting back (${s.pac.x.toFixed(3)},${s.pac.y.toFixed(3)})`);
+  ok(near(5.75 - s.pac.x, 4.5 - s.pac.y, 1e-6), 'the drift back runs at the same rate as the new heading: a diagonal');
+  go(s, 0, 3); ok(s.pac.x === 5.5 && s.pac.dir === 0, 'back on the column once the drift is used up');
+  let t = 1 + 3; while (s.pac.y > 3.5 + 1e-9 && t < 40) { go(s, 0); t++; }
+  ok(near(t * per, 1, per), `the turned move still takes one cell's time (${t} ticks for ${(1 / per).toFixed(1)})`);
+  // the same press 4 px past the junction: too late, kept for the next junction up the row
+  s = mk(5.5 + 4 / 8, 1); go(s, 0);
+  ok(s.pac.dir === 1 && s.pac.y === 4.5, 'a turn 4 px late is not taken');
+  t = 0; while (s.pac.dir === 1 && t < 40) { go(s, 0); t++; }
+  ok(s.pac.dir === 0 && Math.floor(s.pac.x) === 10 && near(s.pac.x, 10.5, 1e-6), `it is taken at the next junction instead (${s.pac.x.toFixed(2)})`);
+  // a turn back: at 3 px yes, at 5 px it waits for the next centre
+  s = mk(7.5 + 3 / 8, 1); go(s, 3); ok(s.pac.dir === 3 && s.pac.x < 7.875, 'a turn back 3 px past a centre is taken at once');
+  s = mk(7.5 + 5 / 8, 1); go(s, 3); ok(s.pac.dir === 1 && s.pac.x > 7.625, 'a turn back 5 px past a centre waits');
+  t = 0; while (s.pac.dir === 1 && t < 40) { go(s, 3); t++; }
+  ok(s.pac.dir === 3 && near(s.pac.x, 8.5, per + 1e-6), `and is taken at the next centre (${s.pac.x.toFixed(3)})`);
+  // one change per move: after a late turn up, down is refused until the next centre
+  s = mk(5.5 + 1 / 8, 1); go(s, 0); ok(s.pac.dir === 0, 'late turn taken'); go(s, 2); ok(s.pac.dir === 0, 'a second change in the same move is refused');
+  t = 0; while (s.pac.dir === 0 && t < 40) { go(s, 2); t++; }
+  ok(s.pac.dir === 2 && near(s.pac.y, 3.5, per + 1e-6), `the turn back comes at the next centre (${s.pac.y.toFixed(3)})`);
+  // a turn back passes through the centre it left without turning there
+  s = mk(5.5 + 1 / 8, 1); go(s, 3); ok(s.pac.dir === 3, 'turned back'); go(s, 0, 4);
+  ok(s.pac.dir === 3 && s.pac.x < 5.5, `no turn at the junction it just left (${s.pac.x.toFixed(3)})`);
 }
 console.log(fails ? `${fails} FAILED` : 'all sim checks passed');
 process.exit(fails ? 1 : 0);

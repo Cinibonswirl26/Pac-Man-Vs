@@ -175,32 +175,48 @@
     return true;
   }
 
-  // Tile-centre movement: entities travel centre to centre, may reverse at any time,
-  // and only turn (or stop at a wall) when exactly on a centre.
+  // Tile-centre movement, as the original's turning and step routines (SPEC.md, "Movement"): a mover goes centre to
+  // centre. A held direction is taken at a centre, or while the mover is still within LATE (3 px of 8) past the
+  // centre it last left, if the cell next to that centre that way is open; it is never taken nearer the next centre.
+  // A late turn at right angles starts the move from the centre left behind: the mover heads the new way while the
+  // old axis drifts back to the centre line at the same rate, a short diagonal. A turn back is taken by the same rule
+  // (so not in the second half of a move). Only one change per move: after one, the next waits for the next centre.
+  // Eaten ghosts' eyes steer themselves ('eyes': the original runs them on a routine of their own) and turn at will.
+  const LATE = 3 / CELL;
   function step(e, speed, dt, who) {
     let rem = speed * dt;
     let guard = 8;
+    const rules = who !== 'eyes';
     while (rem > 1e-9 && guard-- > 0) {
       const cx = Math.floor(e.x) + 0.5, cy = Math.floor(e.y) + 0.5;
       let dx = DIRS[e.dir][0], dy = DIRS[e.dir][1];
       let ahead = (cx - e.x) * dx + (cy - e.y) * dy;
-      if (Math.abs(ahead) <= 1e-9) {
+      if (Math.abs(ahead) <= 1e-9 && !e.driftAx) {
         e.x = cx; e.y = cy; ahead = 0;
-        if (e.want !== e.dir && canGo(e, e.want, who)) { e.dir = e.want; dx = DIRS[e.dir][0]; dy = DIRS[e.dir][1]; }
+        if (e.want !== e.dir && !(rules && e.lock) && canGo(e, e.want, who)) { e.dir = e.want; dx = DIRS[e.dir][0]; dy = DIRS[e.dir][1]; if (rules) e.lock = 1; }
         if (!canGo(e, e.dir, who)) return;
-      } else if (e.want === OPP[e.dir]) {
-        e.dir = e.want; continue;
+      } else if (!rules) {
+        if (e.want === OPP[e.dir]) { e.dir = e.want; continue; }
+      } else if (e.want !== e.dir && !e.lock && !e.driftAx && ahead < 0 && -ahead <= LATE + 1e-9 && canGo(e, e.want, who)) {
+        if (e.want === OPP[e.dir]) { e.dir = e.want; e.lock = 2; continue; }   // back the way it came: through the centre it left, no turn there
+        e.driftAx = dx ? 'x' : 'y'; e.driftTo = dx ? cx : cy;                    // at right angles: from the centre left behind
+        e.dir = e.want; e.lock = 1; continue;
       }
       // distance to the next centre in the heading direction
-      const dn = ahead > 0 ? ahead : 1 + ahead;
+      const dn = ahead > 1e-9 ? ahead : 1 + ahead;
       const m = Math.min(rem, dn || 1);
       e.x += dx * m; e.y += dy * m; rem -= m;
+      if (e.driftAx) {                                                           // the old axis back to the centre line, at the same rate
+        const d = e.driftTo - e[e.driftAx];
+        if (Math.abs(d) <= m + 1e-9) { e[e.driftAx] = e.driftTo; e.driftAx = null; } else e[e.driftAx] += Math.sign(d) * m;
+      }
       const ring = ringOf(e.y);
       if (e.x < 0) e.x += ring; else if (e.x >= ring) e.x -= ring;
       if (m >= (dn || 1) - 1e-9) {
-        // landed on a centre: snap exactly
+        // landed on a centre: snap exactly; the move is over (a turn back passes the centre it left without stopping)
         e.x = Math.floor(e.x + 1e-7) + 0.5; e.y = Math.floor(e.y + 1e-7) + 0.5;
         if (dx < 0 || dy < 0) { e.x = Math.round(e.x - 0.5) + 0.5; e.y = Math.round(e.y - 0.5) + 0.5; }
+        e.driftAx = null; e.lock = e.lock === 2 ? 1 : 0;
       }
     }
   }
@@ -382,7 +398,7 @@
     s.events.push(power ? 'power' : 'pellet');
     if (power) {
       s.frightLeft = CFG.frightTime; s.chain = 0;
-      s.ghosts.forEach(g => { if (g.mode === 'normal') { g.mode = 'fright'; g.want = OPP[g.dir]; } });   // grey stand-ins too
+      s.ghosts.forEach(g => { if (g.mode === 'normal') { g.mode = 'fright'; g.dir = g.want = OPP[g.dir]; g.lock = 0; g.driftAx = null; } });   // grey stand-ins too: they turn round at once
     }
     award(s, s.pacPlayer, power ? CFG.powerPts : CFG.pelletPts);
     if (s.over) return true;
@@ -664,6 +680,11 @@
     return r;
   }
   const atCentre = e => Math.abs(e.x - Math.floor(e.x) - 0.5) < 0.05 && Math.abs(e.y - Math.floor(e.y) - 0.5) < 0.05;
+  /** Whether a choice made now is taken at this cell: from just short of its centre to the end of the turning window
+   *  past it (LATE, see step), with no turn taken in this move yet. */
+  const decides = e => { if (e.lock || e.driftAx) return false;
+    const along = (e.x - Math.floor(e.x) - 0.5) * DIRS[e.dir][0] + (e.y - Math.floor(e.y) - 0.5) * DIRS[e.dir][1];
+    return along >= -0.07 && along <= LATE; };
 
   /** Earliest time (s) any dangerous ghost could stand on each tile. */
   function ghostArrival(s) {
@@ -690,18 +711,26 @@
     level = level == null ? 1 : level;
     const p = s.pac;
     if (p.air || p.bonk > 0) return null;             // no steering in the air or while dizzy against a wall
-    // Emergency: a dangerous ghost closing head-on in this corridor, reverse right now.
+    // Emergency: a dangerous ghost closing head-on in this corridor, reverse right now. A turn back is only taken in
+    // the first 3 px out of a centre (the original's rule, see step), else at the next centre: look that much further
+    // ahead, twice over, as the ghost closes in at the same time.
+    const along = (p.x - Math.floor(p.x) - 0.5) * DIRS[p.dir][0] + (p.y - Math.floor(p.y) - 0.5) * DIRS[p.dir][1];
+    const wait = p.lock || along > LATE + 1e-9 ? (along > 0 ? 1 - along : -along) : 0;
     for (const g of s.ghosts) {
       if (g.mode !== 'normal' || g.grey) continue;
       const dx = g.x - p.x, dy = g.y - p.y, ahead = dx * DIRS[p.dir][0] + dy * DIRS[p.dir][1];
-      if (ahead > 0 && ahead < (level === 0 ? 1.2 : 2.0) && Math.abs(dx * DIRS[p.dir][1]) + Math.abs(dy * DIRS[p.dir][0]) < 0.4 && s.frightLeft < 1) {
+      if (ahead > 0 && ahead < (level === 0 ? 1.2 : 2.0) + 2 * wait && Math.abs(dx * DIRS[p.dir][1]) + Math.abs(dy * DIRS[p.dir][0]) < 0.4 && s.frightLeft < 1) {
         const back = OPP[p.dir];
         if (canGo(p, back, 'pac') || !atCentre(p)) return back;
       }
     }
-    if (!atCentre(p)) return null;
+    if (!decides(p)) return null;
+    let mem = pacMemo.get(s); if (!mem) pacMemo.set(s, mem = { left: s.left, t: s.time });
+    const here = tileIdx(Math.floor(p.x), Math.floor(p.y));
+    if (mem.cell === here && mem.at > s.time - 1 && canGo(p, p.dir, 'pac')) return null;   // one choice per cell (a fresh one if stopped at a wall)
+    mem.cell = here; mem.at = s.time;
     // Easy level: sometimes just keeps going or turns at random (a human who is not paying attention).
-    if (level === 0 && rng() < 0.12) { const ex = exits(p, 'pac'); return ex[Math.floor(rng() * ex.length)]; }
+    if (level === 0 && rng() < 0.05) { const ex = exits(p, 'pac'); return ex[Math.floor(rng() * ex.length)]; }   // once a cell: about as often as the old 12% at the junctions it used to notice
 
     const pd = distMap(p.x, p.y, 'pac');
     const ga = ghostArrival(s);
@@ -836,7 +865,10 @@
     const g = s.ghosts[gi];
     if (g.mode === 'eyes') return null;           // eaten ghosts steer themselves
     if (g.air || g.stun > 0 || g.bonk > 0 || g.potted) return null;   // no steering in the air, while dizzy or in the pot
-    if (!atCentre(g)) return null;
+    if (!decides(g)) return null;
+    const here = tileIdx(Math.floor(g.x), Math.floor(g.y));
+    if (g.aiCell === here && g.aiAt > s.time - 1 && canGo(g, g.dir, 'ghost')) return null;   // one choice per cell (a fresh one if stopped)
+    g.aiCell = here; g.aiAt = s.time;
     // Just revived: out through the door
     const gx = Math.floor(g.x), gy = Math.floor(g.y);
     if (inHouse(gx, gy) || cellAt(gx, gy) === 'D') return gx === DOOR[0] ? 0 : (gx < DOOR[0] ? 1 : 3);

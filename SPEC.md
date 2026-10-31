@@ -27,10 +27,26 @@ ghost records; slot 4 is Pac-Man.
 Ghosts gain nothing on Pac-Man: both run 16 fpc. (The hair of extra ghost speed measured earlier came from
 timing the console's 59.94 Hz frames against the handheld's 59.73 Hz frame counter.)
 
-Progress between cells is a float that climbs by 8/fpc each frame; at 8 the mover snaps to the next cell. A turn
-is accepted only while that progress is at most 3 px into the cell (0x8001DC0C), otherwise it is queued for the
-next cell. The queued direction is dropped if the chosen cell is a wall. The tile codes that count as open floor
-are 15 and 128-132; code 17 is open to Pac-Man only.
+Each mover has a record (0x80137AE0 + 0xA0 per player, Pac-Man is record 4): the cell it left (+0, +2, px), the cell
+it is going to (+4, +6), its direction (+8), a moving flag (+9), a queued direction (+0xA, 0x80 for none), the
+progress (+0xC, float px) and a turned-this-move flag (+0x9C). Each frame, for a player-driven mover:
+
+1. **Turning** (0x8001DC0C): a direction pressed this frame is stored as the queued one; with none pressed, the
+   queued one is used. It is taken only if the progress is **at most 3.0 px**, it differs from the current direction,
+   no turn was taken this move (+0x9C clear), and the cell next to the cell *left* that way is open. Taking it: the
+   target becomes that neighbour, the progress goes back to 0, the queue is cleared and +0x9C set. The drawn position
+   is not moved, so after a late turn at right angles the mover heads the new way while the old axis steps back to
+   the centre line at the same 8/fpc a frame: a short diagonal. A turn back is taken by the same test, so not in the
+   second half of a move. A press that is not taken stays queued and is tried every frame.
+2. **Carrying on** (0x8001DEEC): standing on a cell (+9 clear), the mover sets off the way it faces if that cell is
+   open, else stays put.
+3. **Step** (0x8001E104): each axis moves 8/fpc towards the target, and the progress climbs by 8/fpc.
+4. **Arrival** (0x8001E79C): at 8 px of progress the mover snaps onto the target, which becomes the cell left;
+   +9 and +0x9C clear.
+
+Computer movers (+0x16 set) skip 1 and 2 for their own routine (0x8001D330), which picks a direction only while
+standing on a cell, so they never turn or turn back mid-move. The tile codes that count as open floor are 15 and
+128-132; code 17 (the ghost-house door) is open to every record but Pac-Man's.
 
 Ghost against ghost: the step routine carries a check that would stop a ghost moving to within 8 px of another
 unless the distance is growing, but it is behind a flag at 0x801A40B4 that nothing in the program sets, so
