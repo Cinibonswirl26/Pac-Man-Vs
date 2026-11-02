@@ -1,5 +1,6 @@
 /* Tones the TV makes that are not on the disc. A few effects in the original's effect sequence play the sound chip's
- * own built-in waves instead of a recorded one; the exchange screen's count is one of them. These are recreations,
+ * own built-in waves instead of a recorded one: the exchange screen's count, the fruit bursting untaken, a stand-in
+ * woken, and a ghost's fruit sight widening and closing. These are recreations,
  * measured from a recording of the original's sound output, made on the fly.
  * Each sound is a list of voices: a pitch (one, or one per TV frame for a run of notes), a wave shape, when it starts,
  * and its loudness at each TV frame (1/59.94 s), ramped smoothly between frames. A new play of the same sound cuts the last one off, as the original
@@ -18,7 +19,10 @@
     for (let k = 1; k < n; k += 2) imag[k] = 4 / (Math.PI * k);
     return { real, imag };
   };
-  const WAVES = { square: square() };
+  const sine = () => { const real = new Float32Array(2), imag = new Float32Array(2); imag[1] = 1; return { real, imag }; };
+  // a fundamental with its octave at 0.44 and almost nothing above, as measured on the fruit-sight tones
+  const octave = () => { const real = new Float32Array(3), imag = new Float32Array(3); imag[1] = 1; imag[2] = 0.44; return { real, imag }; };
+  const WAVES = { square: square(), sine: sine(), octave: octave() };
 
   /** Per-frame pitches from [MIDI note, frames] pairs. */
   function notes(list) { const out = []; for (const [n, k] of list) for (let i = 0; i < k; i++) out.push(440 * Math.pow(2, (n - 69) / 12)); return out; }
@@ -39,6 +43,35 @@
       voices: [0, 10].map((at, k) => ({ wave: 'square', at,
         freq: notes([[72, 2], [71, 2], [70, 2], [69, 2], [68, 2], [67, 2], [66, 2], [65, 2], [64, 2], [63, 2], [62, 2], [61, 2]]),
         amp: Array.from({ length: 25 }, (_, i) => (i < 24 ? (k ? 0.6 : 1) : 0)) }))
+    },
+    // A grey stand-in woken (effect 0x1817): a near-pure low tone hopping to a new pitch about every frame for 18
+    // frames, from 233 Hz up through 260-430 Hz, with a softer voice an octave under it on the unsteady notes; the
+    // same every time (three recordings, read cycle by cycle under the round's siren)
+    wake: {
+      level: 0.42,
+      voices: [
+        { wave: 'sine', at: 0, freq: [233, 233, 335, 345, 290, 272, 393, 324, 349, 349, 259, 259, 391, 388, 322, 318, 434, 365],
+          amp: [1, 1, 0.67, 0.6, 0.6, 0.54, 0.64, 0.67, 0.4, 0.34, 0.82, 0.82, 0.58, 0.58, 0.63, 0.46, 0.57, 0.4, 0] },
+        { wave: 'sine', at: 0, freq: [233, 233, 335, 345, 290, 272, 393, 324, 349, 349, 259, 259, 391, 388, 322, 318, 434, 365].map(f => f / 2),
+          amp: [0, 0, 0.26, 0.2, 0.2, 0.34, 0.09, 0.27, 0.18, 0.15, 0, 0, 0.2, 0.3, 0.3, 0.06, 0.16, 0.1, 0] }
+      ]
+    },
+    // A ghost takes the fruit and its view starts to widen (effect 0x180B): one steady voice for 27 frames whose pitch
+    // wobbles downwards, from about 600 Hz down to 355, up to 480, down to 250, up to 328 and down to 151 Hz (three
+    // recordings, read frame by frame under the round's siren)
+    sightWide: {
+      level: 0.122,
+      voices: [{ wave: 'octave', at: 0,
+        freq: [558, 609, 588, 524, 410, 362, 355, 399, 480, 450, 416, 353, 291, 249, 269, 301, 328, 321, 275, 216, 181, 164, 176, 189, 192, 170, 151],
+        amp: Array.from({ length: 28 }, (_, i) => (i < 27 ? 1 : 0)) }]
+    },
+    // The view closes again (effect 0x180A, when the sight's timer runs out with the view still wide): the same voice
+    // wobbling upwards, nearly the widening run backwards, from 152 Hz to about 615 (three recordings that agree)
+    sightBack: {
+      level: 0.122,
+      voices: [{ wave: 'octave', at: 0,
+        freq: [152, 187, 203, 198, 176, 175, 194, 240, 298, 340, 334, 301, 269, 271, 309, 385, 453, 482, 448, 390, 361, 372, 447, 543, 615, 618, 600],
+        amp: Array.from({ length: 28 }, (_, i) => (i < 27 ? 1 : 0)) }]
     }
   };
 
