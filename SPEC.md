@@ -72,7 +72,7 @@ the other:
 | --- | --- |
 | Pellet | 10 points |
 | Power pellet | 100 points on top of the pellet's 10 (110 in all), and every ghost not in the eyes state turns frightened |
-| Frightened time | **600 frames** (10 s) when the Pac-Man seat's flag is set, **840 frames** (14 s) otherwise (table at 0x80146F00, one word per seat; see "open questions") |
+| Frightened time | **600 frames** (10 s). The program also holds 840 frames (14 s) for a seat whose flag (0x80146F00) is clear, but every seat's flag is set at start-up and never cleared, so that branch never runs |
 | Blink | in the last 120 frames the frightened look toggles every 8 frames (bit 3 of the timer) |
 | Ghost eaten | Pac-Man gets the chain value and the ghost's owner loses it (not below 0); the chain starts at 200 on each power pellet and **doubles per ghost, capped at 1600**; everything freezes for **30 frames** after each one |
 | Fruit | A timer starts each round at 1080 + 60 x (random 0-19) frames, i.e. 18-37 s. When it reaches 480 the fruit appears in the middle of the maze (chime + line); at 0 it bursts (stars) and the timer restarts with a new random value, so a fruit shows **600-1740 frames (10-29 s) after the previous one went, for 480 frames (8 s)**, over and over |
@@ -256,5 +256,6 @@ streams in order (0 `pacmanBGM00`, 1 `Pac_Arr_Clear`, 2 `Pac_Opening_Comp`, 3 `p
 
 ## Open questions (being checked live)
 
-- The per-seat flag at 0x80146F00: every seat had it set in the games watched (10 s of fright, the 100-unit
-  view). The program's other branch (14 s, a 125-unit view) was never taken; what clears the flag is not known.
+- (Settled) The per-seat flag at 0x80146F00 is set to 1 for all four seats at start-up (0x8000E774, the settings
+  block at 0x80146E60, offset 0xA0) and nothing in the program writes it again, so the fright is always 600 frames
+  and the view 100 units: the 840-frame, 125-unit branch is dead code, like the ghost-on-ghost check.

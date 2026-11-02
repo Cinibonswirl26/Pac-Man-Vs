@@ -42,8 +42,9 @@
     tunnelSlow: 1 / 1.25, tunnelEnd: 3, tunnelHidden: 1, tunnelHold: 30 / FPS,
     frightTime: 600 / FPS, frightFlash: 120 / FPS,   // 600 frames; the frightened look blinks through the last 120
     eatFreeze: 30 / FPS,                  // everything stands still for 30 frames after a ghost is eaten
-    // Pac-Man leaves a trail in his player's colour that ghosts can follow. Look (wide flat ribbon, paler by Pac-Man) is from the original; the length is a guess.
-    trailTime: 2, trailEvery: 0.1,
+    // Pac-Man's trail: the original's particle emitter 23 (pm_track01, drawn as a stripe in his player's colour), moved
+    // onto him every frame, adds a point every 2 frames and each point lives 130 frames (2.17 s).
+    trailTime: 130 / FPS, trailEvery: 2 / FPS,
     ghostSight: 4.6,
     // The 3D circle looks down at an angle, so it shows ground out to about 1.3 times the sight radius ahead of the ghost; what the server sends covers all of it.
     viewReach: 1.35,
@@ -476,7 +477,7 @@
       moveEnt(s, s.pac, CFG.pacSpeed * chewing * heavy * (s.pac.speedLeft > 0 ? CFG.speedMult : 1), dt, 'pac');
       padCheck(s, s.pac, 'pac');
     }
-    if (!s.pac.air && s.time - s.trailLast >= CFG.trailEvery) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }
+    if (!s.pac.air && s.time - s.trailLast >= CFG.trailEvery - dt / 2) { s.trail.push({ x: s.pac.x, y: s.pac.y, t: s.time }); s.trailLast = s.time; }   // to the nearest tick
     while (s.trail.length && s.time - s.trail[0].t > CFG.trailTime) s.trail.shift();
     if (!s.pac.air && eatCell(s, s.pac)) return;
     if (ARR) { moveClone(s.pac); if (s.pac.clone && eatCell(s, s.pac.clone)) return; }
@@ -618,7 +619,8 @@
       fruit: s.fruit && vis(s.fruit) ? { x: s.fruit.x, y: s.fruit.y } : null,
       pac: vis(s.pac) ? q(s.pac) : null,
       // the trail Pac-Man leaves: [x, y, age in seconds]; ghosts only see the parts inside a circle of sight
-      trail: s.trail.filter(p => vis(p)).map(p => [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100, Math.round((s.time - p.t) * 100) / 100]),
+      // (sent thinned: the ends, every corner and every sixth point, which draws the same ribbon from a third of the points)
+      trail: thinTrail(s.trail).filter(p => vis(p)).map(p => [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100, Math.round((s.time - p.t) * 100) / 100]),
       // Every ghost is on the shared screen (its own circle and the minimap); `s` is the radius of its circle.
       ghosts: s.ghosts.map((g, i) => Object.assign(q(g), { m: g.potted ? 'r' : g.mode[0], s: sightOf(g), c: colorOf(s, i) }, ARR ? qa(g) : {}))
     };
@@ -643,6 +645,10 @@
       out.pellets = p;
     }
     return out;
+  }
+  function thinTrail(t) {
+    return t.filter((p, i) => i === 0 || i === t.length - 1 || i % 6 === 0 ||
+      Math.sign(p.x - t[i - 1].x) !== Math.sign(t[i + 1].x - p.x) || Math.sign(p.y - t[i - 1].y) !== Math.sign(t[i + 1].y - p.y));
   }
   function q(e) { return { x: Math.round(e.x * 100) / 100, y: Math.round(e.y * 100) / 100, d: e.dir }; }
   /** The Arrangement extras of an entity, only the ones in play: a (airborne: from, to, progress), ds (dashing: the speed multiple

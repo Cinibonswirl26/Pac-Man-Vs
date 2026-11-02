@@ -187,7 +187,9 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 16 / 21, 1e-9) && near(S.CFG.eyeSpee
   const s = S.newRound([1600, 0, 0, 0], 0);
   for (let t = 0; t < 30 * 8; t++) S.update(s, { pac: t < 100 ? 1 : 3, ghosts: [null, null, null] }, 1 / 30);
   const v = S.view(s, 0);
-  ok(v.trail.length >= 10 && v.trail.every(p => p[2] <= S.CFG.trailTime + 1e-6), 'Pac-Man has a trail no longer than ' + S.CFG.trailTime + ' s');
+  ok(v.trail.length >= 10 && v.trail.every(p => p[2] <= S.CFG.trailTime + 0.006), 'Pac-Man has a trail no longer than ' + S.CFG.trailTime.toFixed(2) + ' s');
+  ok(near(S.CFG.trailTime * 59.94, 130, 1e-6) && near(S.CFG.trailEvery * 59.94, 2, 1e-6) && s.trail.length >= 60 && s.trail.length <= 66, `the original's emitter 23: a point every 2 frames, each living 130 frames (${s.trail.length} points)`);
+  ok(v.trail.length < s.trail.length / 2, `the view sends a thinned trail (${v.trail.length} of ${s.trail.length})`);
   ok(v.trail.every((p, i) => i === 0 || p[2] <= v.trail[i - 1][2]), 'trail is ordered oldest first');
   const gv = S.view(s, 1);
   ok(gv.trail.length <= v.trail.length && gv.trail.every(p => s.ghosts.some(g => Math.hypot(p[0] - g.x, p[1] - g.y) <= S.CFG.ghostSight * (S.CFG.fruitSightMult + 0.01))), 'ghosts only see trail inside a circle of sight');
