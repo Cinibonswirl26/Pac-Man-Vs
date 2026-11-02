@@ -15,7 +15,7 @@ log.length = 0; m.fire('exchangeTick', { me: 0 }); m.fire('exchangeTick', { me: 
 const md = SM.musicDefaults();
 ok(md[1] === 'original' && md[0] === 'original', 'defaults: the Original stage and the built-in maze as the original');
 ok(md[5] === 'pacmaniaBGM02_FX_LR' && md[6] === 'pacmaniaBGM03_FX_LR' && md[4] === 'pacmaniaBGM06_FX_LR' && md[8] === 'pacmaniaBGM07_FX_LR' && md[13] === 'Pac_Arr_bgm02_LR_Comp', "defaults: each of the original's stages has its own stream, as the game plays them");
-ok(md[2] === md[5] && md[11] === md[5] && md[7] === md[6] && md[9] === md[4] && md[10] === md[13], 'the mazes without a menu entry take the track of their family');
+ok(md[2] === md[5] && md[3] === md[5] && md[11] === md[5] && md[7] === md[6] && md[9] === md[4] && md[12] === md[4] && md[10] === md[8], "the mazes without a menu entry: the program's own table (Spotlight Hall plays Manic Manor's track)");
 ok(Object.values(md).every(v => v === 'original' || SM.STREAM_NAMES[v]), 'every default is a named stream or the original treatment');
 ok(SM.musicFor(md, 1, 3) === 'original' && SM.musicFor(md, 5, 0) === 'pacmaniaBGM02_FX_LR' && SM.musicFor(md, 5, 5) === 'pacmaniaBGM02_FX_LR', 'the stage track does not change with the round');
 ok(SM.musicFor({ 7: 'rotate' }, 7, 0) === 'pacmaniaBGM02_FX_LR' && SM.musicFor({ 7: 'rotate' }, 7, 5) === 'pacmaniaBGM03_FX_LR', 'rotation by round when chosen');

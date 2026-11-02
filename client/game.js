@@ -176,7 +176,7 @@
   // game's own synthesiser, so it is synthesised here from its measured pitches. The pacmania streams are used on the
   // other stages.
   // The sound lab can give each stage its own music (SoundMap.musicFor): the original treatment, a stream, or none.
-  const MENU_TRACK = 'Pac_Opening_Comp_LR', START_JINGLE = 'pacmanBGM00_FX_LR', CLEAR_JINGLE = 'Pac_Arr_Clear_LR', EXCHANGE_TUNE = 'pacmaniaBGM05_FX_LR';
+  const MENU_TRACK = 'Pac_Opening_Comp_LR', START_JINGLE = 'pacmanBGM00_FX_LR', CLEAR_JINGLE = 'Pac_Arr_Clear_LR', EXCHANGE_TUNE = 'pacmaniaBGM05_FX_LR', RESULTS_TUNE = 'Pac_Op_loop73_LR';
   let musicMap = SoundMap.loadMusic();
   const stageMusic = () => SoundMap.musicFor(musicMap, curDisc ? curDisc.stage : 0, snap ? snap.round : 0);
   const onOriginalStage = () => stageMusic() === 'original';
@@ -845,11 +845,16 @@
         sm.start = snap.ghosts.map(g => g ? { x: g.x, y: g.y } : null); sm.moved = [false, false, false]; sm.yaw = [0, 0, 0].map(() => View3D.YAW[2]);
       }
       lastPhase = snap.phase;
-      if (onOriginalStage()) {
-        if (snap.phase === 'countdown') playMusic(START_JINGLE, false);
-        else if (snap.phase === 'roundover' && snap.why === 'cleared') playMusic(CLEAR_JINGLE, false);
-        else if (snap.phase !== 'play') stopMusic();
-      } else if (stageMusic() !== 'none' && (snap.phase === 'countdown' || snap.phase === 'play')) playMusic(stageMusic(), true); else stopMusic();
+      // as the program does (its stream starter 0x80008AA0): the start jingle at every round's countdown and the clear
+      // jingle on a cleared maze, on every stage; then the stage's own stream through the round (none on the Original
+      // stage, which has the siren); and a loop of its own on the results screen
+      const track = stageMusic();
+      if (track === 'none' && snap.phase !== 'final') stopMusic();
+      else if (snap.phase === 'countdown') playMusic(START_JINGLE, false);
+      else if (snap.phase === 'roundover' && snap.why === 'cleared') playMusic(CLEAR_JINGLE, false);
+      else if (snap.phase === 'play') { if (track !== 'original') playMusic(track, true); }   // on the Original stage the jingle plays out
+      else if (snap.phase === 'final') playMusic(RESULTS_TUNE, true);
+      else stopMusic();
     }
     // the siren runs while the round is on and no ghost is frightened or flying home (a catch fades it out); the exchange
     // screen's tune runs from when the new Pac-Man may press Start until they do
