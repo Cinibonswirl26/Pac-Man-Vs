@@ -78,10 +78,21 @@
   /** A maze descriptor. rows use: '#' wall, '=' house wall, 'D' door (ghosts only), '.' pellet,
    *  'o' power pellet, ' ' or '_' empty floor. The house is the rectangle ghosts wait in.
    *  `ghosts` are the three ghost start cells; ghosts start outside the house, ready to play. */
+  // The eaten ghosts' way home travels packed: two cells (0-5 each) per character of 0-9a-z, about 280 characters for a
+  // maze, so a room's whole maze still fits in one message.
+  const PACK = '0123456789abcdefghijklmnopqrstuvwxyz';
+  function packEyes(a) { let s = ''; for (let i = 0; i < a.length; i += 2) s += PACK[a[i] * 6 + (a[i + 1] || 0)]; return s; }
+  function unpackEyes(str, n) {
+    if (typeof str !== 'string' || str.length !== Math.ceil(n / 2)) return null;
+    const a = new Array(n);
+    for (let i = 0; i < str.length; i++) { const v = PACK.indexOf(str[i]); if (v < 0) return null; a[2 * i] = Math.floor(v / 6); if (2 * i + 1 < n) a[2 * i + 1] = v % 6; }
+    return a;
+  }
   function makeMaze(rows, o) {
     const m = { rows, W: rows[0].length, H: rows.length, pac: o.pac, ghosts: o.ghosts, door: o.door, exit: o.exit, house: o.house, name: o.name || 'maze' };
     if (o.fruit) m.fruit = o.fruit;
     if (o.arrange) m.arrange = o.arrange;      // the "Arrangement" overlay (see shared/arrange.js): pads and capsules
+    if (o.eyes) m.eyes = o.eyes;               // the original's table of the eaten ghosts' way home, one 0-5 per cell (MazeData.eyeTables)
     return m;
   }
   const BUILTIN = makeMaze(HALF.map(h => h + h.slice(0, 11).split('').reverse().join('')), {
@@ -196,7 +207,7 @@
         if (e.want !== e.dir && !(rules && e.lock) && canGo(e, e.want, who)) { e.dir = e.want; dx = DIRS[e.dir][0]; dy = DIRS[e.dir][1]; if (rules) e.lock = 1; }
         if (!canGo(e, e.dir, who)) return;
       } else if (!rules) {
-        if (e.want === OPP[e.dir]) { e.dir = e.want; continue; }
+        if (e.want === OPP[e.dir] && !EYES) { e.dir = e.want; continue; }   // with the original's table, eyes turn only on a centre
       } else if (e.want !== e.dir && !e.lock && !e.driftAx && ahead < 0 && -ahead <= LATE + 1e-9 && canGo(e, e.want, who)) {
         if (e.want === OPP[e.dir]) { e.dir = e.want; e.lock = 2; continue; }   // back the way it came: through the centre it left, no turn there
         e.driftAx = dx ? 'x' : 'y'; e.driftTo = dx ? cx : cy;                    // at right angles: from the centre left behind
@@ -484,7 +495,8 @@
         // An eaten ghost flies back to the house by itself (nobody steers it), then plays again from inside.
         g.want = eyeWant(g);
         step(g, CFG.eyeSpeed, dt, 'eyes');
-        if (Math.floor(g.x) === DOOR[0] && Math.floor(g.y) === HOUSE.y0 && Math.hypot(g.x - (DOOR[0] + 0.5), g.y - (HOUSE.y0 + 0.5)) < 0.3) {
+        const home = EYES ? eyeCode(Math.floor(g.x), Math.floor(g.y)) === 5 : Math.floor(g.x) === DOOR[0] && Math.floor(g.y) === HOUSE.y0;
+        if (home && Math.hypot(g.x - (Math.floor(g.x) + 0.5), g.y - (Math.floor(g.y) + 0.5)) < 0.3) {
           g.mode = 'normal'; g.dir = g.want = 0; s.events.push('respawn');
         }
         if (s.fruit && !g.standin && dist(g, s.fruit) < CFG.catchDist && takeItem(s, i)) return;   // eyes take the fruit too (the program tests the slot only)
@@ -551,7 +563,20 @@
   let eyeField = null;
   /** Steer an eaten ghost: turn round if the centre behind is the shorter way home, and choose the turn to make at
    *  the centre ahead (a ghost passes a centre inside a tick, so the choice has to be made beforehand). */
+  // With the original's table (a disc maze), the eyes do as its eyes routine (0x80021DC0) does: they decide only on a
+  // cell's centre and take that cell's arrow, even when it turns them back, and they come out of the house the moment
+  // they reach the cell marked home. The tables are hand-made, so they are followed rather than worked out.
+  const EYE_DIR = [-1, 0, 2, 3, 1, -1];   // table code -> DIRS index: 1 up, 2 down, 3 left, 4 right
+  const EYES = typeof maze.eyes === 'string' ? unpackEyes(maze.eyes, W * H) : null;
+  const eyeCode = (x, y) => EYES && y >= 0 && y < H ? EYES[y * W + ((x % W) + W) % W] : 0;
   function eyeWant(g) {
+    if (EYES) {   // the arrow of the centre it stands on or reaches next (taken there by step, which never turns eyes back between centres)
+      const cx = Math.floor(g.x), cy = Math.floor(g.y), dx = DIRS[g.dir][0], dy = DIRS[g.dir][1];
+      const ahead = (cx + 0.5 - g.x) * dx + (cy + 0.5 - g.y) * dy, past = ahead < -1e-9;
+      const d = EYE_DIR[eyeCode(past ? cx + dx : cx, past ? cy + dy : cy)];
+      if (d >= 0) return d;
+      if (eyeCode(cx, cy)) return g.dir;
+    }
     if (!eyeField) eyeField = distMap(DOOR[0], HOUSE.y0, 'eyes');
     const fieldAt = (x, y) => { if (y < 0 || y >= H) return 1e6; const v = eyeField[tileIdx(x, y)]; return v < 0 ? 1e6 : v; };
     let dx = DIRS[g.dir][0], dy = DIRS[g.dir][1];
@@ -977,6 +1002,6 @@
   }
 
   const api = build(BUILTIN);
-  api.create = build; api.makeMaze = makeMaze; api.BUILTIN = BUILTIN;
+  api.create = build; api.makeMaze = makeMaze; api.BUILTIN = BUILTIN; api.packEyes = packEyes; api.unpackEyes = unpackEyes;
   return api;
 });

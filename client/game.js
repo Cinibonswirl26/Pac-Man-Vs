@@ -392,6 +392,8 @@
       try { const w = await Sound.load(d); snd.sfx = w.sfx; snd.voice = w.voice; titleOnce(); } catch (e) { console.warn('sound', e); snd.sfx = snd.voice = null; }
       try {   // the original stage 1 maze, read from the disc's maze data
         art.mazes = MazeData.all(await d.read(MazeData.PATH), PacSim.makeMaze);
+        try { const t = MazeData.eyeTables(await d.dol()); for (const m of art.mazes) { const e = MazeData.eyesFor(t, m); if (e) m.eyes = PacSim.packEyes(e); } }   // the eaten ghosts' way home
+        catch (e) { console.warn('eyes tables', e); }
         fillMazes(); showBanner();
       } catch (e) { console.warn('maze', e); art.mazes = []; }
       try { art.three = await View3D.load(d); view3 = null; } catch (e) { console.warn('3D models', e); art.three = null; }

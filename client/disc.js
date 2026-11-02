@@ -61,6 +61,13 @@
       async read(path) {
         const f = files.get(path); if (!f) throw new Error('missing on disc: ' + path);
         return c.read(f.off, f.size);
+      },
+      /** The game's program (the boot DOL), with mem(address, length) reading it by the address it loads at. */
+      async dol() {
+        const off = u32(boot, 0x420), hdr = await c.read(off, 0x100);
+        const secs = []; for (let i = 0; i < 18; i++) { const o = u32(hdr, 4 * i), a = u32(hdr, 0x48 + 4 * i), n = u32(hdr, 0x90 + 4 * i); if (n) secs.push([a, o, n]); }
+        const end = Math.max(...secs.map(([, o, n]) => o + n)), bytes = await c.read(off, end);
+        return { bytes, mem(addr, len) { for (const [a, o, n] of secs) if (addr >= a && addr + len <= a + n) return bytes.subarray(o + addr - a, o + addr - a + len); return null; } };
       }
     };
   }

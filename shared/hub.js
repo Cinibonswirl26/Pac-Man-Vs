@@ -24,6 +24,12 @@
       if (![m.pac, m.exit, ...m.ghosts].every(open) || m.rows[m.door[1]][m.door[0]] !== 'D') return null;
       const o = { name: String(m.name || 'custom').replace(/[^\w .'\-]/g, '').slice(0, 32) || 'custom', pac: m.pac, ghosts: m.ghosts, door: m.door, exit: m.exit, house: { x0: h.x0, x1: h.x1, y0: h.y0, y1: h.y1 } };
       if (m.arrange) { o.arrange = Arrange.validate(m.arrange, { rows: m.rows, pac: m.pac, ghosts: m.ghosts, exit: m.exit, house: o.house }); if (!o.arrange) return null; }
+      // the eaten ghosts' way home, read from the host's disc: one 0-5 per cell (1 up, 2 down, 3 left, 4 right, 5 home), packed
+      if (m.eyes != null) {
+        const e = Sim.unpackEyes(m.eyes, W * H);
+        if (!e || e.filter(v => v === 5).length !== 1) return null;
+        o.eyes = m.eyes;
+      }
       return Sim.makeMaze(m.rows.slice(), o);
     } catch (e) { return null; }
   }

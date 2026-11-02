@@ -144,7 +144,29 @@
   /** The original stage 1 maze. */
   function stage1(rom, makeMaze) { return all(rom, makeMaze)[0]; }
 
+  /** The eaten ghosts' way home on each stage, from the game's program (the console side, not the handheld's ROM):
+   *  its eyes routine (0x80021DC0) reads, for the cell under the eyes, 1 up, 2 down, 3 left, 4 right or 5 home, from a
+   *  32 x 32 table of 16-bit words per stage (pointers at 0x801245CC). The tables are hand-made: they are not always
+   *  a shortest path, so they are read rather than worked out. Returns { stage: Uint8Array(32 * 32) of 0-5 }. */
+  const EYES_TABLES = 0x801245CC;
+  function eyeTables(dol) {
+    const out = {}, u32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+    const ptrs = dol.mem(EYES_TABLES, 4 * STAGES.length); if (!ptrs) return out;
+    for (let k = 1; k <= STAGES.length; k++) {
+      const t = dol.mem(u32(ptrs, 4 * (k - 1)), 32 * 32 * 2); if (!t) continue;
+      const a = new Uint8Array(32 * 32); for (let i = 0; i < 32 * 32; i++) { const v = t[2 * i + 1]; a[i] = v >= 1 && v <= 5 ? v : 0; }
+      if (a.includes(5)) out[k] = a;
+    }
+    return out;
+  }
+  /** A stage's table cut to the maze's own W x H, one 0-5 per cell (packed with PacSim.packEyes to go with the maze). */
+  function eyesFor(tables, m) {
+    const t = tables[m.stage]; if (!t) return null;
+    const out = []; for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) out.push(x < 32 && y < 32 ? t[y * 32 + x] : 0);
+    return out;
+  }
+
   // where the maze data sits on the disc
   const PATH = 'PROOT/gbademo/packman.bin';
-  return { all, stage1, locate, segments, PATH, STAGES };
+  return { all, stage1, locate, segments, eyeTables, eyesFor, PATH, STAGES };
 });

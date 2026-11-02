@@ -14,6 +14,10 @@ ok(!sanitizeMaze({ ...m, pac: [99, 99] }), 'pac outside maze rejected');
 ok(!sanitizeMaze({ ...m, ghosts: [[1, 1]] }), 'wrong ghost count rejected');
 ok(!sanitizeMaze({ ...m, rows: m.rows.map((r, i) => i === 1 ? r.replace(/\./g, 'x') : r) }), 'illegal characters rejected');
 ok(!sanitizeMaze({ ...m, door: [1, 1] }), 'door not on a D cell rejected');
+{ const W = m.rows[0].length, H = m.rows.length, e = new Array(W * H).fill(0); e[m.house.y0 * W + m.door[0]] = 5;
+  const S = require('../shared/sim.js'), pk = S.packEyes(e);
+  ok(sanitizeMaze({ ...m, eyes: pk }).eyes === pk, "the eaten ghosts' way home is kept");
+  ok(!sanitizeMaze({ ...m, eyes: pk.slice(1) }) && !sanitizeMaze({ ...m, eyes: pk.replace(/./, '!') }) && !sanitizeMaze({ ...m, eyes: S.packEyes(e.map(() => 0)) }) && !sanitizeMaze({ ...m, eyes: e }), 'a way home of the wrong size, with bad codes, without a home or unpacked is rejected'); }
 // the Arrangement overlay: kept when it fits the maze, the whole maze refused when it does not
 const arr = { pads: [{ x: 1, y: 1, kind: 'dash', dir: 1 }, { x: 9, y: 1, kind: 'dash', dir: 3 }, { x: 1, y: 7, kind: 'jump', pair: 3, colour: 0 }, { x: 9, y: 7, kind: 'jump', pair: 2, colour: 0 }], items: true };
 const am = sanitizeMaze({ ...m, arrange: arr });
