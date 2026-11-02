@@ -236,6 +236,34 @@ down from 430 Hz and back up to 485 when Pac-Man takes the fruit (23 frames), a 
 in the rounds recorded. Here the player looking at the
 handheld hears only those, and the TV's sounds while looking at a TV picture.
 
+Its program (`PROOT/gbademo/packman.bin`, Thumb code loaded at 0x02000000) has a small sound driver, read by running
+its own code in a CPU emulator (BIOS copy and divide calls supplied) and logging every sound register write and every
+mixer call, frame by frame:
+
+- Sounds are started from the messages the TV sends (handler at 0x02004778): a message with top byte 0x0B starts sound
+  0 for bit 0x10 (wa-ka), 4 for 0x20 (fruit), 1 for 0x40 (ghost eaten) and 2 for 0x80 (death), through 0x02000EA0,
+  which queues a command for the next frame. Sound 3 (a short pulse blip) is in the set but never asked for. There is
+  one ghost sound: it does not change along the chain.
+- The sound set is at 0x02017100: five 16-bit offsets, then byte-coded tracks (0xC2 n picks instrument n, 0x60-0xBF a
+  note with a new length and velocity, below 0x60 a note reusing them, 0xC1 a rest, 0xFF the end).
+- The wa-ka is instrument 0, on pulse channel 1: duty 12.5%, envelope 0xF8 (full, steady), frequency registers 1452,
+  1575, 1650, 1714, 1750, 1783 (219.9 to 494.6 Hz) a frame each, the envelope set to 0 for one frame and nothing for
+  the next, then the same six notes down.
+- The other three are samples, mixed in software: timer 0 at 0xF9C4 gives 10,512 samples a second, 176 a frame, sent
+  by DMA to FIFO A (left) and FIFO B (right) from double buffers. Each sample has a 16-byte header (length, rate,
+  loop start, loop end) and signed 8-bit data: 0x020171D4 (605 samples, 32 kHz) and 0x02017444 (902, 44.1 kHz) for
+  the death, 0x020177E4 (201, 44.1 kHz) for the fruit, 0x020178C4 (522, 44.1 kHz) for the ghost. Per frame each voice
+  has a step (1/256ths of a sample per output sample) and a volume (0-255); at the centre pan the left volume is
+  vol x 63 >> 8 and the right vol x 64 >> 8. The mixer (ARM code copied to 0x030030D4) adds sample x volume into
+  16-bit sums, then shifts each down by 7 (towards zero) and clamps it to 8 bits; a voice's position wraps back by the
+  loop's length when it passes the loop end. The fruit is two voices on one sample an octave apart (that is the
+  "two tones an octave apart" heard in the recordings); the death is the swoops on one sample for 71 frames, then two
+  sweeps on another starting at frames 65 and 77, the first overlapping the swoops' fade.
+
+`client/handsound.js` holds those per-frame tables and, with the disc loaded, reads the four samples from the
+player's own program and mixes them the same way: its output matches the emulated program's sample for sample, left
+and right, for all three sounds. Without the disc the recreations measured from recordings stand in.
+
 The handheld meanwhile: from the start of the exchange a blue screen (palette 3, colour 6) saying "LOOK AT THE TV
 SCREEN !", with a TV picture that blinks 32 frames on, 32 off over a still arrow; at the icon's arrival the next
 round's maze, panel and blinking "Press START!"; after Start the movers on their start cells until Go.

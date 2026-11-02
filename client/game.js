@@ -398,7 +398,7 @@
       } catch (e) { console.warn('maze', e); art.mazes = []; }
       try { art.three = await View3D.load(d); view3 = null; } catch (e) { console.warn('3D models', e); art.three = null; }
       try { art.screens = await Screens.load(d); } catch (e) { console.warn('shared screen', e); art.screens = null; }
-      try { art.handheld = await Handheld.load(d, MazeData); if (pacScreen) { pacScreen.canvas.remove(); pacScreen = null; } } catch (e) { console.warn('Pac-Man screen', e); art.handheld = null; }
+      try { art.handheld = await Handheld.load(d, MazeData); HandSound.useRom(art.handheld.rom); if (pacScreen) { pacScreen.canvas.remove(); pacScreen = null; } } catch (e) { console.warn('Pac-Man screen', e); art.handheld = null; }
       if (screenView) { screenView.canvas.remove(); screenView = null; }
       st.className = 'note ok'; st.textContent = `Loaded ${d.title} (${d.id}). Original logo, sprites, music${art.three ? ', 3D ghost view' : ''} are on.`;
       if (remember) { try { await idbSet('disc', blob); } catch { /* storage unavailable */ } }

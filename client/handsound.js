@@ -1,7 +1,10 @@
-/* The sounds Pac-Man's own screen makes, rebuilt from measurements of the original.
- * Nothing here is read from the disc: the handheld's sounds are made on the fly by its sound chip, so these are
- * recreations. Each sound is a list of frames (one per picture, 1/59.7275 s) giving the pitch, and a wave shape;
- * the pitches, timing, loudness and shapes were measured from recordings of the real thing.
+/* The sounds Pac-Man's own screen makes, as the handheld program on the disc plays them.
+ * That program has four sounds. The "wa-ka" is played on the handheld's pulse channel; the other three (the fruit,
+ * eating a ghost, the death sound) are short looped samples in the program, mixed in software at 10,512 samples a
+ * second. The program was run in a CPU emulator to read, frame by frame, which sample each voice plays, how fast and
+ * how loud; those tables are below. With the disc loaded (useRom) the samples are read from the player's own copy of
+ * the program and mixed here exactly as the program mixes them (checked sample for sample against the emulated
+ * program). Without the disc, recreations measured from recordings of the real thing stand in (SOUNDS).
  * UMD: window.HandSound in the browser, module.exports in Node. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -26,8 +29,10 @@
 
   // Loudness (fraction of full scale) and the pitch of each frame in Hz, 0 for a pause. `amp` is per frame or one number.
   const SOUNDS = {
-    // "wa-ka" for every pellet: six rising notes, a rest of two frames, six falling notes
-    waka: { wave: 'pulse', level: 0.09, freq: [220, 277, 329, 392, 440, 495, 0, 0, 495, 440, 392, 329, 277, 220], amp: 1 },
+    // "wa-ka" for every pellet: six rising notes, a rest of two frames, six falling notes. Exact: the program's own
+    // pulse-channel writes (sound 0: a 12.5% pulse at full volume, frequency registers 1452, 1575, 1650, 1714, 1750,
+    // 1783 = 131072 / (2048 - n) Hz, then silence for two frames and the same notes back down)
+    waka: { wave: 'pulse', level: 0.09, freq: [219.9, 277.1, 329.3, 392.4, 439.8, 494.6, 0, 0, 494.6, 439.8, 392.4, 329.3, 277.1, 219.9], amp: 1 },
     // Pac-Man takes the fruit: down from 440 Hz to 130, up to 500, then a short fade (two takes recorded; an earlier
     // reading had it as the round's start, which in fact makes no sound on the handheld)
     fruit: {
@@ -51,6 +56,84 @@
   };
 
   SOUNDS.start = SOUNDS.fruit;   // the old name, for saved sound maps
+
+  // The program's sample sounds. Each voice: the sample's place in the program file, the frame it starts on, and per
+  // frame its step (how far it moves through the sample per output sample, in 1/256ths) and its volume (0-255). The
+  // program sends message bits 0x10, 0x20, 0x40 and 0x80 for sounds 0 (wa-ka), 4 (fruit), 1 (ghost) and 2 (death).
+  const MIX_RATE = 16777216 / 1596, PER_FRAME = 176, PAN = 64, MIX_LEVEL = 0.65;
+  const SAMPLED = {
+    eatGhost: [{ at: 0x178c4, start: 0,
+      step: [225, 272, 319, 319, 319, 236, 294, 352, 410, 468, 525, 583, 641, 699, 756, 814, 872, 930, 988, 1045, 1103, 1161, 1219, 1277, 1277, 1277, 1277, 1277, 1277, 1277, 1277],
+      vol: [254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 114, 51, 23, 10, 4, 2] }],
+    // two voices on one sample, an octave apart
+    fruit: [2, 1].map(k => ({ at: 0x177e4, start: 0,
+      step: k === 2 ? [2157, 1904, 1651, 1398, 1145, 891, 638, 638, 638, 638, 891, 1144, 1398, 1651, 1904, 2157, 2410, 2410, 2410, 2410, 2410, 2410, 2410, 2410]
+        : [1078, 952, 825, 699, 572, 446, 319, 319, 319, 319, 445, 572, 698, 825, 952, 1078, 1205, 1205, 1205, 1205, 1205, 1205, 1205, 1205],
+      vol: [66, 133, 199, 199, 199, 199, 199, 199, 199, 199, 199, 199, 199, 199, 199, 199, 199, 199, 89, 40, 18, 8, 3, 1] })),
+    // six falling swoops on one sample, then two rising sweeps on another, the first overlapping the swoops' fade
+    death: [
+      { at: 0x171d4, start: 0,
+        step: [748, 717, 686, 655, 655, 689, 723, 757, 791, 825, 825, 825, 666, 638, 611, 583, 583, 614, 644, 674, 705, 735, 735, 735, 629, 603, 577, 550, 550, 579, 608, 636, 665, 694, 694, 694, 593, 569, 544, 520, 520, 547, 574, 601, 628, 655, 655, 655, 560, 537, 514, 490, 490, 516, 541, 567, 592, 618, 618, 618, 529, 507, 485, 463, 463, 463, 463, 463, 463, 463, 463],
+        vol: [66, 133].concat(Array(63).fill(199), [89, 40, 18, 8, 3, 1]) },
+      ...[[65, 1013], [77, 4821]].map(([start, first]) => ({ at: 0x17444, start,
+        step: [first, 67, 852, 1277, 1704, 2147, 2554, 3037, 3409, 3827, 4295, 4295, 4295, 4295, 4295, 4295],
+        vol: [19, 39, 59, 79, 99, 99, 99, 99, 99, 99, 99, 44, 20, 9, 4, 1] }))
+    ]
+  };
+
+  let bank = null;   // at -> { data: Int8Array, loopStart, loopEnd }
+  /** Read the samples from the handheld program's bytes (the disc's PROOT/gbademo/packman.bin). */
+  function useRom(rom) {
+    const u32 = o => (rom[o] | (rom[o + 1] << 8) | (rom[o + 2] << 16) | (rom[o + 3] << 24)) >>> 0;
+    const b = {};
+    for (const v of Object.values(SAMPLED).flat()) {
+      if (b[v.at]) continue;
+      const n = u32(v.at), loopStart = u32(v.at + 8), loopEnd = u32(v.at + 12) || n;
+      if (!n || n > 4096 || v.at + 16 + n > rom.length || loopEnd > n + 1 || loopStart >= loopEnd) { bank = null; return false; }
+      b[v.at] = { data: new Int8Array(rom.buffer, rom.byteOffset + v.at + 16, n + 1), loopStart, loopEnd };
+    }
+    bank = b; cache = new WeakMap(); return true;
+  }
+
+  /** Mix a sampled sound as the program does: per output sample, add sample x volume into 16-bit left and right sums,
+   *  then shift each down by 7 and clamp to 8 bits. Returns { left, right } (Int8Array, 176 samples a frame). */
+  function mix(name) {
+    const voices = SAMPLED[name]; if (!voices || !bank) return null;
+    const frames = Math.max(...voices.map(v => v.start + v.step.length));
+    const out = { left: new Int8Array(frames * PER_FRAME), right: new Int8Array(frames * PER_FRAME) };
+    const pos = voices.map(() => 0);
+    for (let f = 0; f < frames; f++) {
+      const L = new Int32Array(PER_FRAME), R = new Int32Array(PER_FRAME);
+      voices.forEach((v, k) => {
+        const i = f - v.start; if (i < 0 || i >= v.step.length) return;
+        const s = bank[v.at], vl = (v.vol[i] * (127 - PAN)) >> 8 & 255, vr = (v.vol[i] * PAN) >> 8 & 255, step = v.step[i];
+        let p = pos[k];
+        for (let j = 0; j < PER_FRAME; j++) {
+          if ((p >> 8) >= s.loopEnd) p -= (s.loopEnd - s.loopStart) << 8;
+          const x = s.data[p >> 8]; L[j] = (L[j] + vl * x) << 16 >> 16; R[j] = (R[j] + vr * x) << 16 >> 16; p += step;
+        }
+        pos[k] = p;
+      });
+      const clamp = x => Math.max(-128, Math.min(127, Math.trunc(x / 128)));
+      for (let j = 0; j < PER_FRAME; j++) { out.left[f * PER_FRAME + j] = clamp(L[j]); out.right[f * PER_FRAME + j] = clamp(R[j]); }
+    }
+    return out;
+  }
+
+  let cache = new WeakMap();   // ctx -> { name: AudioBuffer }
+  function mixedBuffer(ctx, name) {
+    let m = cache.get(ctx); if (!m) cache.set(ctx, m = {});
+    if (!m[name]) {
+      const pcm = mix(name), sr = ctx.sampleRate, n = Math.ceil(pcm.left.length / MIX_RATE * sr);
+      const buf = ctx.createBuffer(2, n, sr), l = buf.getChannelData(0), r = buf.getChannelData(1);
+      for (let i = 0; i < n; i++) {   // held, sample by sample, as the handheld's output holds each one
+        const j = Math.min(pcm.left.length - 1, Math.floor(i * MIX_RATE / sr));
+        l[i] = pcm.left[j] / 128 * MIX_LEVEL; r[i] = pcm.right[j] / 128 * MIX_LEVEL;
+      }
+      m[name] = buf;
+    }
+    return m[name];
+  }
   const waves = new WeakMap();
   function periodic(ctx, name) {
     let m = waves.get(ctx); if (!m) waves.set(ctx, m = {});
@@ -62,6 +145,10 @@
   function play(ctx, dest, name, when) {
     const def = SOUNDS[name]; if (!def) return null;
     const t0 = when === undefined ? ctx.currentTime : when;
+    if (bank && SAMPLED[name === 'start' ? 'fruit' : name]) {
+      const src = ctx.createBufferSource(); src.buffer = mixedBuffer(ctx, name === 'start' ? 'fruit' : name); src.connect(dest); src.start(t0);
+      return { stop() { try { src.stop(); } catch { /* already over */ } } };
+    }
     if (def.parts) {            // a sound in parts, one after another (each its own wave)
       let t = t0; const hs = def.parts.map(p => { const h = playDef(ctx, dest, p, t); t += p.freq.length * FRAME; return h; });
       return { stop() { hs.forEach(h => h.stop()); } };
@@ -83,5 +170,5 @@
   }
 
   const frames = def => def.parts ? def.parts.reduce((n, p) => n + p.freq.length, 0) : def.freq.length;
-  return { play, SOUNDS, WAVES, FRAME, duration: name => frames(SOUNDS[name]) * FRAME };
+  return { play, SOUNDS, WAVES, FRAME, SAMPLED, MIX_RATE, useRom, mix, hasRom: () => !!bank, duration: name => frames(SOUNDS[name]) * FRAME };
 });

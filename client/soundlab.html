@@ -51,7 +51,7 @@
       <div class="snd"><b>fruit</b><span style="flex:1">Pac-Man takes the fruit (a sweep down and up)</span><button data-hand="fruit">&#9654;</button></div>
       <div class="snd"><b>eatGhost</b><span style="flex:1">Pac-Man eats a ghost (a quick rising tone)</span><button data-hand="eatGhost">&#9654;</button></div>
       <div class="snd"><b>death</b><span style="flex:1">Pac-Man caught (falling swoops, two rising sweeps)</span><button data-hand="death">&#9654;</button></div>
-      <p class="dim">These are rebuilt from recordings, not read from the disc. Tell me how they differ from the real ones.</p></div>
+      <p class="dim">With your disc loaded these are the handheld program's own sounds, played from its samples exactly as it mixes them. Without it, recreations from recordings stand in.</p></div>
     <div class="card"><h2>TV tones</h2>
       <div class="snd"><b>count</b><span style="flex:1">the exchange screen's count (two square-wave notes, every 8 frames)</span><button data-tone="count">&#9654;</button></div>
       <div class="snd"><b>fruitGone</b><span style="flex:1">the fruit bursts untaken (a falling run, echoed)</span><button data-tone="fruitGone">&#9654;</button></div>
@@ -209,6 +209,7 @@
     $('stat').textContent = 'Reading sounds...';
     try { snd = await Sound.load(d); } catch (e) { $('stat').textContent = 'Could not read sounds: ' + e.message; return; }
     disc = d;
+    try { HandSound.useRom(new Uint8Array(await d.read('PROOT/gbademo/packman.bin'))); } catch (e) { console.warn('handheld sounds', e); }
     $('stat').innerHTML = `<span class="ok">${label}: ${snd.sfx.length} effects, ${snd.voice.length} announcer lines</span>`;
     lib('sfx'); lib('voice'); draw(); drawMusic();
   }
