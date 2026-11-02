@@ -126,6 +126,17 @@ ok(near(S.CFG.frightSpeed / S.CFG.pacSpeed, 16 / 21, 1e-9) && near(S.CFG.eyeSpee
   ok(near(t * S.CFG.tick, S.CFG.fruitSightTime, 0.3), 'view boost lasts ' + S.CFG.fruitSightTime + 's');
   const u = S.newRound([1600, 0, 0, 0], 0); u.fruitTimer = S.CFG.fruitStay + 0.001; const k = u.pellets.findIndex(v => v === 1); u.pac.x = (k % S.W) + 0.5; u.pac.y = Math.floor(k / S.W) + 0.5; S.update(u, idle);
   const b0 = u.scores[0]; u.pac.x = u.fruit.x; u.pac.y = u.fruit.y; S.update(u, idle); ok(u.scores[0] === b0 + 400, 'Pac-Man can take the fruit too');
+  ok(near(u.freeze, S.CFG.eatFreeze, 1e-9), "Pac-Man's take freezes play for 30 frames, as a ghost eaten does");
+  // the program's fruit rules (round loop 0x8001EAF0): the 2 px contact, the timer running through freezes, stand-in slots never taking it
+  { const f = S.newRound([1600, 0, 0, 0], 0); f.fruitTimer = S.CFG.fruitStay + 0.001;
+    f.ghosts.forEach(g => { g.x = 1.5; g.y = 19.5; }); f.pac.x = 21.5; f.pac.y = 19.5; S.update(f, idle);
+    f.pac.x = f.fruit.x + 0.3; f.pac.y = f.fruit.y; f.pac.dir = f.pac.want = 1; const t0 = f.fruitTimer; f.freeze = 1;   // 0.3 cell off, frozen
+    S.update(f, idle); ok(f.fruit && f.fruitTimer < t0, 'the fruit clock runs during a freeze; 2.4 px away is not a take');
+    const g = S.newRound([1600, 0, 0, 0], 0, { standin: [false, true, false] }); g.fruitTimer = S.CFG.fruitStay + 0.001;
+    g.pac.x = 1.5; g.pac.y = 19.5; g.ghosts.forEach(x => { x.x = 21.5; x.y = 19.5; }); S.update(g, idle); const sg = g.ghosts[1]; sg.grey = false; sg.claim = 0; sg.x = g.fruit.x; sg.y = g.fruit.y; S.update(g, idle);
+    ok(g.fruit, 'a woken stand-in does not take the fruit (its slot is a stand-in\'s)');
+    const e = g.ghosts[0]; e.mode = 'eyes'; e.x = g.fruit.x; e.y = g.fruit.y; const pe = S.playerOfGhost(g, 0), se = g.scores[pe]; S.update(g, idle);
+    ok(!g.fruit && g.scores[pe] === se + 400, "an eaten ghost's eyes going home take it (the program tests the slot only)"); }
 }
 // 10b. Eating a ghost moves the points from its owner to Pac-Man (measured on the disc: Pac-Man 2230 -> 2430, owner 1330 -> 1130)
 {

@@ -54,7 +54,7 @@
     fruitPts: 400, fruitStay: 480 / FPS, fruitGapMin: 1080 / FPS, fruitGapStep: 60 / FPS, fruitGapSteps: 20, fruitSightMult: 1.6, fruitSightTime: 720 / FPS,
     clearBonus: 1600, hideAt: 20,          // the bonus only if Pac-Man is still below the target; at 20 pellets left the ghosts' screens stop showing pellets
     pelletPts: 10, powerPts: 110,
-    ghostChain: [200, 400, 800, 1600],   // not measured
+    ghostChain: [200, 400, 800, 1600],   // the program's chain: 200 on each power pellet, doubling per ghost, capped at 1600
     stealPts: 1600, startPts: 1600,
     targets: [7000, 10000, 15000], defaultTarget: 7000,
     // Arrangement levels only (shared/arrange.js). From the 1996 arcade game's demo: a dash runs at about 2.5-3 times
@@ -309,12 +309,22 @@
     }
     s.fruit = f;
   }
+  /** The fruit clock (the program's timer at 0x801A4114): the fruit shows when it reaches fruitStay and bursts when it
+   *  reaches 0, and then it restarts. It runs through freezes. */
+  function fruitClock(s, dt) {
+    const wasUp = s.fruitTimer > CFG.fruitStay;
+    s.fruitTimer -= dt;
+    if (wasUp && s.fruitTimer <= CFG.fruitStay && !s.fruit && s.left > 0) spawnItem(s);
+    if (s.fruit) { s.fruit.left = s.fruitTimer; if (s.fruit.left <= 0) { s.fruit = null; s.events.push('fruitgone'); } }
+    if (s.fruitTimer <= 0) s.fruitTimer = fruitGap(s.rng || Math.random);
+  }
   /** Pac-Man (gi -1) or ghost gi takes what is at the fruit spot. Returns true if the round ended. */
   function takeItem(s, gi) {
     const kind = s.fruit.kind || 'fruit', g = gi >= 0 ? s.ghosts[gi] : null, who = gi >= 0 ? colorOf(s, gi) : s.pacPlayer;
     s.fruit = null; s.fruitTimer = fruitGap(s.rng || Math.random);     // the clock restarts on a take as on a burst
     if (kind === 'fruit') {
       if (g) g.sightLeft = CFG.fruitSightTime;
+      if (!g) s.freeze = CFG.eatFreeze;                          // Pac-Man's take stops everything for 30 frames, as a ghost eaten does
       s.events.push(g ? 'fruitghost' : 'fruit'); award(s, who, CFG.fruitPts); return s.over;
     }
     s.events.push(g ? 'capsuleghost' : 'capsule'); s.lastItem = kind;
@@ -435,9 +445,10 @@
     if (s.over) return;
     dt = dt || CFG.tick;
     s.tick++; s.time += dt; s.events.length = 0;
-    if (s.freeze > 0) {                                        // the standstill after a ghost is eaten: the clocks run, nobody moves
+    if (s.freeze > 0) {                                        // the standstill after a ghost or the fruit is eaten: the clocks run, nobody moves
       s.freeze = Math.max(0, s.freeze - dt);
       if (s.frightLeft > 0) s.frightLeft = Math.max(0, s.frightLeft - dt);
+      fruitClock(s, dt);                                        // the program counts the fruit timer down outside the freeze
       return;
     }
     if (ARR) tickEffects(s, dt);
@@ -458,16 +469,8 @@
     while (s.trail.length && s.time - s.trail[0].t > CFG.trailTime) s.trail.shift();
     if (!s.pac.air && eatCell(s, s.pac)) return;
     if (ARR) { moveClone(s.pac); if (s.pac.clone && eatCell(s, s.pac.clone)) return; }
-    // The fruit clock: the fruit shows when it reaches fruitStay and bursts when it reaches 0, and then it restarts.
-    const wasUp = s.fruitTimer > CFG.fruitStay;
-    s.fruitTimer -= dt;
-    if (wasUp && s.fruitTimer <= CFG.fruitStay && !s.fruit && s.left > 0) spawnItem(s);
-    if (s.fruit) {
-      s.fruit.left = s.fruitTimer;
-      if (!s.pac.air && dist(s.pac, s.fruit) < 0.7) { if (takeItem(s, -1)) return; }
-      else if (s.fruit.left <= 0) { s.fruit = null; s.events.push('fruitgone'); }
-    }
-    if (s.fruitTimer <= 0) s.fruitTimer = fruitGap(s.rng || Math.random);
+    fruitClock(s, dt);
+    if (s.fruit && !s.pac.air && dist(s.pac, s.fruit) < CFG.catchDist && takeItem(s, -1)) return;   // the 2 px contact, as for everything
     if (s.frightLeft > 0) {
       s.frightLeft -= dt;
       if (s.frightLeft <= 0) { s.frightLeft = 0; s.ghosts.forEach(g => { if (g.mode === 'fright') g.mode = 'normal'; }); }
@@ -484,6 +487,7 @@
         if (Math.floor(g.x) === DOOR[0] && Math.floor(g.y) === HOUSE.y0 && Math.hypot(g.x - (DOOR[0] + 0.5), g.y - (HOUSE.y0 + 0.5)) < 0.3) {
           g.mode = 'normal'; g.dir = g.want = 0; s.events.push('respawn');
         }
+        if (s.fruit && !g.standin && dist(g, s.fruit) < CFG.catchDist && takeItem(s, i)) return;   // eyes take the fruit too (the program tests the slot only)
         continue;
       }
       if (g.air) { flyStep(s, g, 'ghost', dt); if (ARR) moveClone(g); continue; }          // in the air: out of play until it lands
@@ -507,7 +511,8 @@
       if (ARR) { moveClone(g); if (g.dropLeft > 0) dropBig(s, g); }
       if ((g.grey && g.mode !== 'fright') || g.air) continue;   // a grey stand-in takes no part: no fruit, Pac-Man passes through it; frightened, it can be eaten
       if (s.pac.air) continue;                    // nobody touches Pac-Man while he is in the air
-      if (s.fruit && g.mode !== 'eyes' && !g.grey && dist(g, s.fruit) < 0.7 && takeItem(s, i)) return;
+      // any ghost seat that is not a stand-in's, even woken, and even as eyes going home (the program tests the slot only)
+      if (s.fruit && !g.standin && !g.grey && dist(g, s.fruit) < CFG.catchDist && takeItem(s, i)) return;
       if (dist(g, s.pac) < CFG.catchDist || (ARR && (sweptHit(s.pac, g) || sweptHit(g, s.pac)))) {
         if (g.mode === 'fright') { if (eatGhost(s, i)) return; }
         else if (g.mode === 'normal' && s.pac.dash) { g.stun = CFG.stunTime; s.events.push('stun'); }   // a dashing Pac-Man knocks a ghost aside and leaves it dizzy
